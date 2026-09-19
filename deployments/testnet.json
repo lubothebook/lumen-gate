@@ -194,6 +194,11 @@
       "id": "operator-dialog-cleared-into-nothing",
       "found": "the operator dialog's Clear button cleared the token and left the dialog open on an empty field, with the reader's focus unmanaged. Closing it with the mouse or Escape dropped focus to the browser's default instead of the button that opened it, so a keyboard user lost their place in the console.",
       "fix": "Clear now closes the dialog and focus returns to the control that opened it; Save does the same, and the dialog restores focus on any close path (Clear, Close, Escape) through one handler. Opening the dialog puts the caret in the token field and selects it, so the field the dialog exists for is one keystroke away."
+    },
+    {
+      "id": "the-lattice-checker-pinned-one-density",
+      "found": "the behavioural check that guards the lattice asserted a fixed 60px cell and a literally 4px frame. That is true on a 1x display and false on every other one, so a check written to protect the pointer frame would have failed on a 2x screen and been edited to match the screen instead of the contract. Pinning one instantiation of a rule ages into a lie about the rule.",
+      "fix": "the check now asserts the contract rather than an instantiation: the tokens default to the tile's own 60px and the frame's own 4px, the cell and the ring are divided by the device pixel ratio so one asset pixel stays one screen pixel, the frame transform snaps to whole device pixels, the tile's sha256 must equal the hash the manifest records, and the sizing function is driven at dpr 1 and dpr 2 with the tokens the page actually sets (60/4 and 30/2) plus the reader's 60px override. It runs inside the console-surface record of the self-audit round, so the pixel language is audited every round, not once."
     }
   ],
   "negative_probes": {
