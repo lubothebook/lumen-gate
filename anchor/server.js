@@ -189,13 +189,24 @@ function runRelayer(height) {
           .split('\n')
           .filter((line) => line.includes('transaction receipt:'))
           .map((line) => line.split('transaction receipt:').pop().trim());
+        // A relayer that never started must not look like a relayer that ran and
+        // found nothing to do. Those are different facts and an operator has to
+        // be able to tell them apart from the response alone.
+        const spawnError = error && (error.code === 'ENOENT'
+          ? `the relayer binary is missing at ${RELAYER_BIN}`
+          : error.killed
+            ? `the relayer was killed after ${error.signal || 'a timeout'}`
+            : error.code || error.message || 'unknown error');
         resolve({
           ok: !error,
           height: height || null,
+          error: spawnError || null,
           receipts,
           note: receipts.length > 0
             ? 'each receipt hash was confirmed through Soroban RPC getTransaction before it was reported'
-            : 'no transaction was confirmed in this pass',
+            : spawnError
+              ? `the relayer did not run: ${spawnError}`
+              : 'the relayer ran and confirmed no transaction in this pass',
           output: output.slice(-4000),
         });
       }

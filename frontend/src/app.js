@@ -5,11 +5,11 @@
 // from a contract simulation, balances come from Horizon, and the audit comes
 // from the record the loop writes. Where something cannot be checked from a
 // hosted deployment, the interface says so instead of showing a button that
-// fails.
+// would fail.
 
-const API = '';
 const EXPLORER_TX = 'https://stellar.expert/explorer/testnet/tx/';
 const EXPLORER_CONTRACT = 'https://stellar.expert/explorer/testnet/contract/';
+const NETWORK_PASSPHRASE = 'Test SDF Network ; September 2015';
 
 // Storage access is wrapped because a sandboxed or privacy-restricted context
 // throws on the first touch, and a console that does not render because of a
@@ -41,7 +41,6 @@ const store = {
 
 const state = {
   status: null,
-  source: null,
   lock: null,
   operatorToken: store.get('lumen.operatorToken'),
   wallet: null,
@@ -61,28 +60,27 @@ const el = (tag, props = {}, children = []) => {
 };
 
 function short(value, keep = 6) {
-  if (!value) return '—';
+  if (!value) return '-';
   const text = String(value);
-  return text.length <= keep * 2 + 2 ? text : `${text.slice(0, keep)}…${text.slice(-4)}`;
+  return text.length <= keep * 2 + 2 ? text : `${text.slice(0, keep)}...${text.slice(-4)}`;
 }
 
 function txLink(hash) {
   return el('a', { class: 'explorer', href: EXPLORER_TX + hash, target: '_blank', rel: 'noreferrer', text: short(hash, 10) });
 }
 
-function log(id, message, level = '') {
-  const box = $(id);
-  if (!box) return;
+function log(message, level = '') {
+  const box = $('txLog');
   const time = new Date().toISOString().slice(11, 19);
+  if (box.textContent.trim() === 'Ready.') box.textContent = '';
   box.append(el('span', { class: level, text: `[${time}] ${message}\n` }));
   box.scrollTop = box.scrollHeight;
-  if (box.textContent.trim() === 'Ready.') box.textContent = '';
 }
 
 async function api(path, { method = 'GET', body, auth = false } = {}) {
   const headers = { 'Content-Type': 'application/json' };
   if (auth && state.operatorToken) headers.Authorization = `Bearer ${state.operatorToken}`;
-  const response = await fetch(`${API}${path}`, { method, headers, body: body ? JSON.stringify(body) : undefined });
+  const response = await fetch(path, { method, headers, body: body ? JSON.stringify(body) : undefined });
   const text = await response.text();
   let payload;
   try {
@@ -93,35 +91,38 @@ async function api(path, { method = 'GET', body, auth = false } = {}) {
   return { ok: response.ok, status: response.status, payload };
 }
 
-// -------------------------------------------------------------------- routing
-function route() {
-  const name = (location.hash.replace('#', '') || 'overview').split('?')[0];
-  const known = ['overview', 'bridge', 'redeem', 'evidence', 'about'];
-  const active = known.includes(name) ? name : 'overview';
-  for (const section of known) $(`view-${section}`).hidden = section !== active;
-  for (const button of document.querySelectorAll('nav.main button')) {
-    if (button.dataset.nav === active) button.setAttribute('aria-current', 'page');
-    else button.removeAttribute('aria-current');
-  }
-  window.scrollTo({ top: 0, behavior: 'instant' in window ? 'instant' : 'auto' });
+// ------------------------------------------------------------------ nav
+function watchSections() {
+  const targets = [...document.querySelectorAll('nav.main a[data-nav]')];
+  const sections = targets.map((link) => $(link.dataset.nav)).filter(Boolean);
+  if (!('IntersectionObserver' in window)) return;
+  const observer = new IntersectionObserver(
+    (entries) => {
+      const visible = entries.filter((entry) => entry.isIntersecting).sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+      if (!visible) return;
+      for (const link of targets) {
+        if (link.dataset.nav === visible.target.id) link.setAttribute('aria-current', 'true');
+        else link.setAttribute('aria-current', 'false');
+      }
+    },
+    { rootMargin: '-84px 0px -60% 0px', threshold: [0.05, 0.25] }
+  );
+  for (const section of sections) observer.observe(section);
 }
 
-document.addEventListener('click', (event) => {
-  const nav = event.target.closest('[data-nav]');
-  if (nav) {
-    location.hash = nav.dataset.nav;
-    event.preventDefault();
-  }
-});
-window.addEventListener('hashchange', route);
-
-// ------------------------------------------------------------------- overview
+// -------------------------------------------------------------- status
 function pill(id, ok, label, detail) {
   const node = $(id);
   node.textContent = '';
-  const dot = el('span', { class: `dot ${ok ? 'ok' : 'warn'}` });
-  node.append(dot, document.createTextNode(label));
+  node.append(el('span', { class: `dot ${ok ? 'ok' : 'warn'}` }), document.createTextNode(` ${label}`));
   if (detail) node.title = detail;
+}
+
+function setStat(valueId, subId, value, sub, mono) {
+  const node = $(valueId);
+  node.textContent = value ?? '-';
+  node.className = 'value' + (mono ? ' sm' : '');
+  if (sub !== undefined) $(subId).textContent = sub;
 }
 
 function renderDeployment(status) {
@@ -131,25 +132,19 @@ function renderDeployment(status) {
   const rows = [
     ['Registry', contracts.registry, `${EXPLORER_CONTRACT}${contracts.registry}`],
     ['Gateway', contracts.gateway, `${EXPLORER_CONTRACT}${contracts.gateway}`],
-    [`${contracts.asset || 'wSRC'} (SAC)`, contracts.wrapped_asset, `${EXPLORER_CONTRACT}${contracts.wrapped_asset}`],
+    [`${contracts.asset || 'wSRC'} (Stellar Asset Contract)`, contracts.wrapped_asset, `${EXPLORER_CONTRACT}${contracts.wrapped_asset}`],
     ['Issuer', contracts.issuer, `https://stellar.expert/explorer/testnet/account/${contracts.issuer}`],
-    ['Source domain', status.domain?.key, null],
+    ['Source domain key', status.domain?.key, null],
+    ['Target domain', status.target_domain, null],
   ];
   for (const [label, value, href] of rows) {
     kv.append(el('dt', { text: label }));
     if (!value) {
-      kv.append(el('dd', { text: '—' }));
+      kv.append(el('dd', { text: '-' }));
       continue;
     }
-    if (/^[A-Z0-9]{56}$/.test(value) || /^[A-Z0-9]{50,60}$/.test(value)) {
-      kv.append(el('dd', {}, [el('span', { class: 'chip', text: value })]));
-    } else {
-      kv.append(el('dd', { class: 'mono sm', text: value }));
-    }
-    if (href) {
-      kv.lastChild.classList.add('sm');
-      kv.append(el('dd', {}, [el('a', { class: 'explorer', href, target: '_blank', rel: 'noreferrer', text: 'open in explorer' })]));
-    }
+    kv.append(el('dd', { text: value }));
+    if (href) kv.append(el('dd', {}, [el('a', { class: 'explorer', href, target: '_blank', rel: 'noreferrer', text: 'open in explorer' })]));
   }
   $('deploymentStamp').textContent = `read ${new Date().toLocaleTimeString()}`;
 }
@@ -158,102 +153,28 @@ function renderHonesty(status) {
   const panel = $('honestyPanel');
   panel.textContent = '';
   const items = [
-    ['The source chain is simulated in this deployment.', 'Its BLS signatures are real (RFC 9380 hash-to-curve, domain separator lumen-gate-finality-v1) but the validator keys are fixed demo values. A production deployment needs a DKG.'],
-    ['The Groth16 lane is a statement proof, not a zkVM and not a signature verifier.', 'It proves a quorum of approval bits and a Poseidon binding of three roots. It does not prove that anyone signed anything, so settlement never anchors on it.'],
-    ['Gasless applies to inbound mints only.', 'The recipient pays nothing; the relayer signs and pays, and is repaid in wrapped asset. Burning your own tokens still needs a fee.'],
-    ['No bonds, no slashing, no market fee.', 'A validator that signs a wrong root loses nothing here. The relayer fee is a fixed amount chosen at submission time.'],
+    ['The source chain is simulated in this deployment.', 'Its BLS signatures are real (RFC 9380 hash-to-curve, domain separator lumen-gate-finality-v1) but the validator keys are fixed demo values. A production deployment needs a key ceremony, not a constant.'],
+    ['The Groth16 lane is a statement proof.', 'It proves a quorum of approval bits and a Poseidon binding of three roots. It is not a signature verifier and not a zkVM, so settlement never anchors on it: the registry stores zeroes in the event-root slot for that lane.'],
+    ['Gasless applies to inbound mints only.', 'The recipient pays nothing because the relayer signs and pays. Burning your own tokens still needs your key and your fee.'],
+    ['No bonds, no slashing, no market fee.', 'A validator that signs a wrong root loses nothing here. The relayer fee is a fixed amount chosen at submission time, not a market.'],
   ];
   for (const [head, body] of items) {
     panel.append(el('p', { class: 'note', style: 'margin:0 0 12px' }, [el('strong', { text: head }), document.createTextNode(' ' + body)]));
   }
   if (status.honesty?.findings_recorded) {
-    panel.append(el('p', { class: 'xs muted', text: `${status.honesty.findings_recorded} defects found in this build are recorded in the deployment manifest, including the ones found by this console's own audit loop.` }));
+    panel.append(
+      el('p', { class: 'xs faint', text: `${status.honesty.findings_recorded} defects found in this build are recorded in the deployment manifest, including the ones this console found while it was being driven.` })
+    );
   }
 }
 
 function renderCapabilities(status) {
   const caps = status.capabilities || {};
-  pill('capReads', true, 'reads enabled', 'the manifest, balances and the audit record are public');
-  pill('capRelay', Boolean(caps.operator_relay?.enabled), caps.operator_relay?.enabled ? 'relay enabled' : 'relay disabled', caps.operator_relay?.requires);
-  pill('capSource', Boolean(caps.source_chain?.configured), caps.source_chain?.configured ? 'source adapter set' : 'source adapter absent', caps.source_chain?.note);
-}
-
-async function loadStatus() {
-  const { ok, payload } = await api('/api/status');
-  if (!ok) {
-    // Degraded mode. Without the API layer there are no live reads, but the
-    // addresses still have to be right: they are taken from the generated
-    // module, which is written from the same deployment manifest, and the page
-    // says out loud that it is offline instead of showing empty panels.
-    $('netPill').innerHTML = '<span class="dot bad"></span> API unavailable — static addresses only';
-    log('bridgeLog', `Live status request failed (${payload.error || payload.raw || 'network error'}). Addresses below come from the generated deployment module.`, 'warn');
-    try {
-      const { deployment } = await import('./deployment.js');
-      renderDeployment({ contracts: {
-        registry: deployment.registryId,
-        gateway: deployment.gatewayId,
-        wrapped_asset: deployment.tokenId,
-        asset: 'wSRC',
-      }, domain: { key: deployment.sourceDomainKey } });
-      $('statRegistry').textContent = short(deployment.registryId, 8);
-      $('statRegistrySub').textContent = 'static manifest';
-      $('settleNote').textContent = 'No API layer in this build: start one (node tools/api-dev-server.js) or deploy the functions to Vercel.';
-      $('lockBtn').disabled = true;
-      $('settleBtn').disabled = true;
-      $('sourceNote').textContent = 'No API layer: the source adapter cannot be reached from this build.';
-    } catch (error) {
-      log('bridgeLog', `No static deployment module either: ${error}`, 'bad');
-    }
-    return null;
-  }
-  state.status = payload;
-  if (!state.lock) {
-    const defaults = payload.receipts && payload.receipts['forward_mint'];
-    void defaults;
-  }
-
-  const net = $('netPill');
-  net.textContent = '';
-  net.append(el('span', { class: 'dot ok' }), document.createTextNode(`Stellar ${payload.network} · protocol ${payload.protocol_version_at_deploy}`));
-
-  $('statRegistry').textContent = short(payload.contracts?.registry || '—', 8);
-  $('statRegistry').classList.add('mono');
-  $('statRegistrySub').textContent = payload.chain?.latest_ledger ? `ledger ${payload.chain.latest_ledger}` : 'ledger unknown';
-  $('statAudit').textContent = payload.audit?.result || '—';
-  $('statAudit').className = `value ${payload.audit?.all_passed ? '' : 'muted'}`;
-  $('statAuditSub').textContent = payload.audit ? `${payload.audit.rounds_recorded} round(s) recorded` : 'no record';
-
-  const auditDot = $('auditPill');
-  auditDot.textContent = '';
-  auditDot.append(
-    el('span', { class: `dot ${payload.audit?.all_passed ? 'ok' : 'warn'}` }),
-    document.createTextNode(` self-audit ${payload.audit?.result || '—'}`)
-  );
-
-  $('footerChain').textContent = `${payload.chain?.horizon || ''}`.replace('https://', '');
-
-  renderDeployment(payload);
-  renderHonesty(payload);
-  renderCapabilities(payload);
-  renderReceipts(payload);
-  renderFindings(payload);
-  renderAudit(payload.audit);
-
-  const recipient = $('lockRecipient');
-  if (!recipient.value) recipient.value = payload.accounts?.end_user || payload.accounts?.gasless_recipient || '';
-
-  const relayReady = Boolean(payload.capabilities?.operator_relay?.enabled);
-  $('settleNote').textContent = relayReady
-    ? 'This deployment can relay: the button below asks the operator facade for one pass, which signs and pays for the mint.'
-    : 'This deployment cannot relay by itself — no operator URL and token are configured here. Locking still works; use “Copy the command instead” to settle it with the local relayer.';
-  $('settleBtn').disabled = !relayReady || !state.lock;
-
-  const sourceSet = Boolean(payload.capabilities?.source_chain?.configured);
-  $('sourceNote').textContent = sourceSet
-    ? 'Source adapter configured. Locks created here are real events on the simulated source chain.'
-    : 'No source adapter is configured on this deployment, so the lock button is disabled rather than pretending.';
-  $('lockBtn').disabled = !sourceSet;
-  return payload;
+  pill('capReads', true, 'reads on', 'the manifest, balances and the audit record are public');
+  const relay = Boolean(caps.operator_relay?.enabled);
+  pill('capRelay', relay, relay ? 'relay on' : 'relay off', caps.operator_relay?.note || caps.operator_relay?.requires);
+  const source = Boolean(caps.source_chain?.configured);
+  pill('capSource', source, source ? 'source chain on' : 'source chain off', caps.source_chain?.note);
 }
 
 function renderReceipts(status) {
@@ -265,11 +186,16 @@ function renderReceipts(status) {
     ['register_domain', receipts.register_domain],
     ['set_bls_policy', receipts.set_bls_policy],
     ['admit_domain', receipts.admit_domain],
-    ['renounce_admin', receipts.renounce_admin],
+    ['renounce_admin (registry)', receipts.renounce_admin],
+    ['renounce_admin (gateway)', receipts.gateway_renounce_admin],
     ['forward mint', receipts.forward_mint_height_32 || receipts['forward_mint']],
     ['reverse burn', receipts.burn_and_relay],
+    ['console round trip: BLS anchor', receipts.registry_bls_accepted_height_1_console_run],
+    ['console round trip: mint 1 of 3', receipts.console_mint_1_of_3],
+    ['console round trip: mint 2 of 3', receipts.console_mint_2_of_3],
+    ['console round trip: mint 3 of 3', receipts.console_mint_3_of_3],
   ].filter(([, hash]) => hash);
-  if (status.gasless?.transaction) named.push(['gasless mint (zero-XLM recipient)', status.gasless.transaction]);
+  if (status.gasless?.transaction) named.push(['gasless mint, zero-XLM recipient', status.gasless.transaction]);
   if (named.length === 0) {
     body.append(el('tr', {}, [el('td', { colspan: '2', class: 'muted', text: 'no receipts recorded' })]));
     return;
@@ -281,108 +207,283 @@ function renderReceipts(status) {
 
 function renderFindings(status) {
   const list = $('findingsList');
+  const findings = status.findings || [];
   list.textContent = '';
-  const { payload } = { payload: status };
-  const findings = state.status?.findings || [];
-  $('findingsCount').textContent = `${findings.length} recorded`;
-  if (findings.length === 0) {
-    list.append(el('p', { class: 'muted', text: 'none recorded' }));
-    return;
-  }
+  $('findingsSummary').textContent = findings.length === 0
+    ? 'Nothing is recorded, which for a build this size usually means nobody looked.'
+    : `${findings.length} defects, kept in the deployment manifest instead of edited out of it. A build with no recorded defects is a build where nobody looked.`;
   for (const finding of findings) {
-    list.append(
-      el('details', { style: 'margin-bottom:10px' }, [
-        el('summary', { text: finding.id }),
-        el('p', { class: 'sm muted', style: 'margin:8px 0 4px', text: finding.found }),
-        el('p', { class: 'sm', style: 'margin:0', text: `Fix: ${finding.fix}` }),
-      ])
-    );
+    const block = el('div', { class: 'finding' });
+    block.append(el('p', { class: 'mono xs', style: 'color:var(--faint); margin-top:16px', text: finding.id }));
+    block.append(el('p', { style: 'margin-top:6px', text: finding.found }));
+    block.append(el('p', {}, [el('strong', { text: 'Fix. ' }), document.createTextNode(finding.fix)]));
+    list.append(block);
   }
-  void payload;
 }
 
 function renderAudit(audit) {
   const body = $('auditRows');
   body.textContent = '';
-  if (!audit) {
-    body.append(el('tr', {}, [el('td', { colspan: '4', class: 'muted', text: 'no audit record in this deployment' })]));
+  const history = audit?.history || [];
+  if (history.length === 0) {
+    // The status payload carries a summary; the round history comes from
+    // /api/audit. Say which one this is instead of showing an empty table.
+    body.append(el('tr', {}, [
+      el('td', { class: 'mono', text: audit?.latest?.round ?? 'latest' }),
+      el('td', { class: 'mono xs', text: audit?.last_check || audit?.latest?.finished_at || '-' }),
+      el('td', { class: 'mono', text: audit?.result || '-' }),
+      el('td', { class: audit?.all_passed ? 'ok' : 'warn', text: audit?.all_passed ? 'all passed' : 'attention' }),
+    ]));
     return;
   }
-  $('auditStamp').textContent = audit.last_check ? `last round ${audit.last_check}` : '';
-  const history = audit.history || (audit.latest ? [audit.latest] : []);
   for (const round of history.slice().reverse()) {
     body.append(
       el('tr', {}, [
         el('td', { class: 'mono', text: String(round.round) }),
-        el('td', { class: 'mono xs', text: round.finished_at || '—' }),
+        el('td', { class: 'mono xs', text: round.finished_at || '-' }),
         el('td', { class: 'mono', text: `${round.checks_passed}/${round.checks_total}` }),
-        el('td', { class: round.all_passed ? '' : 'bad', text: round.all_passed ? 'all passed' : 'attention' }),
+        el('td', { class: round.all_passed ? 'ok' : 'bad', text: round.all_passed ? 'all passed' : 'attention' }),
       ])
     );
   }
 }
 
-// --------------------------------------------------------------------- bridge
-const STEPS = {
-  lock: 'bstep-lock',
-  finality: 'bstep-finality',
-  mint: 'bstep-mint',
-};
+async function loadAuditHistory() {
+  const { ok, payload } = await api('/api/audit');
+  if (!ok) return;
+  const record = payload.record || payload;
+  if (Array.isArray(record.history) && record.history.length > 0) {
+    renderAudit({ ...record, last_check: record.latest?.finished_at, result: `${record.latest?.checks_passed}/${record.latest?.checks_total}`, all_passed: record.latest?.all_passed });
+    $('auditStamp').textContent = `${record.history.length} rounds`;
+  }
+}
+
+async function loadStatus() {
+  const { ok, payload } = await api('/api/status');
+  if (!ok) {
+    // Degraded mode. Without the API layer there are no live reads, but the
+    // addresses still have to be right: they come from the generated module,
+    // which is written from the same deployment manifest, and the page says
+    // out loud that it is offline instead of showing empty panels.
+    $('netPill').innerHTML = '<span class="dot bad"></span> API unavailable - static addresses only';
+    log(`Live status request failed (${payload.error || payload.raw || 'network error'}). Addresses below come from the generated deployment module.`, 'warn');
+    try {
+      const { deployment } = await import('./deployment.js');
+      renderDeployment({
+        contracts: { registry: deployment.registryId, gateway: deployment.gatewayId, wrapped_asset: deployment.tokenId, asset: 'wSRC' },
+        domain: { key: deployment.sourceDomainKey },
+      });
+      setStat('statRegistry', 'statRegistrySub', short(deployment.registryId, 8), 'static manifest', true);
+      setStat('statFinality', 'statFinalitySub', '-', 'no API layer in this build');
+      $('settleNote').textContent = 'No API layer in this build: start one with node tools/api-dev-server.js, or deploy the functions to Vercel.';
+      $('lockBtn').disabled = true;
+      $('settleBtn').disabled = true;
+      $('sourceNote').textContent = 'No API layer: the source adapter cannot be reached from this build.';
+    } catch (error) {
+      log(`No static deployment module either: ${error}`, 'bad');
+    }
+    return null;
+  }
+
+  state.status = payload;
+  const net = $('netPill');
+  net.textContent = '';
+  net.append(
+    el('span', { class: 'dot ok' }),
+    el('span', { class: 'net-long', text: `Stellar ${payload.network} - ledger ${payload.chain?.latest_ledger ?? '?'}` }),
+    el('span', { class: 'net-short', text: payload.network || 'testnet' })
+  );
+
+  setStat('statRegistry', 'statRegistrySub', short(payload.contracts?.registry, 8), `read live at ledger ${payload.chain?.latest_ledger ?? '?'}`, true);
+  setStat('statAudit', 'statAuditSub', payload.audit?.result || '-', payload.audit ? `${payload.audit.rounds_recorded} round(s) recorded` : 'no record');
+  setStat('statFindings', 'statFindingsSub', String(payload.honesty?.findings_recorded ?? '-'), 'recorded in the deployment manifest');
+
+  renderDeployment(payload);
+  renderHonesty(payload);
+  renderCapabilities(payload);
+  renderReceipts(payload);
+  renderFindings(payload);
+  renderAudit(payload);
+
+  const recipient = $('lockRecipient');
+  if (!recipient.value) recipient.value = payload.accounts?.gasless_recipient || payload.accounts?.end_user || '';
+
+  const relayReady = Boolean(payload.capabilities?.operator_relay?.enabled);
+  $('settleNote').textContent = relayReady
+    ? 'This deployment can relay: the button runs one relayer pass at the height you locked. The relayer signs and pays.'
+    : 'This deployment cannot relay by itself: no operator URL and token are configured here. Locking still works; use "Copy the command instead" to settle it with the local relayer.';
+  $('settleBtn').disabled = !relayReady || !state.lock;
+
+  const sourceReady = Boolean(payload.capabilities?.source_chain?.configured);
+  $('sourceNote').textContent = sourceReady
+    ? 'Source adapter configured. Locks created here become real events on the simulated source chain, with real BLS evidence behind them.'
+    : 'No source adapter is configured on this deployment, so this button is disabled rather than pretending to work.';
+  $('lockBtn').disabled = !sourceReady;
+
+  $('operatorHint').textContent = state.operatorToken ? 'writes: token set for this tab' : 'writes: no operator token yet';
+  $('footerChain').textContent = `${payload.chain?.horizon || ''}`.replace('https://', '');
+  return payload;
+}
+
+// -------------------------------------------------------------- finality
+async function queryFinality(height) {
+  const kv = $('finalityKv');
+  kv.textContent = '';
+  kv.append(el('dt', { text: 'Result' }), el('dd', { text: 'querying the contract...' }));
+  const { ok, payload } = await api(`/api/finality${height ? `?height=${encodeURIComponent(height)}` : ''}`);
+  kv.textContent = '';
+  if (!ok) {
+    kv.append(el('dt', { text: 'Error' }), el('dd', { text: payload.error || JSON.stringify(payload).slice(0, 140) }));
+    return null;
+  }
+  const record = payload.record || {};
+  const backing = Array.isArray(record.last_security) ? record.last_security.join(' ') : record.last_security;
+  const rows = [
+    ['Query', payload.query],
+    ['Found', payload.found ? 'yes' : 'no'],
+    ['Finalized height', record.last_height],
+    ['State root', record.last_root || record.state_root],
+    ['Event root', record.last_event_root || record.event_root],
+    ['Backing', backing],
+    ['Read at ledger', payload.latest_ledger],
+  ];
+  for (const [label, value] of rows) {
+    if (value === undefined || value === null || value === '') continue;
+    kv.append(el('dt', { text: label }), el('dd', { text: String(value) }));
+  }
+  setStat('statFinality', 'statFinalitySub', record.last_height || '-', backing ? `backing: ${backing}` : 'no finality recorded yet');
+  return payload;
+}
+
+// ---------------------------------------------------------------- wallet
+async function connectWallet() {
+  const freighter = window.freighterApi || window.freighter;
+  if (!freighter) {
+    $('walletNote').textContent = 'Freighter is not installed in this browser. Receiving does not need a wallet at all; only burning your own tokens does.';
+    log('Freighter is not available in this browser. The inbound direction needs no wallet.', 'warn');
+    return null;
+  }
+  try {
+    const access = await (freighter.requestAccess ? freighter.requestAccess() : freighter.getPublicKey());
+    const pub = typeof access === 'string' ? access : access.address;
+    state.wallet = pub;
+    $('walletChip').textContent = short(pub, 6);
+    $('connectBtn').textContent = 'Reconnect';
+    log(`Wallet connected: ${pub}`, 'ok');
+    await refreshWallet();
+    return pub;
+  } catch (error) {
+    log(`Wallet connection failed: ${error}`, 'bad');
+    return null;
+  }
+}
+
+async function refreshWallet() {
+  if (!state.wallet) {
+    $('walletNote').textContent = 'Connect a wallet to read your own balances. You do not need one to receive.';
+    return;
+  }
+  const horizon = state.status?.chain?.horizon || 'https://horizon-testnet.stellar.org';
+  const asset = state.status?.contracts?.asset || 'wSRC';
+  try {
+    const account = await (await fetch(`${horizon}/accounts/${state.wallet}`)).json();
+    if (account.status === 404) throw new Error('this account is not funded on testnet');
+    const native = account.balances.find((b) => b.asset_type === 'native');
+    const wrapped = account.balances.find((b) => b.asset_code === asset);
+    const reserve = ((2 + (account.subentry_count || 0)) * 0.5).toFixed(7);
+    const spendable = native ? (Number(native.balance) - Number(reserve)).toFixed(7) : null;
+
+    const body = $('walletKv');
+    body.textContent = '';
+    const row = (label, unit, value, cls) => {
+      const tr = el('tr');
+      const left = el('td', {}, [document.createTextNode(label)]);
+      if (unit) left.append(el('span', { class: 'unit', text: unit }));
+      const right = el('td', { text: value });
+      if (cls) right.className = cls;
+      tr.append(left, right);
+      return tr;
+    };
+    body.append(row('XLM', '', native ? native.balance : '-'));
+    body.append(row('Spendable XLM', 'after reserve', spendable ?? '-', Number(spendable) > 0 ? 'ok' : 'warn'));
+    body.append(row(asset, 'wrapped asset', wrapped ? wrapped.balance : `no trustline for ${asset}`, wrapped ? '' : 'warn'));
+
+    $('walletKind').textContent = 'connected: you can burn, and receive';
+    const link = $('walletLink');
+    link.hidden = false;
+    link.setAttribute('href', `https://stellar.expert/explorer/testnet/account/${state.wallet}`);
+    link.textContent = 'Open in explorer';
+    $('walletNote').textContent = "Balances read from Horizon. Spendable XLM is what is left after the account's own reserve, and receiving does not need any of it.";
+  } catch (error) {
+    log(`Balance read failed: ${error}`, 'bad');
+    $('walletNote').textContent = `Could not read balances: ${error}`;
+  }
+}
+
+// -------------------------------------------------------- inbound (lock)
+const STEP_IDS = { lock: 'bstep-lock', finality: 'bstep-finality', mint: 'bstep-mint' };
 
 function step(name, status, detail) {
-  const node = $(STEPS[name]);
-  node.classList.remove('done', 'active');
-  if (status === 'done') node.classList.add('done');
-  if (status === 'active') node.classList.add('active');
+  const node = $(STEP_IDS[name]);
+  if (!node) return;
+  node.classList.toggle('done', status === 'done');
+  node.classList.toggle('active', status === 'active');
   const mark = node.querySelector('[data-mark]');
-  mark.textContent = status === 'done' ? '✓' : status === 'active' ? '…' : '';
-  if (detail) node.querySelector('p').textContent = detail;
+  if (mark) mark.textContent = status === 'done' ? 'OK' : status === 'active' ? '..' : '';
+  if (detail) {
+    const target = node.querySelector('[data-detail]');
+    if (target) target.textContent = detail;
+  }
 }
 
 function resetSteps() {
-  step('lock', 'idle', 'message id, nonce and payload hash are derived from the event, not chosen by the relayer');
+  step('lock', 'idle', 'message id, nonce and payload hash come from the event');
   step('finality', 'idle', 'aggregate BLS signature over height, state root and event root');
-  step('mint', 'idle', 'Merkle proof of that single event against the finalized event root');
+  step('mint', 'idle', 'Merkle proof of that event against the finalized root');
 }
 
 async function lock() {
   const amount = Number($('lockAmount').value);
   const recipient = $('lockRecipient').value.trim();
   const count = Number($('lockCount').value || 1);
-  if (!Number.isInteger(amount) || amount <= 0) return log('bridgeLog', 'Amount must be a positive integer.', 'bad');
-  if (!/^G[A-Z2-7]{55}$/.test(recipient)) return log('bridgeLog', 'Recipient must be a Stellar account address (G…, 56 characters).', 'bad');
+  if (!Number.isInteger(amount) || amount <= 0) return log('Amount must be a positive whole number.', 'bad');
+  if (!/^G[A-Z2-7]{55}$/.test(recipient)) return log('Recipient must be a Stellar account address (G..., 56 characters).', 'bad');
 
   resetSteps();
-  step('lock', 'active');
-  log('bridgeLog', `Locking ${amount} for ${short(recipient)} with ${count} event(s) in the block…`);
+  step('lock', 'active', 'creating the lock event on the source chain');
+  log(`Locking ${amount} for ${short(recipient)} with ${count} event(s) in the block...`);
   const { ok, payload } = await api('/api/source?path=/lock', { method: 'POST', auth: true, body: { amount, recipient, count } });
   if (!ok) {
     step('lock', 'idle');
-    log('bridgeLog', `Lock refused: ${payload.error || payload.raw || JSON.stringify(payload).slice(0, 160)}`, 'bad');
-    if (payload.error === 'writes_disabled' || payload.error === 'unauthorized') log('bridgeLog', 'Set the operator token from the header button and try again.', 'warn');
+    log(`Lock refused: ${payload.error || payload.raw || JSON.stringify(payload).slice(0, 160)}`, 'bad');
+    if (payload.error === 'writes_disabled' || payload.error === 'unauthorized') {
+      log('Open Operator in the header and set the token, then try again.', 'warn');
+    }
+    if (payload.error === 'source_unreachable') {
+      log('The source adapter is not reachable from this deployment. That is a configuration state, not a chain failure.', 'warn');
+    }
     return;
   }
   const event = payload.event || payload.events?.[0];
-  state.lock = { height: event?.height, event, blockHeight: payload.block_height || event?.height };
+  state.lock = { height: event?.height ?? payload.block_height, event, events: payload.events || [] };
   step('lock', 'done', `lock observed at source height ${state.lock.height}`);
-  log('bridgeLog', `Locked. message_id ${event?.message_id}\n  nonce ${event?.nonce} · payload_hash ${event?.payload_hash}\n  source height ${state.lock.height}`, 'ok');
+  log(`Locked. message_id ${event?.message_id}\n  nonce ${event?.nonce} - payload_hash ${event?.payload_hash}\n  ${payload.events?.length || 1} event(s) in block ${payload.block_height}, expiry height ${event?.expiry_height}`, 'ok');
   $('settleBtn').disabled = !state.status?.capabilities?.operator_relay?.enabled;
-  await fetchProof(state.lock.height);
+  await showProof(state.lock.height);
 }
 
-async function fetchProof(height) {
-  step('finality', 'active');
+async function showProof(height) {
+  step('finality', 'active', 'reading the finality evidence for this height');
   const { ok, payload } = await api(`/api/source?path=${encodeURIComponent(`/proof?height=${height}&kind=bls`)}`);
   if (!ok) {
     step('finality', 'idle');
-    log('bridgeLog', `Proof unavailable: ${payload.error || JSON.stringify(payload).slice(0, 160)}`, 'bad');
+    log(`Finality evidence unavailable: ${payload.error || JSON.stringify(payload).slice(0, 160)}`, 'bad');
     return null;
   }
   const b = payload.payload || {};
-  step('finality', 'active', `BLS aggregate ready: ${b.signer_count}/${b.required} signers`);
+  step('finality', 'active', `${b.signer_count} signatures collected, ${b.required} required`);
   log(
-    'bridgeLog',
-    `Finality evidence for height ${payload.declared_height}\n  state_root ${payload.declared_root}\n  event_root  ${b.event_root}\n  signers ${b.signer_count} of ${b.required} required · signature ${b.sig_hex.length / 2} bytes`,
+    `Finality evidence for height ${payload.declared_height}\n  state_root ${payload.declared_root}\n  event_root ${b.event_root}\n  ${b.signer_count} signatures collected, policy requires ${b.required} - aggregate is ${(b.sig_hex || '').length / 2} bytes`,
     'info'
   );
   return payload;
@@ -392,26 +493,32 @@ async function settle() {
   const height = state.lock?.height;
   if (!height) return;
   $('settleBtn').disabled = true;
-  log('bridgeLog', `Asking the operator facade for one relayer pass at height ${height}…`);
+  $('settleBtn').textContent = 'Relayer pass running...';
+  step('finality', 'active', 'the relayer is anchoring this block and paying for the mint');
+  log(`Asking the operator facade for one relayer pass at height ${height}. This signs, submits and waits for confirmation, so it takes tens of seconds.`);
   const { ok, payload } = await api(`/api/relay?height=${height}`, { method: 'POST', auth: true });
+  $('settleBtn').textContent = 'Ask the relayer to settle';
   if (!ok) {
-    log('bridgeLog', `Relay refused (${payload.error || 'error'}): ${payload.why || payload.detail || JSON.stringify(payload).slice(0, 200)}`, 'warn');
+    log(`Relay refused (${payload.error || 'error'}): ${payload.why || payload.detail || JSON.stringify(payload).slice(0, 200)}`, 'warn');
+    step('finality', 'idle', 'the relayer pass did not complete; finality was not anchored');
     $('settleBtn').disabled = false;
     return;
   }
-  for (const hash of payload.receipts || []) log('bridgeLog', `confirmed transaction ${hash}`, 'ok');
-  if (!payload.receipts || payload.receipts.length === 0) log('bridgeLog', payload.note || 'no transaction was confirmed', 'warn');
-  const lines = String(payload.output || '').split('\n').filter((l) => /receipt|already|minted|refused|failed/i.test(l));
-  for (const line of lines) log('bridgeLog', `  ${line.trim()}`);
-
-  const finality = await api(`/api/finality?height=${height}`);
-  if (finality.ok && finality.payload.found) {
-    step('finality', 'done', `registry recorded height ${finality.payload.record?.last_height || height}`);
-    log('bridgeLog', `registry finality record: ${JSON.stringify(finality.payload.record)}`, 'ok');
+  if (payload.error) log(`The relayer did not run: ${payload.error}`, 'bad');
+  const receipts = payload.receipts || [];
+  for (const hash of receipts) log(`confirmed transaction ${hash}`, 'ok');
+  if (receipts.length === 0) log(payload.note || 'no transaction was confirmed', 'warn');
+  for (const line of String(payload.output || '').split('\n')) {
+    if (/refused|failed|error|already/i.test(line)) log(`  ${line.trim()}`, 'warn');
   }
-  if ((payload.receipts || []).length > 0) {
+  const finality = await queryFinality(String(height));
+  if (finality?.found) {
+    step('finality', 'done', `registry recorded height ${finality.record?.last_height || height}`);
+    log(`registry finality record: ${JSON.stringify(finality.record)}`, 'ok');
+  }
+  if (receipts.length > 0) {
     step('mint', 'done', 'mint confirmed on Stellar');
-    log('bridgeLog', `Explorer: ${EXPLORER_TX}${payload.receipts[payload.receipts.length - 1]}`, 'info');
+    log(`Explorer: ${EXPLORER_TX}${receipts[receipts.length - 1]}`, 'info');
   }
   $('settleBtn').disabled = false;
 }
@@ -419,7 +526,7 @@ async function settle() {
 async function copyCommand() {
   const height = state.lock?.height || '<height>';
   const text = [
-    '# run the local relayer against the source height you just locked',
+    '# settle a locked source height with the local relayer',
     'cd <repo>',
     'SIM_URL=http://127.0.0.1:8080 \\',
     '  STELLAR_SOURCE_ACCOUNT=lumen-relayer \\',
@@ -429,57 +536,13 @@ async function copyCommand() {
   ].join('\n');
   try {
     await navigator.clipboard.writeText(text);
-    log('bridgeLog', 'Command copied to the clipboard.', 'ok');
+    log('Command copied to the clipboard.', 'ok');
   } catch {
-    log('bridgeLog', text);
+    log(text);
   }
 }
 
-// --------------------------------------------------------------------- redeem
-async function connectWallet() {
-  const freighter = window.freighterApi || window.freighter;
-  if (!freighter) {
-    log('redeemLog', 'Freighter is not available in this browser. The inbound direction does not need a wallet at all; only burning your own tokens does.', 'warn');
-    return null;
-  }
-  try {
-    const address = await (freighter.requestAccess ? freighter.requestAccess() : freighter.getPublicKey());
-    const pub = typeof address === 'string' ? address : address.address;
-    state.wallet = pub;
-    $('walletChip').textContent = short(pub, 6);
-    log('redeemLog', `Connected ${pub}`, 'ok');
-    await refreshWallet();
-    return pub;
-  } catch (error) {
-    log('redeemLog', `Wallet connection failed: ${error}`, 'bad');
-    return null;
-  }
-}
-
-async function refreshWallet() {
-  if (!state.wallet) return;
-  const horizon = state.status?.chain?.horizon || 'https://horizon-testnet.stellar.org';
-  const asset = state.status?.contracts?.asset || 'wSRC';
-  try {
-    const account = await (await fetch(`${horizon}/accounts/${state.wallet}`)).json();
-    if (account.status === 404) throw new Error('account not funded on testnet');
-    const kv = $('walletKv');
-    kv.textContent = '';
-    for (const balance of account.balances) {
-      const code = balance.asset_code || 'XLM';
-      if (code === 'XLM' || code === asset) {
-        kv.append(el('dt', { text: code }), el('dd', { text: balance.balance }));
-      }
-    }
-    const native = account.balances.find((b) => b.asset_type === 'native');
-    const reserve = ((2 + account.subentry_count) * 0.5).toFixed(7);
-    const spendable = native ? (Number(native.balance) - Number(reserve)).toFixed(7) : '—';
-    kv.append(el('dt', { text: 'Spendable XLM' }), el('dd', { text: spendable }));
-  } catch (error) {
-    log('redeemLog', `Balance read failed: ${error}`, 'bad');
-  }
-}
-
+// ------------------------------------------------------- outbound (burn)
 async function burn() {
   if (!state.wallet) {
     const address = await connectWallet();
@@ -487,75 +550,46 @@ async function burn() {
   }
   const amount = Number($('burnAmount').value);
   const recipient = ($('burnRecipient').value || state.wallet).trim();
-  if (!Number.isInteger(amount) || amount <= 0) return log('redeemLog', 'Amount must be a positive integer.', 'bad');
+  if (!Number.isInteger(amount) || amount <= 0) return log('Amount must be a positive whole number.', 'bad');
   const gateway = state.status?.contracts?.gateway;
   const targetDomain = state.status?.domain?.key;
-  if (!gateway || !targetDomain) return log('redeemLog', 'Deployment addresses are not loaded yet.', 'warn');
+  if (!gateway || !targetDomain) return log('Deployment addresses are not loaded yet.', 'warn');
 
-  log('redeemLog', `Preparing burn of ${amount} and unlock to ${short(recipient)}…`);
+  log(`Preparing a burn of ${amount} with unlock to ${short(recipient)}...`);
   try {
     const module = await import('./soroban.ts');
-    const prepared = await module.buildBurnAndRelayTx(gateway, amount, recipient, targetDomain, state.wallet);
+    const prepared = await module.buildBurnAndRelayTx(gateway, String(amount), recipient, targetDomain, state.wallet);
     const freighter = window.freighterApi || window.freighter;
-    const signed = await freighter.signTransaction(prepared.toXDR(), {
-      networkPassphrase: 'Test SDF Network ; September 2015',
-      address: state.wallet,
-    });
+    const signed = await freighter.signTransaction(prepared.toXDR(), { networkPassphrase: NETWORK_PASSPHRASE, address: state.wallet });
     const xdr = typeof signed === 'string' ? signed : signed.signedTxXdr;
     if (!xdr) throw new Error('Freighter returned no signed transaction');
-    const server = module.server || module.sorobanServer;
-    const submitted = await server.sendTransaction(module.StellarSdk ? module.StellarSdk.TransactionBuilder.fromXDR(xdr, module.StellarSdk.Networks.TESTNET) : xdr);
-    log('redeemLog', `Submitted: ${JSON.stringify(submitted).slice(0, 300)}`, 'ok');
+    const submitted = await module.server.sendTransaction(prepared);
+    log(`Submitted: ${JSON.stringify(submitted).slice(0, 300)}`, 'ok');
     await refreshWallet();
   } catch (error) {
-    log('redeemLog', `Burn failed: ${error && error.message ? error.message : error}`, 'bad');
-    log('redeemLog', 'The outbound direction needs the gateway burn entrypoint signed by your own key; if Freighter is not installed, use the CLI path documented in the README.', 'warn');
+    log(`Burn failed: ${error && error.message ? error.message : error}`, 'bad');
+    log('The outbound direction needs the gateway burn entrypoint signed by your own key. If Freighter is not installed, the README documents the CLI path.', 'warn');
   }
 }
 
-// ------------------------------------------------------------------- evidence
-async function queryFinality() {
-  const height = $('heightQuery').value.trim();
-  const kv = $('finalityKv');
-  kv.textContent = '';
-  kv.append(el('dt', { text: 'Result' }), el('dd', { text: 'querying the contract…' }));
-  const { ok, payload } = await api(`/api/finality${height ? `?height=${encodeURIComponent(height)}` : ''}`);
-  kv.textContent = '';
-  if (!ok) {
-    kv.append(el('dt', { text: 'Error' }), el('dd', { text: payload.error || JSON.stringify(payload).slice(0, 120) }));
-    return;
-  }
-  const record = payload.record;
-  const rows = [
-    ['Query', payload.query],
-    ['Found', payload.found ? 'yes' : 'no'],
-    ['Latest height', record?.last_height],
-    ['State root', record?.last_root || record?.state_root],
-    ['Event root', record?.last_event_root || record?.event_root],
-    ['Backing', Array.isArray(record?.last_security) ? record.last_security.join(' ') : record?.last_security],
-    ['Adapter', record?.adapter_id],
-    ['Read at ledger', payload.latest_ledger],
-    ['Cost (cpu insns)', payload.cost?.cpu_insns],
-  ];
-  for (const [label, value] of rows) {
-    if (value === undefined || value === null || value === '') continue;
-    kv.append(el('dt', { text: label }), el('dd', {}, [document.createTextNode(String(value))]));
-  }
-}
-
-// ------------------------------------------------------------------- operator
+// -------------------------------------------------------------- operator
 function operatorDialog() {
   $('opToken').value = state.operatorToken;
   $('opState').textContent = state.operatorToken ? 'A token is set for this tab.' : 'No token set: writes will be refused.';
   $('operatorDialog').showModal();
 }
 
+function showTab(which) {
+  const inbound = which === 'inbound';
+  $('tabInbound').setAttribute('aria-selected', String(inbound));
+  $('tabOutbound').setAttribute('aria-selected', String(!inbound));
+  $('paneInbound').classList.toggle('hidden', !inbound);
+  $('paneOutbound').classList.toggle('hidden', inbound);
+}
+
 function wire() {
-  for (const button of document.querySelectorAll('[data-nav]')) {
-    if (button.tagName === 'BUTTON') button.addEventListener('click', () => { location.hash = button.dataset.nav; });
-  }
-  $('lockBtn').addEventListener('click', () => lock().catch((error) => log('bridgeLog', String(error), 'bad')));
-  $('settleBtn').addEventListener('click', () => settle().catch((error) => log('bridgeLog', String(error), 'bad')));
+  $('lockBtn').addEventListener('click', () => lock().catch((error) => log(String(error), 'bad')));
+  $('settleBtn').addEventListener('click', () => settle().catch((error) => log(String(error), 'bad')));
   $('copyCmdBtn').addEventListener('click', () => copyCommand());
   $('useWalletBtn').addEventListener('click', async () => {
     const pub = state.wallet || (await connectWallet());
@@ -563,13 +597,19 @@ function wire() {
   });
   $('connectBtn').addEventListener('click', () => connectWallet());
   $('balanceBtn').addEventListener('click', () => refreshWallet());
+  $('walletLink').addEventListener('click', () => {});
   $('burnBtn').addEventListener('click', () => burn());
-  $('queryBtn').addEventListener('click', () => queryFinality());
+  $('queryBtn').addEventListener('click', () => queryFinality($('heightQuery').value.trim()));
+  $('heightQuery').addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') queryFinality($('heightQuery').value.trim());
+  });
+  $('tabInbound').addEventListener('click', () => showTab('inbound'));
+  $('tabOutbound').addEventListener('click', () => showTab('outbound'));
   $('operatorBtn').addEventListener('click', operatorDialog);
   $('opSave').addEventListener('click', () => {
     state.operatorToken = $('opToken').value.trim();
     const persisted = store.set('lumen.operatorToken', state.operatorToken);
-    if (!persisted) log('bridgeLog', 'The browser refused session storage, so the token is kept in memory for this page only.', 'warn');
+    if (!persisted) log('The browser refused session storage, so the token is kept in memory for this page only.', 'warn');
     $('operatorDialog').close();
     loadStatus();
   });
@@ -583,10 +623,12 @@ function wire() {
 }
 
 wire();
-route();
+watchSections();
 resetSteps();
 loadStatus()
-  .then(() => queryFinality())
-  .catch((error) => {
-    log('bridgeLog', `Startup failed: ${error}`, 'bad');
-  });
+  .then(async (status) => {
+    if (!status) return null;
+    await loadAuditHistory();
+    return queryFinality('');
+  })
+  .catch((error) => log(`Startup failed: ${error}`, 'bad'));

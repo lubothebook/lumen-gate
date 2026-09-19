@@ -3,383 +3,666 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Lumen Gate — proof-driven settlement on Stellar</title>
-<meta name="description" content="Lumen Gate verifies source-chain finality on Stellar Soroban with BLS12-381 aggregate signatures and a fixed-statement Groth16 proof, then releases a wrapped asset against a Merkle proof of the exact source event." />
-<meta name="color-scheme" content="dark" />
-<meta property="og:title" content="Lumen Gate" />
-<meta property="og:description" content="Move value across domains. Keep the receipt on-chain." />
-<meta property="og:image" content="/lumen-gate-banner.png" />
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='11' fill='none' stroke='white' stroke-width='2'/%3E%3Cpath d='M6 24 L26 8' stroke='white' stroke-width='2'/%3E%3C/svg%3E" />
+<link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEgAAABICAIAAADajyQQAAANiElEQVR4nO1bbVBU1Rs/d9kt4IIuoEAykmYIQxmGQjXlmDYmRWVpEw75QkljOIFoIQ6R1KDMVDIaTDLNVNJOok40ZVbay1SEKYMKqBmvi06SiqCsb8kuu3v/H375zOncy7p3l/6ffD4wd5d7Xn7P+/Ocs4zdpJt0k/5LkkZqIoPBIEmSy+VijMmyvGLFClmW8/PzR48erSiKJP2zkNvtNhgMra2tO3bsOHXqlMViwZCAgAC3260oiq5FAwICMPy/IoPBgIe77777rbfe6unpUbyjjo6O3NzcMWPG0Ea9X5EW/U9IkiSTycQYS0hIKC4uvnLlCnbsdDqHhoaGw+N2u4eGhiAiRVHOnj1bWVkZFhaGCW+4qNFoxENeXt7WrVuZHo54RcSz559//uLFi9glv+MbksvlIvwnT56cN2+eJEkesJGg4uLivvjiC0VR7HZ7TEyM51G+oAoNDS0rKxscHFQUxeFwCJDcbrfL5XK5XBCg0+nER/VrBC8xMZFnGRGphiRJ+fn5AwMDiqL8/fffiqKsXLmS/usvgT1jx4795ptvwHh+r8DjcDg8yEoQrNPpdDqdBw8e1OQ9fZOUlFRfX09DXC6XoigtLS2SJI2AyWGWkJCQ9vZ2taB4kNeuXevo6LBarT///HNGRsb27du7urra29vPnz8vbA4Sy83NZYwJvIdFBQUFFRcXX7t2TWAKdOHee+/1FxWtVFtbC1SCHPDQ3Ny8fPnyqVOnas4wfvz4goKCU6dO4WW73e52u48dOybLMsIGz0HGWEhIyI8//giuOZ1OfkVYQW1trb+owM7CwkIeBpYE79va2h5//HFBnSRJMhqN2CX9y2QyLVu27Ndff8UMq1atYpzHo4dnnnmms7NTWI50XlGUc+fOvfjii36hgledPXu2oA+ApCjKpk2bZFmmnQ2n98BJH1977TWr1Tpu3DgYGLm+mJiYbdu2CUsIOrxz586YmBjmXZzQJiwWHR3d29tL8iFGNjU1zZw5k8fvDRE8YgeNXbx48blz5xSVZwIqPCxdulSYRzeBx8HBwb/99hs/NR7Onj0bFRXFGDOZTHo5J0kSwJCEJ0+e/OWXXwpGS8sBZHNz8+zZs8EIvyIYTCsvLw+2zqNqaGiIjo5mfoR/PgqtXr3aZrPxGMicAHJwcLCkpCQoKIhW9N3RQ+kjIiLa2tpIuaEhAwMDsbGx/qCibU2ZMqWurk5QNuFjfX19UlISDRRsVTdh8Msvv8zrBkJqWloaU0UeL4m2FRgYuG7dOqQRQlQkQdlstldffRVaZzQa+Yg8ceJEX4QGTxUZGdnf3092jMU2b97sMyqS8MyZM5uamjQFRUzctWtXfHw8u647xJGgoKCysrKBgYGIiAjdO8AU2dnZtLDb7XY6nVeuXElMTPShfCBvIctyeXm54BVIUFD4/v7+rKwsnhe03Jw5c1paWvD+smXLdAPDRA0NDcBD8DCXXtMik3jiiSdaW1sVrWSCBFVTUzN+/Hisgm1g+KhRo95//328g6ylvr5eH3+x79TU1KGhIbAQfD1x4kRYWBif/nhDWDsqKuqTTz7R9OYUHq1W6/z583lekGrcfvvtXV1d/Mt4TklJ0QFM7Tbwd8mSJUxPWCSWP/fcc3/99RevbGrXV1VVNWrUKHbd7zFOL7Kzsy9cuCBwBI56y5YtOoBhN9999x1vBv39/Waz2cvajiyKMUb50XBh9+jRo3PnzuV5ShxJTExEiaRopVd48BYVNpSUlGS32zEXfPHHH3/MvBMXQbrnnnt++ukntZPgFWH9+vVIrODNyfUFBASsXbv28uXLiqqKc7vdKC9aWloQeHQAS05OJiZhEytXrmQ38vJ8jCopKUGMEpwExajGxkayECxKHElOTt6/f78gGeHjxo0bb731Vm9RsesyKS0t5Tlts9luu+02z3pI25oxY8aRI0c868/rr7+O95FnEkeCg4NLS0uRvqmjNoZfuHAhLy9PWNRbYB999BFkhbn27NnjYRayqNDQ0HfffZeUTTNG9fX1oY6iUTTtnDlzjh49ymPgh+OhtrZ20qRJjPMxXhHV/1iAog1qVU1gZHVPPvnkDWPUtm3bkGSSRVF3qLKyUlP3CFVvb29mZibW0p2jUrsG1kn28NRTTzGV56BtjRkzprq6WnNblI51d3fPmzeP3xbFViqWKdVWz2C1WtFgJYfpC7Dw8HC4Iw/A6HnhwoVoY/ChUwD5wQcfmM1mxukPhsfExNTU1AhSJTw8sBMnTkRGRkLOulERsIiICDR3NYEZDAawfNKkSejtqLdFXufIkSOPPvoozwti+dSpU29YLPMgH3roIeZzoYS1X3rpJUDCjH/++WdwcDD7d9hdsWIF2sDq7iK25XK5SktLqTSERdHwwsJC8E7NETx0dnaiFUVLIDb4BWz16tWKojgcDkrhGKdFd9111969ezVZSx8bGxvvu+8+zCm4vmnTpu3bt4+4wA8HSLvdXlRUlJCQQJixjdTUVH+BoRdAwLq7u2+55RbGmMlkKioqIk5rloaXLl0qLCxEHKcYhY+yLK9fv95zjNq3bx/aoHFxcYIqjgCw3NxcARhjLDU19dChQ54FtXfv3oSEBEwFQ6J9PPLII8ePH+c3KghKUZSCggIScnx8/MgDW7NmDQ+ss7Nzw4YNlF5pcvr8+fM5OTn8JGRRZrP5vffeIwyaUbu3t3fRokWM6/BMnjx5JIGBzampqYODgzd0VsTpnTt3Tpw4kalKQ8bY/PnzEaPUwYCGb926ddy4cezfXY2EhISRBAb3YDabKY4RJE1D7+npefbZZzEWS1I+GR0dvX37dk2OEMs6OjrS09P54cTc2NhYARi8kY/A4JdNJpMATJAbvq+urkY2QHUu5QSLFi06c+aMpqAIZEVFRWhoKFNlfZD2woUL6WVMMn36dB+B0ZicnBw0FdRHdbStDRs28Pug9Dw+Pn7Xrl2CsgkcOXz48KxZs/jhPMHGkDo6HA6sePDgQQ+nAp4ggWdTpkxB4ayWFUE6cODAAw88wK6bBD88PT0doh6uoetwON544w0Ej+HyIwSJsrIyHlhzczPT2/0Fz4xGY3Fx8dWrV9WcJpyXL19es2YNvc84QQUHB5eVldEJnSZH9u/fn5ycTKzU3Ix0ndra2hSuUKipqfEwaliaPn16Y2Mjllfn1wC2e/dutC+ZKkbNmjXr999/51kgCGpgYGDVqlUY5fkEA+9MmDDh0qVLsAXf+kiMMfbOO++Qngjb4k0FHczAwEC+4A0PD6+oqKDXhMNb8Oirr7668847GVfmeCDoZ2ZmJq3rdDrtdvvTTz/N9EpMLSihgEVtZrFY4DCJbQsWLFD3+nhBKVyz1ss94TXU73xjIjAwkOk95mtoaBC6kJgOrRgSXX9/f1hYGKaOjIz89NNPBRMSGNTV1fXYY48xPaUhdGHs2LE4UiL+fv/99yaTSbeBLV26lHZPnN68eTNOnDE1vl+8eDFjLCsr6/Tp04pWwUvDKysrR48ezXRaBViAhI7vq0MPdR8dhYeHnz59mvzP8ePHkQ0kJycLLe7W1tbPP/9cwEBywzuHDh16+OGHaaPebwPikmX56tWrFEKRTFL3Rh8wxhglqeXl5SgNESX5Qwle2TTzYKfTWVJSQmWy3hoeXCgvLycWQyN++eUXX/SQMSZJ0v33319XV4faG2uYTCaDwbB8+XLeitTtJ/7QESkP8ynrgbjMZnNfXx+JC0qBo3QfjzApc6VsgMIuUj51IkIXvWw2W35+PiX1vjVboCBo0/PiOnz4cEhIiN7zHZEokQWqiIiIiooK/kRTTV9//fUdd9zBvItRwxGWW7duHW+6eHjhhReYr6en/5BwcrNgwYLu7m5NMFCVtrY2/r6FzxzFptPS0hQuQ4DQmpqajEajX+fojGN5VFSUxWIRTEiwK7fb/cMPP+CUxB92IhuOjY212Wy8XiCJycjIYH7etiSuZGVl4YSOHD1JSX3ZqK+vDxdYfFsbqGbMmEH5LiZHolNdXc189hk8xcXF0RHbcK6PJz+vHEE7MjMz0TOlJaifmZKSQp1ZH8lgMOTk5KCO8hCjqqqqhIuixOPs7GxSSA/lYEBAAC+B/Px8NePQnHvllVd0cUqbUlJSPAuqrq4OjZS1a9cq3N0jhcuq/vjjj/T0dMGFAImHa31C9gwtsFgsbESUcMKECb29vXwjgAR18eLFvLw87Aky0byISQM9X8RMS0vjL2Jq9rxqamoCAwP9DVxEH374ocLVP1jp22+/RR3FrrdrcHS2e/duRav64q/Otre3W63Wt99+OyMjY8eOHbg6q5azoIGfffYZ47IFf0mSpAcffNDlcjkcDmA7c+YM1VF8jKIHuuwseE6Xx8vOgmsljmCSPXv2yLLs4/HXcMAMBsOxY8ewksViweVNzTWQl+B6OjB4uJ4+NDTk5fV0XElgektJz4QmRFFRUU9Pj3Do6JmmTZt24MABspDh0i5N0ZHCnzx5EodvI2ZXRJguLCwM3U9v2nfU8zAYDEVFRVRre/4JiPLvthz/ExB/kjKvSFfooKJL7492enp6qqqqfPjRji/ksy+ibcmyXFBQ8Oabb1LHQsDjcrk2bdq0ZMkSJFPM/6u9N+km3aT/M/0PSbjJKF5T/BMAAAAASUVORK5CYII=" />
+<title>Lumen Gate - a settlement boundary you can check</title>
+<meta name="description" content="Lumen Gate verifies source-chain finality inside a Soroban contract before any value moves on Stellar. Testnet build, live receipts, self-audited." />
 <style>
-  :root{
-    --bg:#06060a; --bg-elev:#0a0b10; --panel:#0d0e14; --panel-2:#12131a;
-    --line:rgba(255,255,255,.09); --line-strong:rgba(255,255,255,.18);
-    --text:#f4f5f7; --muted:#8b909a; --dim:#5d626c;
-    --ok:#49e0a3; --warn:#e9c46a; --bad:#ff6b6b; --info:#7cc5ff;
-    --radius:14px; --radius-sm:9px;
-    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
-    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
-    --shadow:0 1px 0 rgba(255,255,255,.04) inset, 0 24px 60px -30px rgba(0,0,0,.9);
+  /* ---------------------------------------------------------------- tokens */
+  :root {
+    --bg: #050604;
+    --band: #000;
+    --ink: #f6f7f5;
+    --muted: rgba(246, 247, 245, 0.62);
+    --faint: rgba(246, 247, 245, 0.40);
+    --line: rgba(255, 255, 255, 0.10);
+    --line-strong: rgba(255, 255, 255, 0.20);
+    --card: rgba(255, 255, 255, 0.03);
+    --card-2: rgba(255, 255, 255, 0.055);
+    --ok: #6ee7a8;
+    --warn: #f5c451;
+    --bad: #ff8a7a;
+    --grid-tile: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADwAAAA8CAIAAAC1nk4lAAAFhUlEQVR4nNWaYU/yPBSG+8wHXdiW4dxSt0wWDWKMCYnx//8GEhK/EKNGF3SZDJbi0tC4PB+OFhhjVCivr/cHI+uhXOva09Mb/tzc3KDfJuWnATbRX/5fmqbj8ZhSOplMfhBoWbquq6pqGIZlWXDlE5oxZpqmaZrwMs/z8Xj88PDwM5gI6bruOE6j0VCU2VxgjNVqNcShCSGWZaVpOp1ONU1TVdWyLLizKIrCMPzPcJvN5tHREbDmeZ5l2fv7+97enmVZWZbBsH5CU0oRQuPx+O3tDa6Ypuk4jmEYGGOMcZIkux74drttGAawxnFMCBmNRtCEMbYsi1K6AE0IQQjV63XeRZqmaZrCG2zbhoHf0ai7rut5HkIoy7LX11fOynVwcACQGOMZNCw+VVWXe4yiKIqiw8NDz/Pgjnu9nkTiTqdTq9UopWEYwjAtS9M0hBBvnWWPPM+hrVSj0Wg0GmGMPc+7vr7udrvb4+q6fn5+jgSWjaqqjDH+crY2h8Ohoii2bVe8OYqibrf78fFxc3MDT2pj2bZ9cXExnU673W41sW3biqIkSVICDVdhKVSr1+sRQnzf35gbYxwEQZqmt7e3a4MbjQZCaP7GZtCTyYQxxhN4tfr9fhzHvu/z1C6uw8ND3/fjOL67uxOJN01zfm6gwjY+GAwQQr7vi/T19PREKT07OxOm/dTZ2Rkh5OnpSSQYYACMawH67e0tz3PHcQQ/Hh5up9MRjIdgxli/3xeMtyyLMcZ3D1CxYBoMBoqiCA42Qujx8XFvb6/ZbIoEN5vNWq0WRZFg5xBfGGa0DB1FEWNMfIWNRiNKqeDDcRwnyzJx6KOjo+VhRqWlKewdV1dXgl3DSLTb7eqwy8tLhNDz87Ngt+12W1GU0o2svJ4Ow3B/f19wkqRpSghZmyvr9XqapoJ1r+/7mqYtTwxQOXQURe/v747jCGY0eOKtVmtVADTFcSzSm23bGOPhcPjy8lIasPLk0u/3p9Npq9Wq3iNBaZryEqxUpmlSSleVFoXIIAgopRU5seq4dXt7yxgLgkBknsCGWnqHsKzn9+FVcl231WpRSqt3yjVnxF6vlySJ4zhr1xk8ytI0AncC1W+FTk9Pj4+PCSFr9/a/1c0IoYeHB4yx7/vX19fPz8/LCYiLUjpfkXOpqlp99ORljGC9vh4afZXUnU4nCALP8waDQSl6lmWqquq6vsxXKB64XNe1LAsqz/v7e8HcIgQN6vV6MCRBEJycnAyHwyRJ5j8Gzmyaps1fhCEszA3TNA3DcBxHUZQ8z8MwFN9xvgeNEArDMAxD3/edL1FKsyyDv3meo8UzG3+Z57mu65qm1ev1er0OR6Q8zweDwaq8Jg16Ht00Tc/zOAFXYZeB1kL+IYTEcbx8FhTUJtAgfvLVdd0wjEajUfuS67owfhhjGGnGGGNsPB4TQrY3gzaH5ppMJpPJhD/lTqfjeR6crhFCjDG5B2G0Cy+vgCidGP1SA1I+dKEWd11X+kdImNMg8DYbjYZhGDyRwVZqGEaSJBL92K2gV3mbfFFGUYQxNgyD50EpfuyG0NXe5nzkLvzYb0OLeJvz8bvwY78BLe5tzl/chR8rCr2BtwnahR+7Hnpjb5NLuh+7Jk9v421ySfdjq6C39Da5pPuxK6G39za5pPuxK6G39zbnJdePLYeW4m3OS64fWwIty9ssSKIfWwIty9ssSKIfW4SW6G0uS5YfW4SW6G2WSoofuwAt19sslRQ/dgFarre5Stv7sTNo6d5mhbb0Y2fQ0r3Nam3jx86qPOne5lpt7MculKZyvU0RfdePXYDehbcpLnE/dgF6F97mt/QtP/YP/C4vy7JlE39Lb3NjcT+2cL34w6tdeJsbq8KPhYCFhQgNpd+b/K/0Kw3Ifxu1cxXj9/AyAAAAAElFTkSuQmCC");
+    --logo-mark: url("data:image/png;base64,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");
+    --r-lg: 18px;
+    --r: 14px;
+    --r-sm: 10px;
+    --pad-section: clamp(76px, 10vw, 148px);
+    --shell: 1160px;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
   }
-  *{box-sizing:border-box}
-  html,body{margin:0;padding:0}
-  body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased}
-  body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
-    background:radial-gradient(900px 500px at 12% -10%,rgba(124,197,255,.07),transparent 60%),
-               radial-gradient(700px 400px at 92% 4%,rgba(73,224,163,.05),transparent 60%)}
-  a{color:var(--text);text-decoration:none;border-bottom:1px solid var(--line-strong)}
-  a:hover{border-color:var(--text)}
-  code,kbd{font-family:var(--mono);font-size:.86em}
-  .skip{position:absolute;left:-9999px}
-  .skip:focus{left:12px;top:12px;z-index:50;background:var(--panel);padding:8px 12px;border-radius:8px;border:1px solid var(--line-strong)}
-  .shell{max-width:1240px;margin:0 auto;padding:0 24px;position:relative;z-index:1}
 
-  /* ---------- header ---------- */
-  header.top{position:sticky;top:0;z-index:30;backdrop-filter:blur(14px);
-    background:linear-gradient(to bottom,rgba(6,6,10,.92),rgba(6,6,10,.72));border-bottom:1px solid var(--line)}
-  .top-inner{display:flex;align-items:center;gap:22px;height:64px}
-  .brand{display:flex;align-items:center;gap:11px;font-weight:600;letter-spacing:.34em;font-size:13px;text-transform:uppercase}
-  .brand svg{flex:0 0 auto}
-  nav.main{display:flex;gap:4px;margin-left:8px}
-  nav.main button{background:none;border:0;color:var(--muted);font:inherit;font-size:13.5px;padding:8px 12px;border-radius:8px;cursor:pointer}
-  nav.main button:hover{color:var(--text);background:rgba(255,255,255,.04)}
-  nav.main button[aria-current="page"]{color:var(--text);background:rgba(255,255,255,.07)}
-  .top-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+  /* ------------------------------------------------------------------ base */
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background-color: var(--bg);
+    /* The page background is the source chain: every square is one block. It
+       runs the full height of the document and is interrupted in exactly one
+       place, the wallet console, which is the only part of this page that can
+       move value. */
+    background-image: var(--grid-tile);
+    background-size: 76px 76px;
+    background-repeat: repeat;
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 17px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  h1, h2, h3 { font-weight: 600; letter-spacing: -0.025em; line-height: 1.08; margin: 0; }
+  h1 { font-size: clamp(2.05rem, 3.7vw, 3rem); max-width: 24ch; text-wrap: balance; }
+  h2 { font-size: clamp(1.5rem, 2.4vw, 1.95rem); max-width: 30ch; text-wrap: balance; }
+  h3 { font-size: 1.0625rem; letter-spacing: -0.01em; }
+  p { margin: 0; }
+  a { color: inherit; }
+  code, .mono, dd.mono { font-family: var(--mono); font-size: 0.9375em; }
+  .shell { width: 100%; max-width: var(--shell); margin: 0 auto; padding: 0 28px; }
+  .stack > * + * { margin-top: 22px; }
+  .eyebrow {
+    font-size: 0.75rem; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--faint); font-weight: 600; margin: 0;
+  }
+  .lead { font-size: clamp(1.02rem, 1.3vw, 1.15rem); color: var(--muted); max-width: 58ch; }
+  .muted { color: var(--muted); }
+  .faint { color: var(--faint); }
+  .sm { font-size: 0.9375rem; }
+  .xs { font-size: 0.8125rem; line-height: 1.55; }
+  .ok { color: var(--ok); }
+  .warn { color: var(--warn); }
+  .bad { color: var(--bad); }
+  section { padding: var(--pad-section) 0; }
+  section[id], div[id] { scroll-margin-top: 92px; }
+  ::selection { background: rgba(255, 255, 255, 0.85); color: #000; }
+  :focus-visible { outline: 2px solid #fff; outline-offset: 3px; border-radius: 4px; }
 
-  /* ---------- primitives ---------- */
-  .pill{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;
-    padding:5px 10px;border:1px solid var(--line);border-radius:999px;color:var(--muted);background:rgba(255,255,255,.02);white-space:nowrap}
-  .dot{width:7px;height:7px;border-radius:50%;background:var(--dim);display:inline-block}
-  .dot.ok{background:var(--ok);box-shadow:0 0 0 3px rgba(73,224,163,.14)}
-  .dot.warn{background:var(--warn);box-shadow:0 0 0 3px rgba(233,196,106,.14)}
-  .dot.bad{background:var(--bad);box-shadow:0 0 0 3px rgba(255,107,107,.14)}
-  .dot.info{background:var(--info);box-shadow:0 0 0 3px rgba(124,197,255,.14)}
-  .btn{font:inherit;font-size:13.5px;padding:9px 15px;border-radius:9px;border:1px solid var(--line-strong);
-    background:rgba(255,255,255,.03);color:var(--text);cursor:pointer;transition:.15s}
-  .btn:hover{background:rgba(255,255,255,.07)}
-  .btn:focus-visible{outline:2px solid var(--info);outline-offset:2px}
-  .btn.primary{background:var(--text);color:#08080c;border-color:var(--text);font-weight:600}
-  .btn.primary:hover{background:#fff}
-  .btn[disabled]{opacity:.45;cursor:not-allowed}
-  .btn.small{font-size:12.5px;padding:6px 11px}
-  .card{background:linear-gradient(180deg,var(--panel),var(--bg-elev));border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}
-  .card .hd{display:flex;align-items:center;gap:10px;padding:16px 18px;border-bottom:1px solid var(--line)}
-  .card .hd h3{margin:0;font-size:14px;font-weight:600;letter-spacing:.01em}
-  .card .hd .n{font-family:var(--mono);font-size:11.5px;color:var(--dim)}
-  .card .bd{padding:18px}
-  .eyebrow{font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--dim)}
-  .grid{display:grid;gap:16px}
-  .cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}
-  .cols-3{grid-template-columns:repeat(3,minmax(0,1fr))}
-  .cols-4{grid-template-columns:repeat(4,minmax(0,1fr))}
-  @media (max-width:980px){.cols-3,.cols-4{grid-template-columns:repeat(2,minmax(0,1fr))}}
-  @media (max-width:680px){.cols-2,.cols-3,.cols-4{grid-template-columns:1fr}nav.main{display:none}}
-  .mono{font-family:var(--mono)}
-  .muted{color:var(--muted)}
-  .dim{color:var(--dim)}
-  .sm{font-size:13px}
-  .xs{font-size:12px}
-  .kv{display:grid;grid-template-columns:150px 1fr;gap:6px 14px;font-size:13px}
-  .kv dt{color:var(--dim)}
-  .kv dd{margin:0;word-break:break-all;font-family:var(--mono);font-size:12.5px}
-  .stat{padding:16px 18px;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel)}
-  .stat .label{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
-  .stat .value{font-size:22px;font-weight:600;margin-top:6px;letter-spacing:-.01em}
-  .stat .sub{font-size:12.5px;color:var(--muted);margin-top:2px;font-family:var(--mono)}
-  table{width:100%;border-collapse:collapse;font-size:13px}
-  th{text-align:left;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);font-weight:500;
-    padding:9px 12px;border-bottom:1px solid var(--line)}
-  td{padding:11px 12px;border-bottom:1px solid rgba(255,255,255,.05);vertical-align:top}
-  tr:last-child td{border-bottom:0}
-  .log{font-family:var(--mono);font-size:12.5px;line-height:1.7;background:#08090d;border:1px solid var(--line);
-    border-radius:var(--radius-sm);padding:12px 14px;max-height:260px;overflow:auto;white-space:pre-wrap;word-break:break-word;color:#c9ced7}
-  .log .ok{color:var(--ok)} .log .bad{color:var(--bad)} .log .warn{color:var(--warn)} .log .info{color:var(--info)}
-  .field{display:block;margin-bottom:14px}
-  .field span{display:block;font-size:11.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);margin-bottom:6px}
-  input,select{width:100%;background:#08090d;border:1px solid var(--line-strong);color:var(--text);border-radius:9px;
-    padding:10px 12px;font-family:var(--mono);font-size:13px}
-  input:focus,select:focus{outline:2px solid rgba(124,197,255,.5);outline-offset:1px;border-color:transparent}
-  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-  .chip{font-family:var(--mono);font-size:11.5px;border:1px solid var(--line);border-radius:6px;padding:3px 7px;color:var(--muted);background:rgba(255,255,255,.02)}
-  .explorer{font-family:var(--mono);font-size:12px;border-bottom:1px dashed var(--line-strong)}
-  .hr{height:1px;background:var(--line);margin:18px 0}
-  .note{border-left:2px solid var(--line-strong);padding:10px 0 10px 14px;color:var(--muted);font-size:13px}
-  .note.warn{border-color:var(--warn)} .note.bad{border-color:var(--bad)} .note.ok{border-color:var(--ok)}
-  .skel{background:linear-gradient(90deg,rgba(255,255,255,.05),rgba(255,255,255,.11),rgba(255,255,255,.05));
-    background-size:200% 100%;animation:sh 1.3s infinite;border-radius:6px;height:13px;display:inline-block;width:120px}
-  @keyframes sh{0%{background-position:200% 0}100%{background-position:-200% 0}}
-  @media (prefers-reduced-motion:reduce){.skel{animation:none}*{transition:none!important}}
-  h1{font-size:clamp(30px,4.6vw,54px);line-height:1.03;letter-spacing:-.035em;margin:0 0 14px;font-weight:600}
-  h2{font-size:clamp(20px,2.4vw,28px);letter-spacing:-.02em;margin:0 0 10px;font-weight:600}
-  h3{font-size:15px}
-  main{padding:34px 0 70px}
-  .hero{padding:44px 0 26px;border-bottom:1px solid var(--line)}
-  .hero p{color:var(--muted);font-size:16.5px;max-width:62ch}
-  section[hidden]{display:none}
-  .footer{border-top:1px solid var(--line);padding:22px 0;color:var(--dim);font-size:12.5px;display:flex;gap:18px;flex-wrap:wrap;justify-content:space-between}
-  dialog{border:1px solid var(--line-strong);background:var(--panel);color:var(--text);border-radius:var(--radius);padding:0;max-width:520px;width:92%}
-  dialog::backdrop{background:rgba(3,3,6,.72);backdrop-filter:blur(3px)}
-  .steps{display:grid;gap:0;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
-  .step{display:grid;grid-template-columns:44px 1fr auto;gap:14px;align-items:start;padding:15px 16px;background:var(--panel);border-bottom:1px solid var(--line)}
-  .step:last-child{border-bottom:0}
-  .step .idx{width:26px;height:26px;border-radius:50%;border:1px solid var(--line-strong);display:grid;place-items:center;
-    font-family:var(--mono);font-size:12px;color:var(--muted)}
-  .step.done .idx{border-color:var(--ok);color:var(--ok)}
-  .step.active{background:var(--panel-2)}
-  .step h4{margin:0 0 3px;font-size:13.5px;font-weight:600}
-  .step p{margin:0;color:var(--muted);font-size:12.5px}
-  .mark{color:var(--ok);font-family:var(--mono);font-size:12px}
-  .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+  /* ---------------------------------------------------------------- header */
+  header.top {
+    position: sticky; top: 0; z-index: 40;
+    background: rgba(5, 6, 4, 0.94);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--line);
+  }
+  .top-inner { display: flex; align-items: center; gap: 22px; min-height: 68px; }
+  .brand { display: flex; align-items: center; gap: 12px; text-decoration: none; flex: 0 0 auto; }
+  .brand img { width: 28px; height: 28px; display: block; }
+  .brand .wordmark { height: 19px; width: auto; display: block; opacity: 0.94; }
+  .brand:hover .wordmark { opacity: 1; }
+  nav.main { display: flex; gap: 2px; margin-left: auto; }
+  nav.main a {
+    text-decoration: none; color: var(--muted); font-size: 0.9375rem; padding: 8px 14px;
+    border-radius: 999px; border: 1px solid transparent; white-space: nowrap;
+  }
+  nav.main a:hover { color: var(--ink); background: rgba(255, 255, 255, 0.05); }
+  nav.main a[aria-current="true"] { color: var(--ink); border-color: var(--line-strong); background: rgba(255, 255, 255, 0.05); }
+  .top-right { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 8px; font-size: 0.8125rem; color: var(--muted);
+    border: 1px solid var(--line); border-radius: 999px; padding: 7px 13px; white-space: nowrap;
+    background: rgba(255, 255, 255, 0.03);
+  }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); display: inline-block; flex: 0 0 auto; }
+  .dot.ok { background: var(--ok); box-shadow: 0 0 0 3px rgba(110, 231, 168, 0.14); }
+  .dot.warn { background: var(--warn); }
+  .dot.bad { background: var(--bad); }
+  .net-short { display: none; }
+
+  /* --------------------------------------------------------------- buttons */
+  .btn {
+    appearance: none; font: inherit; font-size: 0.9375rem; font-weight: 500;
+    padding: 12px 20px; border-radius: var(--r-sm); cursor: pointer;
+    border: 1px solid var(--line-strong); background: rgba(255, 255, 255, 0.04); color: var(--ink);
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    transition: background 0.15s, border-color 0.15s, opacity 0.15s;
+  }
+  .btn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.10); border-color: rgba(255, 255, 255, 0.30); }
+  .btn.primary { background: #fff; color: #000; border-color: #fff; }
+  .btn.primary:hover:not(:disabled) { background: rgba(255, 255, 255, 0.88); }
+  .btn.small { padding: 8px 14px; font-size: 0.875rem; }
+  .btn.wide { width: 100%; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  .link-btn {
+    appearance: none; background: none; border: 0; color: var(--muted); font: inherit; font-size: 0.875rem;
+    padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 3px;
+  }
+  .link-btn:hover { color: var(--ink); }
+
+  /* ----------------------------------------------------------------- cards */
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg);
+    padding: 26px;
+    min-width: 0;
+  }
+  .cols > *, .console > *, .grid-3 > *, .grid-2 > * { min-width: 0; }
+  .band .card { background: var(--card-2); border-color: rgba(255, 255, 255, 0.13); }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; align-items: start; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+
+  /* ------------------------------------------------------------------ hero */
+  .hero { padding-top: clamp(56px, 7vw, 104px); padding-bottom: clamp(40px, 5vw, 72px); }
+  .hero-grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 0.65fr); gap: clamp(36px, 5vw, 80px); align-items: start; }
+  .hero .cta { margin-top: 30px; }
+  .trust { display: grid; gap: 18px; border-left: 1px solid var(--line-strong); padding-left: 26px; }
+  .trust div strong { display: block; font-size: 0.9375rem; font-weight: 600; }
+  .trust div p { font-size: 0.9375rem; color: var(--muted); margin-top: 4px; }
+
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 40px; margin-top: clamp(48px, 6vw, 84px); border-top: 1px solid var(--line); padding-top: 30px; }
+  .stat .label { font-size: 0.75rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--faint); font-weight: 600; }
+  .stat .value { font-size: 1.4rem; font-weight: 600; margin-top: 8px; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+  .stat .value.sm { font-size: 1.0625rem; font-family: var(--mono); }
+  .stat .sub { font-size: 0.8125rem; color: var(--muted); margin-top: 5px; }
+
+  /* ------------------------------------------------------------------ steps */
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--r-lg); overflow: hidden; margin-top: 34px; }
+  .step { background: rgba(5, 6, 4, 0.86); padding: 26px; }
+  .step .num { font-family: var(--mono); font-size: 0.8125rem; color: var(--faint); }
+  .step h3 { margin-top: 14px; }
+  .step p { color: var(--muted); font-size: 0.9375rem; margin-top: 10px; }
+  .step .tag { font-family: var(--mono); font-size: 0.75rem; color: var(--faint); margin-top: 16px; display: block; }
+
+  /* ------------------------------------------------------------ the band */
+  .band {
+    background: var(--band);
+    border-top: 1px solid var(--line-strong);
+    border-bottom: 1px solid var(--line-strong);
+    padding: clamp(72px, 9vw, 128px) 0;
+  }
+  .band-head { display: flex; flex-wrap: wrap; gap: 22px; align-items: flex-end; justify-content: space-between; margin-bottom: 44px; }
+  .band-head .pills { display: flex; flex-wrap: wrap; gap: 10px; }
+  .console { display: grid; grid-template-columns: minmax(0, 0.78fr) minmax(0, 1.22fr); gap: 22px; }
+
+  /* wallet */
+  .acct { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+  .acct .who { font-family: var(--mono); font-size: 0.875rem; color: var(--muted); }
+  .balances { width: 100%; border-collapse: collapse; }
+  .balances th { display: none; }
+  .balances td { padding: 13px 0; border-bottom: 1px solid var(--line); font-size: 0.9375rem; }
+  .balances tr:last-child td { border-bottom: 0; }
+  .balances td:last-child { text-align: right; font-family: var(--mono); font-size: 1rem; }
+  .balances .unit { color: var(--faint); font-size: 0.8125rem; margin-left: 6px; font-family: var(--sans); }
+  .wallet-foot { margin-top: 18px; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+
+  /* forms */
+  .field { display: grid; gap: 7px; }
+  .field label { font-size: 0.8125rem; color: var(--muted); }
+  .field .hint { font-size: 0.8125rem; color: var(--faint); }
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .form-grid .span-2 { grid-column: 1 / -1; }
+  input, select, textarea {
+    font: inherit; font-size: 0.9375rem; color: var(--ink); background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--line); border-radius: var(--r-sm); padding: 11px 13px; width: 100%;
+  }
+  input.amount { font-family: var(--mono); font-size: 1.125rem; letter-spacing: 0.01em; }
+  input:focus, select:focus { border-color: rgba(255, 255, 255, 0.36); outline: none; }
+  .inline { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .tabs { display: inline-flex; padding: 4px; gap: 4px; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--line); border-radius: 12px; margin-bottom: 22px; }
+  .tabs button {
+    appearance: none; font: inherit; font-size: 0.9rem; padding: 9px 16px; border-radius: 9px;
+    border: 1px solid transparent; background: transparent; color: var(--muted); cursor: pointer;
+  }
+  .tabs button[aria-selected="true"] { background: #fff; color: #000; font-weight: 500; }
+  .note { font-size: 0.875rem; color: var(--muted); }
+
+  .flow { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 26px; }
+  .flow .flow-step {
+    border: 1px solid var(--line); border-radius: var(--r); padding: 16px 18px; background: rgba(255, 255, 255, 0.02);
+    display: flex; gap: 12px; align-items: flex-start;
+  }
+  .flow .flow-step .mark {
+    width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; flex: 0 0 auto;
+    border: 1px solid var(--line-strong); font-size: 0.6875rem; color: var(--muted); font-family: var(--mono);
+  }
+  .flow .flow-step.active { border-color: rgba(255, 255, 255, 0.36); background: rgba(255, 255, 255, 0.06); }
+  .flow .flow-step.active .mark { border-color: #fff; color: #fff; }
+  .flow .flow-step.done .mark { background: #fff; color: #000; border-color: #fff; }
+  .flow .flow-step strong { display: block; font-size: 0.9rem; font-weight: 600; }
+  .flow .flow-step p { font-size: 0.8125rem; color: var(--muted); margin-top: 3px; }
+
+  .log {
+    margin-top: 20px; background: rgba(255, 255, 255, 0.035); border: 1px solid var(--line); border-radius: var(--r);
+    padding: 16px 18px; font-family: var(--mono); font-size: 0.8125rem; line-height: 1.65;
+    white-space: pre-wrap; overflow-wrap: anywhere; max-height: 280px; overflow-y: auto; color: var(--muted);
+  }
+  .log .ok { color: var(--ok); }
+  .log .warn { color: var(--warn); }
+  .log .bad { color: var(--bad); }
+  .log .info { color: rgba(246, 247, 245, 0.8); }
+
+  .explorer { color: var(--ink); text-decoration: none; border-bottom: 1px solid rgba(255, 255, 255, 0.35); }
+  .explorer:hover { border-bottom-color: #fff; }
+  .kv { display: grid; grid-template-columns: minmax(120px, auto) 1fr; gap: 11px 22px; margin: 0; }
+  .kv dt { color: var(--faint); font-size: 0.875rem; }
+  .kv dd { margin: 0; font-family: var(--mono); font-size: 0.875rem; overflow-wrap: anywhere; }
+  .chip {
+    font-family: var(--mono); font-size: 0.8125rem; background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--line); border-radius: 8px; padding: 4px 9px; display: inline-block;
+  }
+
+  /* --------------------------------------------------------------- tables */
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 12px 14px 12px 0; border-bottom: 1px solid var(--line); font-size: 0.875rem; vertical-align: top; overflow-wrap: anywhere; }
+  th { color: var(--faint); font-weight: 600; font-size: 0.75rem; letter-spacing: 0.1em; text-transform: uppercase; padding-top: 0; }
+  tbody tr:last-child td { border-bottom: 0; }
+  td:last-child, th:last-child { padding-right: 0; }
+
+  details { border-top: 1px solid var(--line); padding: 18px 0; }
+  details:first-of-type { border-top: 1px solid var(--line-strong); }
+  details summary { cursor: pointer; font-weight: 500; font-size: 1rem; list-style: none; display: flex; justify-content: space-between; gap: 16px; }
+  details summary::-webkit-details-marker { display: none; }
+  details summary::after { content: "+"; color: var(--faint); font-family: var(--mono); }
+  details[open] summary::after { content: "-"; }
+  details p { color: var(--muted); font-size: 0.9375rem; margin-top: 12px; max-width: 78ch; }
+  details p + p { margin-top: 8px; }
+
+  /* --------------------------------------------------------------- footer */
+  footer { border-top: 1px solid var(--line); padding: 36px 0 56px; }
+  .foot-row { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; justify-content: space-between; color: var(--faint); font-size: 0.8125rem; }
+
+  dialog {
+    border: 1px solid var(--line-strong); background: #0a0b09; color: var(--ink); border-radius: var(--r-lg);
+    padding: 26px; width: min(520px, calc(100vw - 40px));
+  }
+  dialog::backdrop { background: rgba(0, 0, 0, 0.74); }
+  .hidden { display: none !important; }
+
+  @media (max-width: 1040px) {
+    .hero-grid { grid-template-columns: 1fr; gap: 40px; }
+    .trust { border-left: 0; padding-left: 0; border-top: 1px solid var(--line); padding-top: 26px; grid-template-columns: 1fr 1fr; display: grid; }
+    .console, .cols, .grid-3, .grid-2, .form-grid { grid-template-columns: 1fr; }
+    .stats { grid-template-columns: 1fr 1fr; gap: 28px; }
+    .steps { grid-template-columns: 1fr; }
+    .flow { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 720px) {
+    body { font-size: 16px; }
+    .top-inner { flex-wrap: wrap; gap: 10px; padding: 10px 0; }
+    nav.main {
+      order: 3; width: 100%; margin: 0 0 4px; overflow-x: auto; padding-bottom: 2px;
+      scrollbar-width: none; border-top: 1px solid var(--line); padding-top: 8px;
+    }
+    nav.main::-webkit-scrollbar { display: none; }
+    nav.main a { padding: 7px 12px; font-size: 0.875rem; }
+    .net-long { display: none; }
+    .net-short { display: inline; }
+    .stats { grid-template-columns: 1fr; gap: 22px; }
+    .trust { grid-template-columns: 1fr; }
+    /* On a phone the timestamps and units are the first things to go: the
+       verdict and the transaction hash are what a reader actually needs. */
+    .audit-table th:nth-child(2), .audit-table td:nth-child(2) { display: none; }
+    table { font-size: 0.8125rem; }
+    th, td { padding: 10px 10px 10px 0; }
+    .card { padding: 20px; }
+    :root { --pad-section: 68px; }
+  }
 </style>
 </head>
 <body>
-<a class="skip" href="#view">Skip to content</a>
-
+<a class="hidden" href="#top">Skip to content</a>
 <header class="top">
   <div class="shell top-inner">
-    <span class="brand" aria-label="Lumen Gate">
-      <svg width="26" height="26" viewBox="0 0 32 32" aria-hidden="true">
-        <circle cx="16" cy="16" r="11" fill="none" stroke="currentColor" stroke-width="2"/>
-        <path d="M6 24 L26 8" stroke="currentColor" stroke-width="2"/>
-      </svg>
-      Lumen Gate
-    </span>
+    <a class="brand" href="#top"><img src="data:image/png;base64,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" alt="" width="30" height="30" /><img class="wordmark" src="data:image/png;base64,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" alt="Lumen Gate" /></a>
     <nav class="main" aria-label="Sections">
-      <button data-nav="overview" aria-current="page">Overview</button>
-      <button data-nav="bridge">Bridge</button>
-      <button data-nav="redeem">Redeem</button>
-      <button data-nav="evidence">Evidence</button>
-      <button data-nav="about">About</button>
+      <a href="#top" data-nav="top" aria-current="true">Overview</a>
+      <a href="#how" data-nav="how">How it settles</a>
+      <a href="#console" data-nav="console">Wallet</a>
+      <a href="#evidence" data-nav="evidence">Evidence</a>
+      <a href="#about" data-nav="about">About</a>
     </nav>
     <div class="top-right">
-      <span class="pill" id="netPill"><span class="dot info"></span> loading network…</span>
+      <span class="pill" id="netPill"><span class="dot"></span> connecting...</span>
       <button class="btn small" id="operatorBtn" type="button">Operator</button>
     </div>
   </div>
 </header>
 
-<main class="shell" id="view">
-
-  <!-- ============================ OVERVIEW ============================ -->
-  <section id="view-overview" aria-labelledby="hero-h">
-    <div class="hero">
-      <div class="eyebrow">Stellar testnet · Soroban</div>
-      <h1 id="hero-h">Move value across domains.<br />Keep the receipt on-chain.</h1>
-      <p>Lumen Gate does not ask anyone to trust a server. Source-chain finality is verified inside a Soroban contract — by a BLS12-381 aggregate signature or a Groth16 proof — and the gateway releases the wrapped asset only against a Merkle proof of that exact source event.</p>
-      <div class="row" style="margin-top:20px">
-        <button class="btn primary" data-nav="bridge">Start a bridge</button>
-        <button class="btn" data-nav="evidence">Inspect the evidence</button>
-        <span class="pill" id="auditPill"><span class="dot"></span> audit</span>
-      </div>
-    </div>
-
-    <div class="grid cols-4" style="margin-top:26px">
-      <div class="stat"><div class="label">Registry</div><div class="value" id="statRegistry">—</div><div class="sub" id="statRegistrySub">loading…</div></div>
-      <div class="stat"><div class="label">Last finalized source height</div><div class="value" id="statHeight">—</div><div class="sub" id="statHeightSub">read from the contract</div></div>
-      <div class="stat"><div class="label">Finality backing</div><div class="value" id="statSecurity">—</div><div class="sub" id="statSecuritySub">signature set</div></div>
-      <div class="stat"><div class="label">Self-audit</div><div class="value" id="statAudit">—</div><div class="sub" id="statAuditSub">rounds recorded</div></div>
-    </div>
-
-    <div class="grid cols-2" style="margin-top:16px">
-      <div class="card">
-        <div class="hd"><h3>Where the trust boundary is</h3><span class="n">the only diagram that matters</span></div>
-        <div class="bd">
-          <div class="steps">
-            <div class="step"><div class="idx">1</div><div><h4>Source chain</h4><p>A lock event is emitted. In this deployment the source chain is a deterministic simulator; its BLS signatures are real.</p></div><span class="chip mono">simulated</span></div>
-            <div class="step"><div class="idx">2</div><div><h4>Finality, verified on Stellar</h4><p>The registry checks the aggregate signature with the BN254/BLS host functions. A proof for another root is refused.</p></div><span class="chip mono">on-chain</span></div>
-            <div class="step"><div class="idx">3</div><div><h4>Per-message Merkle proof</h4><p>The gateway proves that this one event is inside the finalized event root, and re-derives the message id and payload hash.</p></div><span class="chip mono">on-chain</span></div>
-            <div class="step"><div class="idx">4</div><div><h4>Mint or release</h4><p>Nonce high-water mark blocks replays. The mint authority is the gateway contract — not a key held by this service.</p></div><span class="chip mono">on-chain</span></div>
+<main>
+  <!-- ------------------------------------------------------------ overview -->
+  <section class="hero" id="top">
+    <div class="shell">
+      <div class="hero-grid">
+        <div>
+          <p class="eyebrow">Stellar testnet · protocol 28 · Rise In x Stellar Pro, Genesis</p>
+          <h1 style="margin-top:20px">A settlement boundary you can check, not a bridge you have to trust.</h1>
+          <p class="lead" style="margin-top:22px">Lumen Gate locks value on a source chain and mints it on Stellar &mdash; but only after a Soroban contract verifies source-chain finality itself. Every accepted and rejected path leaves a receipt you can pull up by transaction hash.</p>
+          <div class="btn-row cta">
+            <a class="btn primary" href="#console">Open the wallet</a>
+            <a class="btn" href="#evidence">Read the evidence</a>
+          </div>
+        </div>
+        <div class="trust">
+          <div>
+            <strong>Who signs</strong>
+            <p>A quorum of source validators. The aggregate BLS signature is checked inside the contract, not by this page.</p>
+          </div>
+          <div>
+            <strong>Who pays</strong>
+            <p>The relayer, on the receive side. The recipient needs no XLM at all &mdash; only an account and a trustline.</p>
+          </div>
+          <div>
+            <strong>Who can change the rules</strong>
+            <p>Nobody, any more. Both deployed contracts have renounced their admin capability on-chain.</p>
           </div>
         </div>
       </div>
 
-      <div class="card">
-        <div class="hd"><h3>Deployment</h3><span class="n" id="deploymentStamp">—</span></div>
-        <div class="bd">
-          <dl class="kv" id="deploymentKv">
-            <dt>Registry</dt><dd><span class="skel" style="width:180px"></span></dd>
-            <dt>Gateway</dt><dd><span class="skel" style="width:180px"></span></dd>
-            <dt>wSRC (SAC)</dt><dd><span class="skel" style="width:180px"></span></dd>
-            <dt>Source domain</dt><dd><span class="skel" style="width:220px"></span></dd>
-          </dl>
-          <div class="hr"></div>
-          <div class="row">
+      <div class="stats">
+        <div class="stat">
+          <div class="label">Registry contract</div>
+          <div class="value sm" id="statRegistry">-</div>
+          <div class="sub" id="statRegistrySub">not read yet</div>
+        </div>
+        <div class="stat">
+          <div class="label">Last finalized block</div>
+          <div class="value" id="statFinality">-</div>
+          <div class="sub" id="statFinalitySub">asking the contract...</div>
+        </div>
+        <div class="stat">
+          <div class="label">Self-audit</div>
+          <div class="value" id="statAudit">-</div>
+          <div class="sub" id="statAuditSub">no record</div>
+        </div>
+        <div class="stat">
+          <div class="label">Defects recorded</div>
+          <div class="value" id="statFindings">-</div>
+          <div class="sub" id="statFindingsSub">found in this build, written down</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------------------- how it works -->
+  <section id="how">
+    <div class="shell">
+      <p class="eyebrow">Three steps, two of them cryptographic</p>
+      <h2 style="margin-top:18px">How a transfer actually settles</h2>
+      <p class="lead" style="margin-top:18px">The wallet below decides nothing. It collects an intent and hands it to contracts that check their own evidence.</p>
+      <div class="steps">
+        <div class="step">
+          <span class="num">01</span>
+          <h3>Lock</h3>
+          <p>Value leaves the source chain into a lock event. The message id is derived from the source domain, the target domain, the block height, the event index, a nonce and the payload hash &mdash; never from anything the relayer chooses.</p>
+          <span class="tag">source_height · event_index · nonce</span>
+        </div>
+        <div class="step">
+          <span class="num">02</span>
+          <h3>Prove finality, on-chain</h3>
+          <p>A quorum of source validators signs the block. The registry verifies that aggregate BLS signature against its registered policy using Stellar's native BLS12-381 host functions, then stores the finalized state and event roots.</p>
+          <span class="tag">signature_set(3, 2) verified in-contract</span>
+        </div>
+        <div class="step">
+          <span class="num">03</span>
+          <h3>Mint</h3>
+          <p>A Merkle proof shows the single event belongs to that finalized root. The gateway checks the registry, checks the nonce high-water mark against replay, then mints and pays the relayer out of the transferred amount.</p>
+          <span class="tag">merkle depth · nonce hwm · relayer fee</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------------- the black band -->
+  <div class="band-wrap">
+    <section class="band" id="console">
+      <div class="shell">
+        <div class="band-head">
+          <div>
+            <p class="eyebrow">Wallet</p>
+            <h2 style="margin-top:16px">The grid stops here. This is where you act.</h2>
+            <p class="note" style="margin-top:16px; max-width:62ch">Receiving is gasless: the relayer signs and pays, and the recipient's XLM does not change. Your own key is needed only to burn tokens back, and that direction is not gasless.</p>
+          </div>
+          <div class="pills">
             <span class="pill" id="capReads"><span class="dot"></span> reads</span>
             <span class="pill" id="capRelay"><span class="dot"></span> relay</span>
-            <span class="pill" id="capSource"><span class="dot"></span> source adapter</span>
+            <span class="pill" id="capSource"><span class="dot"></span> source chain</span>
           </div>
-          <p class="xs muted" style="margin:12px 0 0">Live reads come from the deployed contracts through Soroban RPC simulation. Every address on this page is generated from the deployment manifest the receipts were written against.</p>
         </div>
-      </div>
-    </div>
 
-    <div class="card" style="margin-top:16px">
-      <div class="hd"><h3>What this deployment does not claim</h3><span class="n">kept next to the happy path, on purpose</span></div>
-      <div class="bd" id="honestyPanel"><span class="skel" style="width:60%"></span></div>
-    </div>
-  </section>
-
-  <!-- ============================ BRIDGE ============================ -->
-  <section id="view-bridge" hidden aria-labelledby="bridge-h">
-    <div class="eyebrow">Inbound</div>
-    <h2 id="bridge-h">Lock on the source chain, mint on Stellar</h2>
-    <p class="muted" style="max-width:70ch">The end user never pays a Stellar fee for this direction. The relayer signs and pays; the gateway mints the wrapped asset to the address that locked on the source side, minus a fixed relayer fee.</p>
-
-    <div class="grid cols-2" style="margin-top:20px">
-      <div class="card">
-        <div class="hd"><h3>1 · Create the source lock</h3><span class="n">source chain</span></div>
-        <div class="bd">
-          <label class="field"><span>Amount (source units)</span><input id="lockAmount" value="200000000" inputmode="numeric" /></label>
-          <label class="field"><span>Recipient on Stellar</span><input id="lockRecipient" placeholder="G… (56 characters)" /></label>
-          <label class="field"><span>Events in this block</span><select id="lockCount">
-            <option value="1">1 — single-event block (empty Merkle proof)</option>
-            <option value="2">2 — one sibling in the proof</option>
-            <option value="4">4 — three siblings in the proof</option>
-          </select></label>
-          <div class="row">
-            <button class="btn primary" id="lockBtn" type="button">Lock on source chain</button>
-            <button class="btn" id="useWalletBtn" type="button">Use connected wallet</button>
+        <div class="console">
+          <!-- wallet -->
+          <div class="card" id="walletCard">
+            <div class="card-head">
+              <h3>Account</h3>
+              <span class="xs faint" id="walletKind">read-only until you connect</span>
+            </div>
+            <div class="acct">
+              <button class="btn primary small" id="connectBtn" type="button">Connect Freighter</button>
+              <span class="chip" id="walletChip">not connected</span>
+            </div>
+            <table class="balances">
+              <tbody id="walletKv">
+                <tr><td>XLM</td><td>-</td></tr>
+                <tr><td>Spendable XLM<span class="unit">after reserve</span></td><td>-</td></tr>
+                <tr><td>wSRC<span class="unit">wrapped asset</span></td><td>-</td></tr>
+              </tbody>
+            </table>
+            <div class="wallet-foot">
+              <button class="link-btn" id="balanceBtn" type="button">Refresh balances</button>
+              <a class="link-btn" id="walletLink" href="https://stellar.expert/explorer/testnet" target="_blank" rel="noreferrer" hidden>Open in explorer</a>
+            </div>
+            <p class="note" id="walletNote" style="margin-top:16px">Connect a wallet to read your own balances. You do not need one to receive.</p>
           </div>
-          <p class="xs muted" id="sourceNote" style="margin:14px 0 0">Checking the source adapter…</p>
+
+          <!-- transactions -->
+          <div class="card" id="actionCard">
+            <div class="card-head">
+              <h3>Move value</h3>
+              <span class="xs faint" id="operatorHint">writes need an operator token</span>
+            </div>
+            <div class="tabs" role="tablist">
+              <button id="tabInbound" type="button" role="tab" aria-selected="true">Receive &middot; lock to mint</button>
+              <button id="tabOutbound" type="button" role="tab" aria-selected="false">Send back &middot; burn to unlock</button>
+            </div>
+
+            <div id="paneInbound">
+              <div class="form-grid">
+                <div class="field">
+                  <label for="lockAmount">Amount to lock <span class="faint">(base units)</span></label>
+                  <input class="amount" id="lockAmount" type="number" min="1" step="1" value="137000000" />
+                </div>
+                <div class="field">
+                  <label for="lockRecipient">Recipient on Stellar</label>
+                  <input id="lockRecipient" type="text" spellcheck="false" placeholder="G..." />
+                </div>
+                <div class="field">
+                  <label for="lockCount">Lock events in this block</label>
+                  <select id="lockCount">
+                    <option value="1">1 event</option>
+                    <option value="3" selected>3 events</option>
+                    <option value="5">5 events</option>
+                  </select>
+                  <span class="hint">More than one event gives the Merkle proof a real tree walk instead of the single-leaf case.</span>
+                </div>
+                <div class="field">
+                  <label>&nbsp;</label>
+                  <button class="btn small" id="useWalletBtn" type="button">Use my wallet address</button>
+                  <span class="hint">The relayer keeps a fixed fee out of the amount, set at submission time.</span>
+                </div>
+                <div class="span-2">
+                  <button class="btn primary wide" id="lockBtn" type="button">Lock on the source chain</button>
+                </div>
+              </div>
+              <p class="note" id="sourceNote" style="margin-top:16px">Checking whether this deployment has a source adapter...</p>
+            </div>
+
+            <div id="paneOutbound" class="hidden">
+              <div class="form-grid">
+                <div class="field">
+                  <label for="burnAmount">Amount to burn <span class="faint">(base units)</span></label>
+                  <input class="amount" id="burnAmount" type="number" min="1" step="1" value="100000000" />
+                </div>
+                <div class="field">
+                  <label for="burnRecipient">Recipient on the source chain</label>
+                  <input id="burnRecipient" type="text" spellcheck="false" placeholder="G..." />
+                </div>
+                <div class="span-2">
+                  <button class="btn primary wide" id="burnBtn" type="button">Burn and unlock</button>
+                </div>
+              </div>
+              <p class="note" id="redeemNote" style="margin-top:16px">Signs and submits a <code>burn_and_relay</code> call with your own key through Freighter. You pay this fee yourself.</p>
+            </div>
+          </div>
         </div>
-      </div>
 
-      <div class="card">
-        <div class="hd"><h3>2 · Watch it settle</h3><span class="n">Stellar</span></div>
-        <div class="bd">
-          <div class="steps" id="bridgeSteps">
-            <div class="step" id="bstep-lock"><div class="idx">1</div><div><h4>Lock observed</h4><p>message id, nonce and payload hash are derived from the event, not chosen by the relayer</p></div><span class="mark" data-mark></span></div>
-            <div class="step" id="bstep-finality"><div class="idx">2</div><div><h4>Finality verified on-chain</h4><p>aggregate BLS signature over height, state root and event root</p></div><span class="mark" data-mark></span></div>
-            <div class="step" id="bstep-mint"><div class="idx">3</div><div><h4>Wrapped asset minted</h4><p>Merkle proof of that single event against the finalized event root</p></div><span class="mark" data-mark></span></div>
+        <!-- the live run -->
+        <div class="flow" id="bridgeSteps">
+          <div class="flow-step" id="bstep-lock">
+            <span class="mark" data-mark=""></span>
+            <div><strong>Lock</strong><p data-detail>message id, nonce and payload hash come from the event</p></div>
           </div>
-          <div class="row" style="margin-top:14px">
-            <button class="btn primary" id="settleBtn" type="button" disabled>Settle this message</button>
-            <button class="btn" id="copyCmdBtn" type="button">Copy the command instead</button>
+          <div class="flow-step" id="bstep-finality">
+            <span class="mark" data-mark=""></span>
+            <div><strong>Finality</strong><p data-detail>aggregate BLS signature over height, state root and event root</p></div>
           </div>
-          <p class="xs muted" id="settleNote" style="margin:14px 0 0"></p>
+          <div class="flow-step" id="bstep-mint">
+            <span class="mark" data-mark=""></span>
+            <div><strong>Mint</strong><p data-detail>Merkle proof of that event against the finalized root</p></div>
+          </div>
         </div>
-      </div>
-    </div>
 
-    <div class="card" style="margin-top:16px">
-      <div class="hd"><h3>Run log</h3><span class="n">every hash here is a real testnet transaction</span></div>
-      <div class="bd"><div class="log" id="bridgeLog" role="log" aria-live="polite">Ready.</div></div>
-    </div>
-  </section>
-
-  <!-- ============================ REDEEM ============================ -->
-  <section id="view-redeem" hidden aria-labelledby="redeem-h">
-    <div class="eyebrow">Outbound</div>
-    <h2 id="redeem-h">Burn on Stellar, release on the source chain</h2>
-    <p class="muted" style="max-width:70ch">This direction is signed by the end user: you burn your own wrapped asset, the gateway emits a burn message, the relayer carries it back, and the source side releases the locked amount exactly once.</p>
-
-    <div class="grid cols-2" style="margin-top:20px">
-      <div class="card">
-        <div class="hd"><h3>Burn and relay</h3><span class="n">requires Freighter</span></div>
-        <div class="bd">
-          <div class="row" style="margin-bottom:14px">
-            <button class="btn primary" id="connectBtn" type="button">Connect Freighter</button>
-            <span class="chip mono" id="walletChip">not connected</span>
-          </div>
-          <label class="field"><span>Amount of wSRC</span><input id="burnAmount" value="50000000" inputmode="numeric" /></label>
-          <label class="field"><span>Recipient on the source chain</span><input id="burnRecipient" placeholder="defaults to your Stellar address" /></label>
-          <div class="row">
-            <button class="btn primary" id="burnBtn" type="button">Sign and burn</button>
-            <button class="btn" id="balanceBtn" type="button">Refresh balance</button>
-          </div>
-          <p class="xs muted" style="margin:14px 0 0">Burning needs a fee, so this direction is not gasless — the person who owns the tokens pays for their own transaction. Only the inbound mint is sponsored.</p>
+        <div class="btn-row" style="margin-top:22px">
+          <button class="btn primary" id="settleBtn" type="button" disabled>Ask the relayer to settle</button>
+          <button class="btn" id="copyCmdBtn" type="button">Copy the command instead</button>
         </div>
+        <p class="note" id="settleNote" style="margin-top:14px">Lock a block first; settlement runs one relayer pass at the height you locked.</p>
+        <div class="log" id="txLog">Ready.</div>
       </div>
-      <div class="card">
-        <div class="hd"><h3>Wallet</h3><span class="n">Horizon, live</span></div>
-        <div class="bd"><dl class="kv" id="walletKv"><dt>Status</dt><dd>not connected</dd></dl></div>
-      </div>
-    </div>
-
-    <div class="card" style="margin-top:16px">
-      <div class="hd"><h3>Run log</h3><span class="n">outbound</span></div>
-      <div class="bd"><div class="log" id="redeemLog" role="log" aria-live="polite">Ready.</div></div>
-    </div>
-  </section>
-
-  <!-- ============================ EVIDENCE ============================ -->
-  <section id="view-evidence" hidden aria-labelledby="ev-h">
-    <div class="eyebrow">Evidence</div>
-    <h2 id="ev-h">Ask the contracts, not the website</h2>
-    <p class="muted" style="max-width:70ch">These reads are executed as Soroban simulations against the deployed registry. Nothing is cached from a file, so what you see is what a verifier would see.</p>
-
-    <div class="grid cols-2" style="margin-top:20px">
-      <div class="card">
-        <div class="hd"><h3>Finality record</h3><span class="n">live simulation</span></div>
-        <div class="bd">
-          <div class="row" style="margin-bottom:14px">
-            <label class="field" style="flex:1;margin:0"><span>Source height (blank = latest)</span><input id="heightQuery" placeholder="e.g. 306" inputmode="numeric" /></label>
-            <button class="btn" id="queryBtn" type="button" style="margin-top:20px">Query</button>
-          </div>
-          <dl class="kv" id="finalityKv"><dt>Result</dt><dd><span class="skel" style="width:140px"></span></dd></dl>
-        </div>
-      </div>
-      <div class="card">
-        <div class="hd"><h3>Self-audit record</h3><span class="n" id="auditStamp">—</span></div>
-        <div class="bd">
-          <table aria-label="Audit rounds"><thead><tr><th>Round</th><th>Finished</th><th>Checks</th><th>Result</th></tr></thead>
-          <tbody id="auditRows"><tr><td colspan="4"><span class="skel" style="width:70%"></span></td></tr></tbody></table>
-          <p class="xs muted" style="margin:14px 0 0">The audit loop probes the live contract each round: honest evidence must be accepted, a replay must be refused, a tampered signature must be refused, and the admin capability must be gone.</p>
-        </div>
-      </div>
-    </div>
-
-    <div class="grid cols-2" style="margin-top:16px">
-      <div class="card">
-        <div class="hd"><h3>Receipts</h3><span class="n">from the deployment manifest</span></div>
-        <div class="bd"><table aria-label="Receipts"><thead><tr><th>Step</th><th>Transaction</th></tr></thead><tbody id="receiptRows"><tr><td colspan="2"><span class="skel" style="width:70%"></span></td></tr></tbody></table></div>
-      </div>
-      <div class="card">
-        <div class="hd"><h3>Defects found and fixed</h3><span class="n" id="findingsCount">—</span></div>
-        <div class="bd"><div id="findingsList" class="sm"><span class="skel" style="width:70%"></span></div></div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ============================ ABOUT ============================ -->
-  <section id="view-about" hidden aria-labelledby="ab-h">
-    <div class="eyebrow">About</div>
-    <h2 id="ab-h">What the anchor facade is for</h2>
-    <div class="grid cols-2" style="margin-top:18px">
-      <div class="card"><div class="bd">
-        <p>The facade is the <strong>integration surface</strong>, not the trust anchor. It publishes the discovery document other people's software reads (<code>/.well-known/stellar.toml</code>), it serves the deployment manifest the receipts were written against, it exposes the read-only audit record, and it is the only place an operator can ask for a relayer pass.</p>
-        <p class="muted">It holds no custody, no mint authority and no verification keys. If it disappeared, settlement would keep working — you would lose the window, not the rule.</p>
-      </div></div>
-      <div class="card"><div class="bd">
-        <h3 style="margin-top:0">Is this a zkVM?</h3>
-        <p><strong>No.</strong> There is no virtual machine here. The Groth16 lane verifies one fixed statement compiled ahead of time: a quorum of approval bits is set and three roots participate in one Poseidon relation. It is a statement proof, not a VM proof, and a quorum proof, not a signature proof — which is exactly why settlement anchors on the BLS lane, whose signature does cover the event root.</p>
-        <p class="muted">The full write-up, including the measured on-chain cost, is in <code>docs/PROVING_SYSTEM.md</code>.</p>
-      </div></div>
-    </div>
-    <div class="card" style="margin-top:16px"><div class="hd"><h3>Read the primary sources</h3></div><div class="bd row">
-      <a class="btn small" href="https://github.com/lubothebook/lumen-gate#readme" target="_blank" rel="noreferrer">README</a>
-      <a class="btn small" href="https://github.com/lubothebook/lumen-gate/blob/main/docs/PROVING_SYSTEM.md" target="_blank" rel="noreferrer">Proving system</a>
-      <a class="btn small" href="https://github.com/lubothebook/lumen-gate/blob/main/deployments/testnet.json" target="_blank" rel="noreferrer">Deployment manifest</a>
-      <a class="btn small" href="https://stellar.expert/explorer/testnet" target="_blank" rel="noreferrer">Explorer</a>
-    </div></div>
-  </section>
-
-  <div class="footer">
-    <span>© 2026 Lumen Gate · testnet deployment · not an audited bridge</span>
-    <span id="footerChain">—</span>
+    </section>
   </div>
+
+  <!-- ------------------------------------------------------------- evidence -->
+  <section id="evidence">
+    <div class="shell">
+      <p class="eyebrow">Evidence</p>
+      <h2 style="margin-top:18px">Ask the contracts, not the website</h2>
+      <p class="lead" style="margin-top:18px">Everything below is read live. If a number here disagreed with the chain, the chain would be right.</p>
+
+      <div class="card" style="margin-top:38px">
+        <div class="card-head">
+          <h3>Registry query</h3>
+          <span class="xs faint">simulated against the deployed contract</span>
+        </div>
+        <div class="inline" style="margin-bottom:20px">
+          <input id="heightQuery" type="text" inputmode="numeric" placeholder="source height, e.g. 306 (empty = latest)" style="max-width:340px" />
+          <button class="btn small" id="queryBtn" type="button">Query the registry</button>
+        </div>
+        <dl class="kv" id="finalityKv"><dt>Result</dt><dd>not queried yet</dd></dl>
+      </div>
+
+      <div class="cols" style="margin-top:22px">
+        <div class="card">
+          <div class="card-head">
+            <h3>Self-audit rounds</h3>
+            <span class="xs faint" id="auditStamp"></span>
+          </div>
+          <table class="audit-table">
+            <thead><tr><th>Round</th><th>Finished</th><th>Checks</th><th>Verdict</th></tr></thead>
+            <tbody id="auditRows"><tr><td colspan="4" class="muted">loading</td></tr></tbody>
+          </table>
+          <p class="note" style="margin-top:18px">The loop submits fresh evidence to the live registry every round. It holds no mint authority and can approve nothing; it asks questions and writes down the answers, including the rounds that failed.</p>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <h3>Receipts</h3>
+            <span class="xs faint">recorded on testnet</span>
+          </div>
+          <table>
+            <thead><tr><th>Step</th><th>Transaction</th></tr></thead>
+            <tbody id="receiptRows"><tr><td colspan="2" class="muted">loading</td></tr></tbody>
+          </table>
+          <p class="note" style="margin-top:18px">Every hash opens on Stellar Expert. Where a step is a simulation it burned no fee, because it never left the host.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---------------------------------------------------------------- about -->
+  <section id="about">
+    <div class="shell">
+      <p class="eyebrow">About</p>
+      <h2 style="margin-top:18px">What the anchor is for, and what it is not</h2>
+
+      <div class="cols" style="margin-top:38px">
+        <div class="stack">
+          <p class="lead">The anchor facade is an integration surface, not the trust anchor. It is the part other software talks to: discovery, a machine-readable manifest, the audit record, and an operator trigger. It holds no custody, no mint authority and no verification keys. If it disappeared, settlement would keep working &mdash; you would lose the window, not the rule.</p>
+          <table>
+            <thead><tr><th>Surface</th><th>Why it exists</th><th>Authority</th></tr></thead>
+            <tbody>
+              <tr><td class="mono xs">/.well-known/stellar.toml</td><td>SEP-1 discovery that other people's software reads</td><td>read</td></tr>
+              <tr><td class="mono xs">/deployment</td><td>the manifest the receipts were written against</td><td>read</td></tr>
+              <tr><td class="mono xs">/capabilities</td><td>what this instance may do, so this page can gate on it</td><td>read</td></tr>
+              <tr><td class="mono xs">/self-audit</td><td>the record the audit loop writes</td><td>read</td></tr>
+              <tr><td class="mono xs">POST /relay?height=H</td><td>one relayer pass at a chosen height</td><td>operator token</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="stack">
+          <h3>The limits, stated where they cannot be missed</h3>
+          <div id="honestyPanel"><p class="muted">loading</p></div>
+        </div>
+      </div>
+
+      <div class="stack" id="faq" style="margin-top:46px">
+        <details>
+          <summary>Is this a zkVM?</summary>
+          <p><strong>No, and the word should not be attached to this system.</strong> There is no virtual machine, no instruction set, no program commitment and no execution trace here. The ZK lane is one fixed Groth16 statement over BN254, compiled ahead of time: a quorum of approval bits, a threshold equal to the registered policy, and a Poseidon binding of three roots. It is not a signature verifier either, so the registry does not persist an event root from it &mdash; settlement anchors on the BLS lane, whose aggregate signature does cover that root.</p>
+        </details>
+        <details>
+          <summary>What does "gasless" mean here, exactly?</summary>
+          <p>Zero spendable XLM on the receiving side. The relayer signs and pays the Stellar fee and is repaid in wrapped asset out of the transferred amount; the receipt shows a recipient whose XLM balance is byte-for-byte identical before and after, at exactly its minimum reserve. It does not mean zero setup: the recipient still needs an account and a trustline, because a Stellar asset cannot be held without one. Burning is not gasless.</p>
+        </details>
+        <details>
+          <summary>Who can still change the rules?</summary>
+          <p>Nobody. Both deployed contracts have renounced their admin capability on-chain, which freezes the verifying key, the BLS policy, the domain list, the target domain and the fee configuration. The audit loop proves it every round by simulating the admin action and requiring the host to trap. Before the renounce, the deployer could have changed all of it; that window is closed, and the receipts are in the manifest.</p>
+        </details>
+        <details>
+          <summary>What went wrong in this build?</summary>
+          <p id="findingsSummary">Loading the defect log...</p>
+          <div id="findingsList"></div>
+        </details>
+        <details>
+          <summary>How do I reproduce any of this?</summary>
+          <p>The repository has the deploy scripts, the circuit, the byte layout of the on-chain proof encoding, and the exact commands. Every receipt in the manifest was produced by those commands against testnet, and the documented limitations are the ones that are actually true today.</p>
+        </details>
+      </div>
+
+      <div class="card" style="margin-top:38px">
+        <div class="card-head">
+          <h3>The addresses this page is talking to</h3>
+          <span class="xs faint" id="deploymentStamp"></span>
+        </div>
+        <dl class="kv" id="deploymentKv"><dt>Manifest</dt><dd>loading</dd></dl>
+      </div>
+    </div>
+  </section>
 </main>
 
-<dialog id="operatorDialog" aria-labelledby="op-h">
-  <form method="dialog">
-    <div class="card" style="border:0;box-shadow:none;background:none">
-      <div class="hd"><h3 id="op-h">Operator access</h3></div>
-      <div class="bd">
-        <p class="sm muted">Reads never need a token. Everything that can spend a fee does — including the relay button on the Bridge page. The token stays in this browser tab only.</p>
-        <label class="field"><span>Operator token</span><input id="opToken" type="password" autocomplete="off" placeholder="Bearer token" /></label>
-        <div class="row"><button class="btn primary" value="save" id="opSave" type="button">Save for this tab</button><button class="btn" value="clear" id="opClear" type="button">Clear</button></div>
-        <p class="xs muted" id="opState" style="margin:14px 0 0"></p>
-      </div>
+<footer>
+  <div class="shell foot-row">
+    <span>Lumen Gate &middot; Stellar testnet engineering snapshot &middot; <span id="footerChain">horizon-testnet.stellar.org</span></span>
+    <span>Built for the Rise In x Stellar Pro Hackathon, Genesis track.</span>
+  </div>
+</footer>
+
+<dialog id="operatorDialog">
+  <form method="dialog" class="stack">
+    <div>
+      <h3 style="margin-bottom:8px">Operator token</h3>
+      <p class="note">Writing is not public. Locking a block and asking the relayer to settle both need a token, because those actions spend the operator's XLM. Reads never do.</p>
+    </div>
+    <div class="field">
+      <label for="opToken">Token</label>
+      <input id="opToken" type="password" spellcheck="false" autocomplete="off" placeholder="paste the token this deployment was started with" />
+      <span class="hint" id="opState">No token set: writes will be refused.</span>
+    </div>
+    <div class="btn-row">
+      <button class="btn primary" id="opSave" type="button">Save for this tab</button>
+      <button class="btn" id="opClear" type="button">Clear</button>
+      <button class="btn" type="button" onclick="this.closest('dialog').close()">Close</button>
     </div>
   </form>
 </dialog>

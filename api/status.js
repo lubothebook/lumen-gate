@@ -86,6 +86,12 @@ module.exports = async function handler(req, res) {
         : null,
       receipts: manifest.receipts || {},
       gasless: manifest.gasless || null,
+      // Public addresses and the defect log travel with the status payload so
+      // the console can fill a recipient field and render the findings list
+      // without a second request. Both are already published in the repository.
+      accounts: manifest.accounts || {},
+      findings: Array.isArray(manifest.findings) ? manifest.findings : [],
+      known_simplifications: Array.isArray(manifest.known_simplifications) ? manifest.known_simplifications : [],
       capabilities: capabilities(),
       honesty: {
         source_chain: 'simulated locally; the Stellar side is not',

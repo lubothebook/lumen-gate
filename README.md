@@ -98,7 +98,7 @@ The latest recorded round is **7/7** (`deployments/self-audit.json`, round 4): s
 
 ### What this round of work broke, and what that found
 
-The audit loop is only worth running if the failures are written down. This build has produced ten, all recorded in `deployments/testnet.json` under `findings`. The first four:
+The audit loop is only worth running if the failures are written down. This build has produced eleven, all recorded in `deployments/testnet.json` under `findings`. The first four:
 
 1. **The first live gasless attempt failed**: the Stellar Asset Contract rejects minting the token to the account that issues it, so the relayer-reward mint trapped and the whole transaction rolled back. The relayer now runs from a separate account that holds the wrapped asset's trustline — which is also the honest topology, because the fee payer should not be the issuer.
 2. **The relayer reported the wrong transaction hash.** It took the first 64-hex-character run out of the CLI output; the CLI echoes its arguments, and the evidence contains a 64-hex adapter id, so the adapter id was printed as the receipt. It now confirms a candidate through `getTransaction` before calling it a receipt — a hash the network has not seen is never reported.
@@ -272,6 +272,25 @@ highest_processed_nonce
 ```
 
 A nonce at or below the mark is rejected and only a higher nonce advances the mark. A separate message-ID record is retained as an additional idempotency guard.
+
+## The interface
+
+The console is built on one rule: **every value on screen comes from somewhere that can be checked.** Addresses come from the deployment manifest through the API layer, the last finalized block comes from a live simulation of the deployed registry, balances come from Horizon, and the audit table comes from the record the loop writes. Nothing is typed in by hand.
+
+The visual language comes from the project's own assets. The page background is the **source chain**: one square per block, drawn from the project tile, running the full height of the document. It is interrupted exactly once, by the wallet console, which is the only part of the page that can move value. The header and favicon use the project wordmark and mark.
+
+The wallet sits below the overview and the explanation of how settlement works, on purpose: a reader should arrive at a wallet already knowing what it is about to do. It has the two directions as tabs, an account panel that reads real balances, and a live step readout (`Lock`, `Finality`, `Mint`) whose state comes from the responses, not from a hard-coded sequence.
+
+**What it refuses to do.** A control this deployment cannot honour is disabled with the reason printed under it, never offered and then failed:
+
+| Situation | What the interface does |
+| --- | --- |
+| No operator token | the lock and settle buttons stay off, with the reason shown; the Operator dialog sets one for the tab |
+| No source adapter configured | the lock button is disabled and says so, instead of pretending to work |
+| No API layer at all (a static build) | the page says it is offline and falls back to the addresses in the generated module |
+| Relay pass takes tens of seconds | the button reports that it is running, because the pass signs, submits and waits for confirmation |
+
+All of that is checked mechanically: [`tools/check-console.js`](tools/check-console.js) resolves every element the module looks up against the markup, verifies the module parses, and confirms the images embedded in the page are still the images in `frontend/public`. It runs in the self-audit loop, so a selector typo is a failed audit round rather than an interface that loads and silently does nothing.
 
 ## The anchor facade: what it is for
 

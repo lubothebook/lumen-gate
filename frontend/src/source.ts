@@ -11,11 +11,17 @@ export async function getLatestBlock() {
   return res.json();
 }
 
-export async function lock(amount: number, recipient: string) {
+// `sender` and `recipient` reach an Address-typed argument on the gateway, so
+// they have to be real Stellar strkeys. The simulator rejects anything else
+// before it creates an event, which is why the sender is configurable rather
+// than a placeholder string.
+const SOURCE_SENDER = import.meta.env.VITE_SOURCE_SENDER || '';
+
+export async function lock(amount: number, recipient: string, sender?: string) {
   const res = await fetch(`${SIM_URL}/lock`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ amount, recipient, sender: 'frontend-demo' })
+    body: JSON.stringify({ amount, recipient, sender: sender || SOURCE_SENDER || recipient })
   });
   return res.json();
 }

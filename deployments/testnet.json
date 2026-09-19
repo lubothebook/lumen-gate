@@ -82,7 +82,12 @@
     "gateway_renounce_admin": "f3396d449411843489ae3f209efe74af823633e20e45a9d86b70ec324c2bbf0b",
     "post_renounce_mint_1_of_2": "c1f02301d26210e82b26262eeaf98f2f415fd1003e515adf27ae698f5cf24f3a",
     "post_renounce_mint_2_of_2": "2c4eedacf7d9e3efa7fc439b898ec99c4c61f092d44cbcc7edc9a5666dddbf50",
-    "post_renounce_bls_anchor_height_36": "04a785cfb54cb6ea6be9a769f9ae49e6480650f9612ed75dd2603798e914a650"
+    "post_renounce_bls_anchor_height_36": "04a785cfb54cb6ea6be9a769f9ae49e6480650f9612ed75dd2603798e914a650",
+    "console_wallet_round_trip_2_bls_anchor": "887c7af024a6ece05f02288f9aafe24d3a53ebc33b50c0447a469ac3ee0529bb",
+    "console_wallet_round_trip_2_mint_1_of_3": "97215ba232efe8f4f6c053cac44ab755be339ae8a099a3d815a5b4a661fc4029",
+    "console_wallet_round_trip_2_mint_2_of_3": "bff382a7fc15e3203d12d6393701d3cb547206f868675e488d7596f7f2800c0e",
+    "console_wallet_round_trip_2_mint_3_of_3": "f5fb010fee7fc7fc575bd6fde4cdc794ea1d34667f627cee92753f1f9b8e9ee3",
+    "relayer_trustline_change_trust_2": "bece5a45d662016d78d32552544423278ec42582d20fb046b7efedabd5a4f8a9"
   },
   "gasless": {
     "claim": "an account whose entire XLM balance equals its minimum reserve - zero spendable stroops - received wrapped tokens. It could not have paid for its own mint.",
@@ -159,6 +164,11 @@
       "id": "hosted-relay-was-unauthenticated",
       "found": "the anchor facade served CORS '*', and its relay endpoint was guarded only by the LUMEN_ALLOW_RELAY flag. Any page a visitor opened could have asked the operator to sign and pay for a relayer pass",
       "fix": "writes require a constant-time compared operator token and refuse to run when none is configured; the relay is POST-only, runs one pass at a time and holds a cooldown; CORS reflects an allowlist. The console says 'relay disabled' instead of offering a button that would fail"
+    },
+    {
+      "id": "facade-could-not-tell-a-missing-relayer-from-an-idle-one",
+      "found": "when the relayer binary was not on disk, the facade's relay endpoint returned ok:false with 'no transaction was confirmed in this pass'. That reads exactly like a healthy relayer that found nothing to do, so an operator debugging a dead deployment would look at the chain instead of at the missing binary",
+      "fix": "the spawn result is inspected and reported: a missing binary, a killed process and an empty pass now produce three different messages, and the console prints the reason instead of a generic refusal"
     }
   ],
   "negative_probes": {
@@ -301,5 +311,30 @@
     "recipient_xlm_before": "1.5000000",
     "recipient_xlm_after": "1.5000000",
     "arithmetic": "(8.7 - 0.1) + (8.7000001 - 0.1) = 17.2000001 wSRC received, 0.2 wSRC to the relayer"
+  },
+  "console_wallet_round_trip": {
+    "what": "a browser-only run of the whole flow: operator token entered in the wallet console, lock created with one click, and the relayer pass triggered from the page. No terminal was used for any step the interface exposes.",
+    "driver": "headless chromium against the dev server, so the assertions are made on the rendered page rather than on the API",
+    "source_height": 48,
+    "events_in_block": 3,
+    "merkle_depth": 2,
+    "steps": {
+      "lock": "done at source height 48",
+      "finality": "done, registry recorded height 48",
+      "mint": "done, three transactions confirmed"
+    },
+    "transactions": [
+      "887c7af024a6ece05f02288f9aafe24d3a53ebc33b50c0447a469ac3ee0529bb",
+      "97215ba232efe8f4f6c053cac44ab755be339ae8a099a3d815a5b4a661fc4029",
+      "bff382a7fc15e3203d12d6393701d3cb547206f868675e488d7596f7f2800c0e",
+      "f5fb010fee7fc7fc575bd6fde4cdc794ea1d34667f627cee92753f1f9b8e9ee3"
+    ],
+    "note": "the page reported each step from the response it received, not from a hard-coded state: the finality step reads the registry record back through /api/finality after the pass"
+  },
+  "interface_state": {
+    "language": "the page background is the source chain: one square per block, using the project's own tile. It runs the full height of the document and is interrupted once, by the wallet console, which is the only part of the page that can move value",
+    "console_position": "deliberately placed below the overview and the settlement explanation, so a reader arrives at the wallet knowing what it is about to do",
+    "wordmark": "the header and favicon use the project's own assets, embedded as data URIs so the page renders with no network at all",
+    "capability_gating": "the lock button is disabled when no source adapter is configured, the settle button when no operator is configured, and the reason is printed under the control rather than shown as a failure after the click"
   }
 }

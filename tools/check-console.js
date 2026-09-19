@@ -5,11 +5,17 @@
 // A single typo in a selector produces an interface that loads, looks finished
 // and silently does nothing - the worst failure mode a demo can have, because
 // nothing in a test suite or a contract call notices it. This walks the markup
-// and the module and insists that every element the code looks up exists, that
-// every navigation entry has a section, and that every section is reachable.
+// and the module and insists that:
+//
+//   1. every element the code looks up exists,
+//   2. every navigation target exists as an anchor on the page,
+//   3. the images embedded in the page are the images in frontend/public.
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
+const os = require('os');
+const { execFileSync } = require('child_process');
 
 const root = path.join(__dirname, '..');
 const htmlPath = path.join(root, 'frontend', 'index.html');
@@ -22,27 +28,68 @@ const ids = new Set([...html.matchAll(/\sid="([^"]+)"/g)].map((match) => match[1
 const lookups = new Set(
   [...app.matchAll(/\$\('([^']+)'\)/g), ...app.matchAll(/getElementById\('([^']+)'\)/g)].map((match) => match[1])
 );
-const stepLookups = Object.keys(
-  Object.fromEntries([...app.matchAll(/^\s+(lock|finality|mint): '([^']+)',/gm)].map((m) => [m[1], m[2]]))
-).map((key) => app.match(new RegExp(`${key}: '([^']+)'`))[1]);
+// Element ids the code reaches for through a step table rather than $().
+for (const match of app.matchAll(/^\s+(?:lock|finality|mint): '([^']+)',/gm)) lookups.add(match[1]);
 
-const navTargets = new Set([...html.matchAll(/data-nav="([^"]+)"/g)].map((match) => match[1]));
-const sections = new Set([...html.matchAll(/\sid="view-([^"]+)"/g)].map((match) => match[1]));
+const navTargets = [...html.matchAll(/data-nav="([^"]+)"/g)].map((match) => match[1]);
 
 const problems = [];
-for (const id of [...lookups, ...stepLookups]) {
-  if (!ids.has(id)) problems.push(`src/app.js looks up #${id}, which the markup does not define`);
-}
-for (const target of navTargets) {
-  if (!sections.has(target)) problems.push(`navigation entry "${target}" has no #view-${target} section`);
-}
-for (const section of sections) {
-  if (!navTargets.has(section)) problems.push(`section "#view-${section}" is not reachable from the navigation`);
+
+// The module has to be valid as a module, not just as text. A stray apostrophe
+// inside a single-quoted string parse-fails in the browser and leaves a page
+// that loads and does nothing - the exact failure this check exists to catch.
+// Node can only check ESM syntax from an .mjs path, so copy it there first.
+try {
+  const temp = path.join(os.tmpdir(), `lumen-gate-app-${process.pid}.mjs`);
+  fs.copyFileSync(appPath, temp);
+  execFileSync(process.execPath, ['--check', temp], { stdio: 'pipe' });
+  fs.unlinkSync(temp);
+} catch (error) {
+  const detail = String((error.stderr || error.message || error)).split('\n').filter((line) => line.trim()).slice(0, 3).join(' | ');
+  problems.push(`frontend/src/app.js is not valid JavaScript: ${detail}`);
 }
 
-console.log(`markup ids: ${ids.size} | code lookups: ${lookups.size + stepLookups.length} | sections: ${sections.size}`);
+for (const id of lookups) {
+  if (!ids.has(id)) problems.push(`src/app.js looks up #${id}, which the markup does not define`);
+}
+if (navTargets.length === 0) problems.push('the page has no navigation entries at all');
+for (const target of navTargets) {
+  if (!ids.has(target)) problems.push(`navigation entry "${target}" points at #${target}, which does not exist`);
+}
+for (const id of ['top', 'console', 'evidence', 'about']) {
+  if (ids.has(id) && !navTargets.includes(id)) problems.push(`section #${id} is not reachable from the navigation`);
+}
+
+// The page carries its two images as base64 so it renders with no network at
+// all (a sandboxed preview, an offline reviewer). That guarantee only holds if
+// the embedded bytes are still the bytes in frontend/public.
+const assetExpectations = [
+  { file: 'grid-tile.png', label: 'grid tile' },
+  { file: 'logo-mark.png', label: 'logo mark' },
+  { file: 'wordmark.png', label: 'wordmark' },
+  { file: 'favicon.png', label: 'favicon' },
+];
+let embeddedCount = 0;
+for (const { file, label } of assetExpectations) {
+  const assetPath = path.join(root, 'frontend', 'public', file);
+  if (!fs.existsSync(assetPath)) {
+    problems.push(`frontend/public/${file} is missing: the ${label} cannot be embedded or served`);
+    continue;
+  }
+  const wanted = crypto.createHash('sha256').update(fs.readFileSync(assetPath)).digest('hex');
+  const encoded = Buffer.from(fs.readFileSync(assetPath)).toString('base64');
+  if (!html.includes(encoded)) {
+    problems.push(`the ${label} embedded in index.html is not frontend/public/${file} (sha256 ${wanted.slice(0, 12)}): regenerate the data URI`);
+  } else {
+    embeddedCount += 1;
+  }
+}
+
+console.log(
+  `markup ids: ${ids.size} | code lookups: ${lookups.size} | nav targets: ${navTargets.length} | embedded assets verified: ${embeddedCount}/${assetExpectations.length}`
+);
 if (problems.length === 0) {
-  console.log('console wiring: every selector resolves and every section is reachable');
+  console.log('console wiring: every selector resolves, every nav target exists, embedded assets match frontend/public');
   process.exit(0);
 }
 for (const problem of problems) console.error(`  - ${problem}`);
