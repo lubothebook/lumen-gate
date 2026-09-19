@@ -72,7 +72,12 @@
     "bls_finality_accepted_height_32": "20ddf3915d5fdf5bd08e2fc92820c1bdb71da45643cac04f1824338a01a4af34",
     "forward_mint_height_32": "3d5d9936bf514b10423fe4ed4f39009899f02ae1f5cdb8b5fd16517258f57997",
     "reverse_burn": "ca0a16605acb41c1dcb1e4db2dedaf4b45e98347b013e37d8e9906a559b83340",
-    "gateway_wasm_v2_upload": "86d0e640fb4b747fdbb070ced33bd6db6a3d98ce6aa70cb9a54d6d3d7fa28ec7"
+    "gateway_wasm_v2_upload": "86d0e640fb4b747fdbb070ced33bd6db6a3d98ce6aa70cb9a54d6d3d7fa28ec7",
+    "registry_bls_accepted_height_1_console_run": "f92bfa119ca091fdfc9564c85f429969250b78c60993e92117a53dcb4d7ec30a",
+    "console_mint_1_of_3": "2091566f2d36c12132109e60508933e2966dba0d40dda380be10fbb554106769",
+    "console_mint_2_of_3": "179d0ee59d15bcdea47569b254fc848c823a1992e557242373abbf54e5351b85",
+    "console_mint_3_of_3": "2d5845626e59f9f49912422e11aeddea5a0ab73c24b6425b65906408f165cb40",
+    "relayer_trustline_change_trust": "a159f26765eeb003618a705b392ecd8ec2ceb5ba773fbe86ac11ea03de08ed5d"
   },
   "gasless": {
     "claim": "an account whose entire XLM balance equals its minimum reserve - zero spendable stroops - received wrapped tokens. It could not have paid for its own mint.",
@@ -139,6 +144,16 @@
       "id": "stellar-toml-advertised-a-fake-issuer",
       "found": "the discovery document other people's software reads declared the wrapped asset with the placeholder issuer GCEXAMPLEISSUERxxxx and also listed USDC, an asset this deployment does not issue",
       "fix": "the issuer is the real account, the phantom currency is gone, and the entry now carries status, conditions and an explicit note that this is a testnet demonstration asset"
+    },
+    {
+      "id": "source-sender-was-not-validated",
+      "found": "the simulator accepted any string as the source-chain sender and hashed it into the message id. The gateway carries that field in an Address-typed argument, so a plain string like 'G-source-user' passed the simulator, was signed into BLS evidence, was accepted and anchored by the registry - and only then failed in the CLI with 'Account alias not Found'. The result was a half-settled block: a permanent on-chain finality record for a message that could never be minted, paid for",
+      "fix": "the simulator validates the sender and the recipient as Stellar strkeys (checksum included) before it creates an event, so the failure happens at the boundary where the operator can still correct it. Covered by three unit tests, including the exact string that caused the half-settled block"
+    },
+    {
+      "id": "hosted-relay-was-unauthenticated",
+      "found": "the anchor facade served CORS '*', and its relay endpoint was guarded only by the LUMEN_ALLOW_RELAY flag. Any page a visitor opened could have asked the operator to sign and pay for a relayer pass",
+      "fix": "writes require a constant-time compared operator token and refuse to run when none is configured; the relay is POST-only, runs one pass at a time and holds a cooldown; CORS reflects an allowlist. The console says 'relay disabled' instead of offering a button that would fail"
     }
   ],
   "negative_probes": {
@@ -248,5 +263,21 @@
     "no bond, fee or slashing economic layer",
     "the Groth16 lane is a quorum and root-binding proof, not a signature proof",
     "self-audit checks are behavioural probes against the live registry, not formal verification"
-  ]
+  ],
+  "console_round_trip": {
+    "what": "the browser console itself drove a settlement end to end: it read live status through /api/status, created three lock events on the source chain through POST /api/source?path=/lock, and asked the operator facade for one relayer pass through POST /api/relay. No terminal was involved in steps that the console exposes.",
+    "source_height": 1,
+    "source_sender": "GBUZQFEVG3M3COEW3MTWTGXACCRZIYAS2ROVG2QR5VMAB3D7NI6SFUQQ",
+    "events_in_block": 3,
+    "merkle_depth": 2,
+    "recipient": "GCN65ER7FFAKQCECCWMUQVNGK5AQQIBON6KIJBO5FIYTHLXV4EFGVYGM",
+    "relayer": "GCWG62VXMQ6JNW2NJNCIJQS2HPN5VAMDDXSKIFEWE42EAQ3MA26CNVXC",
+    "recipient_wsrc_before": "19.9000000",
+    "recipient_wsrc_after": "60.7000003",
+    "recipient_xlm_before": "1.5000000",
+    "recipient_xlm_after": "1.5000000",
+    "relayer_wsrc_after": "0.3000000",
+    "relayer_xlm_spent": "0.0746712",
+    "note": "the recipient's XLM is identical before and after: the inbound direction is gasless for the user. The relayer paid every fee and was repaid 0.1 wSRC per message out of the locked amount. The arithmetic reconciles exactly: (13.7 + 13.7000001 + 13.7000002) - 3 x 0.1 = 40.8000003 wSRC received, 0.3 wSRC to the relayer."
+  }
 }

@@ -541,31 +541,145 @@ async fn get_block(
     }
 }
 
+// ---------------------------------------------------------------------------
+// Account validation
+//
+// The source-chain sender and the Stellar recipient both travel into an
+// `Address`-typed field on the gateway, and `stellar contract invoke` resolves
+// that field by parsing a strkey. A plain string like `G-source-user` is
+// therefore accepted by this simulator, hashed into the evidence, written to
+// the registry as a finalized block, and only *then* rejected by the CLI with
+// "Account alias ... not Found" - a settlement that half-happened, paid for,
+// with the source block already anchored. Validate at the boundary instead.
+
+/// CRC16-XMODEM, the checksum Stellar strkeys carry.
+fn crc16_xmodem(data: &[u8]) -> u16 {
+    let mut crc = 0u16;
+    for byte in data {
+        crc ^= (*byte as u16) << 8;
+        for _ in 0..8 {
+            crc = if crc & 0x8000 != 0 { (crc << 1) ^ 0x1021 } else { crc << 1 };
+        }
+    }
+    crc
+}
+
+/// True for a 56-character account strkey (`G...`) with a valid checksum.
+fn is_stellar_account(value: &str) -> bool {
+    if value.len() != 56 || !value.starts_with('G') {
+        return false;
+    }
+    const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+    let mut acc = 0u32;
+    let mut bits = 0u32;
+    let mut decoded: Vec<u8> = Vec::with_capacity(35);
+    for symbol in value.bytes() {
+        let Some(index) = ALPHABET.iter().position(|candidate| *candidate == symbol) else {
+            return false;
+        };
+        acc = (acc << 5) | index as u32;
+        bits += 5;
+        if bits >= 8 {
+            bits -= 8;
+            decoded.push(((acc >> bits) & 0xff) as u8);
+        }
+    }
+    // 1 version byte + 32 key bytes + 2 checksum bytes (little-endian).
+    if decoded.len() < 35 {
+        return false;
+    }
+    let payload = &decoded[0..33];
+    let checksum = u16::from_le_bytes([decoded[33], decoded[34]]);
+    crc16_xmodem(payload) == checksum
+}
+
+/// The sender recorded for a lock. `SOURCE_SENDER` lets an operator point the
+/// demo at a different source-chain account, which matters when the gateway's
+/// nonce high-water mark for the previous one is already spent: the high-water
+/// mark is keyed on (source domain, target domain, sender), so a fresh sender
+/// is the only way to replay the demo against a live gateway.
+fn default_sender(recipient: &str) -> String {
+    std::env::var("SOURCE_SENDER").unwrap_or_else(|_| recipient.to_string())
+}
+
 async fn post_lock(
     State(state): State<SharedState>,
     Json(req): Json<LockRequest>,
-) -> Json<LockResponse> {
+) -> Result<Json<LockResponse>, (StatusCode, String)> {
+    if !is_stellar_account(&req.recipient) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!(
+                "recipient {} is not a Stellar account strkey: the gateway carries it in an Address field, so an invalid string would only fail after the block had been anchored",
+                req.recipient
+            ),
+        ));
+    }
+    let sender = req.sender.clone().unwrap_or_else(|| default_sender(&req.recipient));
+    if !is_stellar_account(&sender) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!(
+                "sender {sender} is not a Stellar account strkey: the gateway carries it in an Address field, so an invalid string would only fail after the block had been anchored"
+            ),
+        ));
+    }
     let mut s = state.lock().unwrap();
     let count = req.count.unwrap_or(1).clamp(1, 64);
     let mut events = Vec::with_capacity(count as usize);
     for index in 0..count {
         let recipient = req.recipient.clone();
-        let sender = req.sender.clone().unwrap_or_else(|| recipient.clone());
         // Offset each amount by its index so repeated locks in the same block
         // get distinct payload hashes. Identical leaves would still be a valid
         // tree, but distinct ones make the sibling path observable in tests.
-        events.push(s.add_lock_event(req.amount + index as u64, recipient, sender));
+        events.push(s.add_lock_event(req.amount + index as u64, recipient, sender.clone()));
     }
     s.produce_block();
     let height = s.latest_height;
     // add_lock_event appends at latest_height + 1, so every event in this loop
     // lands in the block produced below, in the order they were created.
     let last = events.last().cloned().expect("count is clamped to at least 1");
-    Json(LockResponse {
+    Ok(Json(LockResponse {
         event: last,
         events,
         block_height: height,
-    })
+    }))
+}
+
+#[cfg(test)]
+mod account_tests {
+    use super::{crc16_xmodem, is_stellar_account};
+
+    // Real testnet accounts, used as the vectors this checker must accept.
+    const DEPLOYER: &str = "GBYFDKP4KLQ575HTJRDTHF4HUIVXAQLJNEZMWYJ5HBY3C3GDSPX5H4FR";
+    const RELAYER: &str = "GBDJAEDH5KA4GFZQV3BAD54GN6GS3S3MS23R6SE2RUMHZBIYVMQJZTHD";
+
+    #[test]
+    fn accepts_real_account_strkeys() {
+        assert!(is_stellar_account(DEPLOYER));
+        assert!(is_stellar_account(RELAYER));
+    }
+
+    #[test]
+    fn rejects_plain_strings_and_near_misses() {
+        // The exact string that produced the half-settled block during the
+        // console demo: accepted by the simulator, rejected by the CLI.
+        assert!(!is_stellar_account("G-source-user"));
+        assert!(!is_stellar_account(""));
+        assert!(!is_stellar_account("GABC"));
+        // Valid shape, wrong checksum.
+        let mut broken = String::from(DEPLOYER);
+        broken.replace_range(10..11, "A");
+        assert!(!is_stellar_account(&broken));
+        // Lower case is not the strkey alphabet.
+        assert!(!is_stellar_account(&DEPLOYER.to_lowercase()));
+    }
+
+    #[test]
+    fn crc16_matches_the_known_vector() {
+        // CRC16-XMODEM of "123456789" is 0x31C3.
+        assert_eq!(crc16_xmodem(b"123456789"), 0x31C3);
+    }
 }
 
 async fn post_unlock(

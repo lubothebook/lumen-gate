@@ -11,11 +11,39 @@ const API = '';
 const EXPLORER_TX = 'https://stellar.expert/explorer/testnet/tx/';
 const EXPLORER_CONTRACT = 'https://stellar.expert/explorer/testnet/contract/';
 
+// Storage access is wrapped because a sandboxed or privacy-restricted context
+// throws on the first touch, and a console that does not render because of a
+// storage exception is worse than one that keeps the token in memory.
+const store = {
+  get(key) {
+    try {
+      return window.sessionStorage.getItem(key) || '';
+    } catch {
+      return '';
+    }
+  },
+  set(key, value) {
+    try {
+      window.sessionStorage.setItem(key, value);
+      return true;
+    } catch {
+      return false;
+    }
+  },
+  clear(key) {
+    try {
+      window.sessionStorage.removeItem(key);
+    } catch {
+      /* nothing to clear */
+    }
+  },
+};
+
 const state = {
   status: null,
   source: null,
   lock: null,
-  operatorToken: sessionStorage.getItem('lumen.operatorToken') || '',
+  operatorToken: store.get('lumen.operatorToken'),
   wallet: null,
 };
 
@@ -540,13 +568,14 @@ function wire() {
   $('operatorBtn').addEventListener('click', operatorDialog);
   $('opSave').addEventListener('click', () => {
     state.operatorToken = $('opToken').value.trim();
-    sessionStorage.setItem('lumen.operatorToken', state.operatorToken);
+    const persisted = store.set('lumen.operatorToken', state.operatorToken);
+    if (!persisted) log('bridgeLog', 'The browser refused session storage, so the token is kept in memory for this page only.', 'warn');
     $('operatorDialog').close();
     loadStatus();
   });
   $('opClear').addEventListener('click', () => {
     state.operatorToken = '';
-    sessionStorage.removeItem('lumen.operatorToken');
+    store.clear('lumen.operatorToken');
     $('opToken').value = '';
     $('opState').textContent = 'Token cleared.';
     loadStatus();

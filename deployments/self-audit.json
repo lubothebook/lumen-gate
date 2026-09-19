@@ -1,12 +1,12 @@
 {
   "note": "Written by the Lumen Gate self-audit loop. Each entry is one round of probes against the live deployed registry.",
-  "updated_at": "2026-09-19T18:04:09.333Z",
+  "updated_at": "2026-09-19T18:19:47.179Z",
   "latest": {
-    "round": 2,
-    "started_at": "2026-09-19T18:04:04.074Z",
-    "finished_at": "2026-09-19T18:04:09.333Z",
-    "checks_passed": 5,
-    "checks_total": 5,
+    "round": 3,
+    "started_at": "2026-09-19T18:19:35.381Z",
+    "finished_at": "2026-09-19T18:19:47.179Z",
+    "checks_passed": 6,
+    "checks_total": 6,
     "all_passed": true,
     "registry": "CCXJDQMTJUGXKNFOQPC25IYVOAVWDMLJBNQYX75MAREHV7MZMU5OSEN4",
     "network": "testnet",
@@ -14,7 +14,7 @@
       {
         "check": "source_chain_reachable",
         "passed": true,
-        "detail": "simulator produced height 306"
+        "detail": "simulator produced height 17"
       },
       {
         "check": "honest_evidence_accepted",
@@ -35,6 +35,11 @@
         "check": "admin_capability_renounced",
         "passed": true,
         "detail": "admin capability has been permanently given up"
+      },
+      {
+        "check": "console_wiring_consistent",
+        "passed": true,
+        "detail": "console wiring: every selector resolves and every section is reachable"
       }
     ]
   },
@@ -110,6 +115,48 @@
           "check": "admin_capability_renounced",
           "passed": true,
           "detail": "admin capability has been permanently given up"
+        }
+      ]
+    },
+    {
+      "round": 3,
+      "started_at": "2026-09-19T18:19:35.381Z",
+      "finished_at": "2026-09-19T18:19:47.179Z",
+      "checks_passed": 6,
+      "checks_total": 6,
+      "all_passed": true,
+      "registry": "CCXJDQMTJUGXKNFOQPC25IYVOAVWDMLJBNQYX75MAREHV7MZMU5OSEN4",
+      "network": "testnet",
+      "checks": [
+        {
+          "check": "source_chain_reachable",
+          "passed": true,
+          "detail": "simulator produced height 17"
+        },
+        {
+          "check": "honest_evidence_accepted",
+          "passed": true,
+          "detail": "contract returned an attestation"
+        },
+        {
+          "check": "replay_rejected",
+          "passed": true,
+          "detail": "#9 EvidenceAlreadyProcessed"
+        },
+        {
+          "check": "tampered_signature_rejected",
+          "passed": true,
+          "detail": "#7 InvalidSignature"
+        },
+        {
+          "check": "admin_capability_renounced",
+          "passed": true,
+          "detail": "admin capability has been permanently given up"
+        },
+        {
+          "check": "console_wiring_consistent",
+          "passed": true,
+          "detail": "console wiring: every selector resolves and every section is reachable"
         }
       ]
     }

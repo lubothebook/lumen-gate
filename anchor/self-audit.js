@@ -7,11 +7,13 @@
  * what it saw, with timestamps, so a reader does not have to take anyone's
  * word for it.
  *
- * Every round it asks four questions:
- *   1. Does a fresh, honest proof still get ACCEPTED?
- *   2. Is a replay of the exact same evidence still REJECTED?
- *   3. Is a proof with one tampered signature still REJECTED?
- *   4. Has the admin capability actually been given up yet?
+ * Every round it asks six questions:
+ *   1. Is the source chain reachable at all?
+ *   2. Does a fresh, honest proof still get ACCEPTED?
+ *   3. Is a replay of the exact same evidence still REJECTED?
+ *   4. Is a proof with one tampered signature still REJECTED?
+ *   5. Has the admin capability actually been given up yet?
+ *   6. Does the console still resolve every element it looks up?
  *
  * It holds no mint authority and can approve nothing. It only submits probes
  * and records verdicts. If it dies, nothing in the settlement path changes.
@@ -31,11 +33,17 @@
 const { execFile } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
+const ROOT = path.join(__dirname, "..");
 const http = require("node:http");
 
 const REGISTRY_ID = process.env.REGISTRY_ID || "";
 const NETWORK = process.env.NETWORK || "testnet";
 const SOURCE = process.env.STELLAR_SOURCE || "lumen-deployer";
+// A real testnet account, used as the source-chain sender and recipient of the
+// audit probe. It has to be a valid strkey; see the note in runRound.
+const AUDIT_ACCOUNT =
+  process.env.AUDIT_ACCOUNT || "GBYFDKP4KLQ575HTJRDTHF4HUIVXAQLJNEZMWYJ5HBY3C3GDSPX5H4FR";
+
 const SIM_URL = process.env.SIM_URL || "http://127.0.0.1:8080";
 const DOMAIN = process.env.DOMAIN || "source-testnet";
 const INTERVAL = Number(process.env.AUDIT_INTERVAL || 300000);
@@ -196,9 +204,16 @@ async function runRound() {
   // reject it.
   let proof;
   try {
+    // The recipient and the sender must be valid Stellar strkeys: the gateway
+    // carries both in Address-typed arguments, so a placeholder like
+    // "audit-probe" would produce a block that gets anchored and can never be
+    // minted. The simulator refuses it now, and this probe uses the deployer
+    // account so the audit exercises the same shape a real settlement uses.
+    const probeAccount = AUDIT_ACCOUNT;
     const lock = await postJson(`${SIM_URL}/lock`, {
       amount: 1000 + round,
-      recipient: "audit-probe",
+      recipient: probeAccount,
+      sender: probeAccount,
     });
     proof = await getJson(`${SIM_URL}/proof?domain=${DOMAIN}&height=${lock.block_height}`);
   } catch (e) {
@@ -266,6 +281,19 @@ async function runRound() {
       ? "admin key is STILL LIVE -- bootstrap trust point has not been given up yet"
       : "admin capability has been permanently given up"
   );
+
+  // The console is part of the product surface, so a broken selector is a
+  // defect the loop should catch. tools/check-console.js resolves every element
+  // the module looks up against the markup.
+  try {
+    const { execFileSync } = require("node:child_process");
+    const output = execFileSync(process.execPath, [path.join(ROOT, "tools", "check-console.js")], {
+      encoding: "utf8",
+    });
+    record("console_wiring_consistent", true, output.trim().split("\n").pop());
+  } catch (e) {
+    record("console_wiring_consistent", false, String((e.stdout || e.message || e)).trim().split("\n").pop());
+  }
 
   return finish(startedAt, checks);
 }
