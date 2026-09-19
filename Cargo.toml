@@ -4,6 +4,7 @@ members = [
   "contracts/settlement_gateway",
   "crates/source_simulator",
   "crates/relayer",
+  "crates/domain_adapter",
 ]
 resolver = "2"
 
