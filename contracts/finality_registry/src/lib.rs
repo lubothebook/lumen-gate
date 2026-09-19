@@ -1251,7 +1251,9 @@ impl FinalityRegistry {
 
         // -- parse the payload and re-derive the declared fields --------------
         let decoded = parse_execution_payload(&env, &evidence.payload)?;
-        if decoded.height != evidence.declared_height || decoded.state_root != evidence.declared_root {
+        if decoded.height != evidence.declared_height
+            || decoded.state_root != evidence.declared_root
+        {
             return Err(RegistryError::DeclaredMismatch);
         }
 
@@ -2665,7 +2667,11 @@ mod test {
         }
         // the leading bytes are asserted zero by the vectors themselves
         for i in 0u32..24 {
-            assert_eq!(input.get(i).unwrap_or(1), 0, "public scalar must be canonical");
+            assert_eq!(
+                input.get(i).unwrap_or(1),
+                0,
+                "public scalar must be canonical"
+            );
         }
         u64::from_be_bytes(raw)
     }
@@ -2675,8 +2681,14 @@ mod test {
         let inputs = ex_inputs(env);
         let mut payload = Bytes::new(env);
         payload.append(&Bytes::from_array(env, &height.to_le_bytes()));
-        payload.append(&Bytes::from_array(env, &inputs.get(EX_FINAL_ROOT as u32).unwrap().to_array()));
-        payload.append(&Bytes::from_array(env, &inputs.get(EX_INITIAL_ROOT as u32).unwrap().to_array()));
+        payload.append(&Bytes::from_array(
+            env,
+            &inputs.get(EX_FINAL_ROOT as u32).unwrap().to_array(),
+        ));
+        payload.append(&Bytes::from_array(
+            env,
+            &inputs.get(EX_INITIAL_ROOT as u32).unwrap().to_array(),
+        ));
         payload.append(&Bytes::from_array(
             env,
             &public_u64(&inputs.get(EX_FINAL_PC as u32).unwrap()).to_le_bytes(),
@@ -2789,11 +2801,8 @@ mod test {
         let (client, _admin, domain) = ex_registry(&env);
 
         let cpu_before = env.budget().cpu_instruction_cost();
-        let attestation = client.submit_execution_zk(
-            &ex_evidence(&env, 41),
-            &ex_proof(&env),
-            &ex_inputs(&env),
-        );
+        let attestation =
+            client.submit_execution_zk(&ex_evidence(&env, 41), &ex_proof(&env), &ex_inputs(&env));
         let cpu_after = env.budget().cpu_instruction_cost();
         std::println!(
             "[proving-system] execution lane: pairing check over a 256-byte proof and a \
@@ -2917,8 +2926,7 @@ mod test {
             }
         }
         inputs = tampered;
-        let res =
-            client.try_submit_execution_zk(&ex_evidence(&env, 46), &ex_proof(&env), &inputs);
+        let res = client.try_submit_execution_zk(&ex_evidence(&env, 46), &ex_proof(&env), &inputs);
         assert!(
             matches!(res, Err(Ok(RegistryError::DeclaredMismatch))),
             "expected DeclaredMismatch, got {:?}",
@@ -3012,8 +3020,7 @@ mod test {
         for index in 0..(EXECUTION_PUBLIC_INPUTS - 1) {
             short.push_back(inputs.get(index).unwrap());
         }
-        let res =
-            client.try_submit_execution_zk(&ex_evidence(&env, 50), &ex_proof(&env), &short);
+        let res = client.try_submit_execution_zk(&ex_evidence(&env, 50), &ex_proof(&env), &short);
         assert!(
             matches!(res, Err(Ok(RegistryError::InvalidProof))),
             "expected InvalidProof, got {:?}",
@@ -3073,8 +3080,11 @@ mod test {
             replay
         );
 
-        let backwards =
-            client.try_submit_execution_zk(&ex_evidence(&env, 5), &ex_proof(&env), &ex_inputs(&env));
+        let backwards = client.try_submit_execution_zk(
+            &ex_evidence(&env, 5),
+            &ex_proof(&env),
+            &ex_inputs(&env),
+        );
         assert!(
             matches!(backwards, Err(Ok(RegistryError::EvidenceAlreadyProcessed))),
             "expected the trail to refuse a height that does not advance, got {:?}",

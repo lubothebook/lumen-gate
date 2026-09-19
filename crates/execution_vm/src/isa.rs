@@ -180,7 +180,11 @@ mod tests {
         assert_eq!((word >> 8) & 0x1F, 1, "rd occupies the next five bits");
         assert_eq!((word >> 13) & 0x1F, 2, "rs1 follows rd");
         assert_eq!((word >> 18) & 0x1F, 3, "rs2 follows rs1");
-        assert_eq!(decode(word).unwrap(), instruction, "a word decodes to itself");
+        assert_eq!(
+            decode(word).unwrap(),
+            instruction,
+            "a word decodes to itself"
+        );
     }
 
     #[test]

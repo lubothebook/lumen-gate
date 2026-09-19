@@ -114,7 +114,11 @@ pub fn check_trace(trace: &Trace) -> Result<(), TraceViolation> {
     // Boundary, first row: the machine starts where the trace says it starts.
     let first = &trace.steps[0];
     if first.clk != 0 {
-        return Err(violation("clock_start", 0, "the first row's clock is not zero"));
+        return Err(violation(
+            "clock_start",
+            0,
+            "the first row's clock is not zero",
+        ));
     }
     if first.pc != trace.initial_pc {
         return Err(violation(
@@ -171,9 +175,7 @@ pub fn check_trace(trace: &Trace) -> Result<(), TraceViolation> {
                 return Err(violation(
                     "register_index_range",
                     row,
-                    format!(
-                        "{name} is {index}, the register file has {REGISTERS} registers"
-                    ),
+                    format!("{name} is {index}, the register file has {REGISTERS} registers"),
                 ));
             }
         }
@@ -214,7 +216,10 @@ pub fn check_trace(trace: &Trace) -> Result<(), TraceViolation> {
             violation(
                 "program_decodes",
                 row,
-                format!("the committed word at pc {} does not decode: {error}", step.pc),
+                format!(
+                    "the committed word at pc {} does not decode: {error}",
+                    step.pc
+                ),
             )
         })?;
         if committed.opcode != opcode {
@@ -228,7 +233,12 @@ pub fn check_trace(trace: &Trace) -> Result<(), TraceViolation> {
             ));
         }
         if (step.rd_idx, step.rs1_idx, step.rs2_idx, step.imm)
-            != (committed.rd, committed.rs1, committed.rs2, committed.imm as i64)
+            != (
+                committed.rd,
+                committed.rs1,
+                committed.rs2,
+                committed.imm as i64,
+            )
         {
             return Err(violation(
                 "program_operands",
@@ -526,7 +536,10 @@ mod tests {
         trace.steps[3].mem_val = Some(0);
         trace.steps[3].rd_val_new = 0;
         trace.steps[3].regs[2] = 0;
-        assert_eq!(check_trace(&trace).unwrap_err().kind, "memory_value_mismatch");
+        assert_eq!(
+            check_trace(&trace).unwrap_err().kind,
+            "memory_value_mismatch"
+        );
     }
 
     #[test]

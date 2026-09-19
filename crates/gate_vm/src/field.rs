@@ -19,7 +19,8 @@ use num_traits::{One, Zero};
 /// and the test below re-checks that pairing digit by digit: a mistyped
 /// decimal here would not fail loudly, it would build a *wrong field* the
 /// circuit quietly refuses.
-const MODULUS: &str = "21888242871839275222246405745257275088548364400416034343698204186575808495617";
+const MODULUS: &str =
+    "21888242871839275222246405745257275088548364400416034343698204186575808495617";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Fp {
@@ -27,7 +28,9 @@ pub struct Fp {
 }
 
 impl Fp {
-    pub const ZERO: Fp = Fp { limbs: [0, 0, 0, 0] };
+    pub const ZERO: Fp = Fp {
+        limbs: [0, 0, 0, 0],
+    };
     pub const ONE: Fp = Fp {
         limbs: [1, 0, 0, 0],
     };
@@ -228,7 +231,11 @@ mod tests {
         )
         .unwrap();
         assert_eq!(m, want);
-        assert_eq!(m.bits(), 254, "p must be 254 bits; anything else is not this curve's field");
+        assert_eq!(
+            m.bits(),
+            254,
+            "p must be 254 bits; anything else is not this curve's field"
+        );
     }
 
     #[test]

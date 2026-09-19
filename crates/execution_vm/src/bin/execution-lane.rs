@@ -110,7 +110,8 @@ fn main() {
     let rendered = format!("{}\n", serde_json::to_string_pretty(&document).unwrap());
     match out {
         Some(path) => {
-            fs::write(&path, rendered).unwrap_or_else(|error| fail(&format!("cannot write {path}: {error}")));
+            fs::write(&path, rendered)
+                .unwrap_or_else(|error| fail(&format!("cannot write {path}: {error}")));
             eprintln!(
                 "execution lane: {} rows, {} steps executed, {} gas, final pc {}, memory[0] = {}",
                 LANE_STEPS,

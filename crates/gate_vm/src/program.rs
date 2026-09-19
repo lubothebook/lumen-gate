@@ -69,13 +69,25 @@ mod tests {
     fn test_padding_is_halt_not_zero() {
         let cells = assemble(&[Inst::new(Opcode::Move, 0, 0, 2)]);
         assert_eq!(cells[1..], [HALT_CELL; PROGRAM_LINES - 1]);
-        assert_ne!(HALT_CELL, 0, "the padded cell must not alias the Move opcode");
+        assert_ne!(
+            HALT_CELL, 0,
+            "the padded cell must not alias the Move opcode"
+        );
     }
 
     #[test]
     fn test_program_root_is_a_commitment() {
-        let a = program_root(&assemble(&[Inst::new(Opcode::Move, 0, 0, 2), Inst::new(Opcode::Halt, 0, 0, 0)]));
-        let b = program_root(&assemble(&[Inst::new(Opcode::Move, 0, 0, 2), Inst::new(Opcode::Halt, 1, 0, 0)]));
-        assert_ne!(a, b, "two programs that differ only after the halt must still differ");
+        let a = program_root(&assemble(&[
+            Inst::new(Opcode::Move, 0, 0, 2),
+            Inst::new(Opcode::Halt, 0, 0, 0),
+        ]));
+        let b = program_root(&assemble(&[
+            Inst::new(Opcode::Move, 0, 0, 2),
+            Inst::new(Opcode::Halt, 1, 0, 0),
+        ]));
+        assert_ne!(
+            a, b,
+            "two programs that differ only after the halt must still differ"
+        );
     }
 }

@@ -88,7 +88,6 @@ end:
     halt
 ";
 
-
 /// Rows in one proof. Also the machine's step budget: a run that needs more
 /// steps than this cannot be proved in one proof.
 pub const LANE_STEPS: usize = 20;
@@ -350,7 +349,10 @@ fn one_hot(index: usize, width: usize) -> Vec<String> {
 /// and the memory one-hot. If this function and the circuit disagree about any
 /// of them the honest witness stops satisfying a constraint, which is the point
 /// of the shared negative test matrix.
-pub fn lane_witness(trace: &Trace, statement: &LaneStatement) -> Result<ExecutionWitness, LaneError> {
+pub fn lane_witness(
+    trace: &Trace,
+    statement: &LaneStatement,
+) -> Result<ExecutionWitness, LaneError> {
     check_lane_trace(trace, statement)?;
 
     let steps = trace.steps.len();
@@ -432,7 +434,11 @@ pub fn lane_witness(trace: &Trace, statement: &LaneStatement) -> Result<Executio
         let selector_index = SELECTOR_OPCODES
             .iter()
             .position(|candidate| *candidate == opcode)
-            .ok_or_else(|| refuse(format!("row {row} runs an opcode outside the selector table")))?;
+            .ok_or_else(|| {
+                refuse(format!(
+                    "row {row} runs an opcode outside the selector table"
+                ))
+            })?;
         witness
             .op_sel
             .push(one_hot(selector_index, SELECTOR_OPCODES.len()));
@@ -448,9 +454,10 @@ pub fn lane_witness(trace: &Trace, statement: &LaneStatement) -> Result<Executio
         witness
             .rs2_sel
             .push(one_hot(step.rs2_idx as usize, REGISTERS));
-        witness
-            .mem_sel
-            .push(one_hot(step.addr_or_zero() as usize % MEMORY_WORDS, MEMORY_WORDS));
+        witness.mem_sel.push(one_hot(
+            step.addr_or_zero() as usize % MEMORY_WORDS,
+            MEMORY_WORDS,
+        ));
 
         // the carries, the multiply quotient and the costing
         let carry_add = u64::from(step.rs1_val as u128 + step.rs2_val as u128 >= 1u128 << 64);
@@ -458,13 +465,11 @@ pub fn lane_witness(trace: &Trace, statement: &LaneStatement) -> Result<Executio
         let quotient = ((step.rs1_val as u128 * step.rs2_val as u128) >> 64) as u64;
         witness.carries_add.push(carry_add.to_string());
         witness.carries_sub.push(carry_sub.to_string());
-        witness
-            .quotient_mul
-            .push(if opcode == Opcode::Mul {
-                quotient.to_string()
-            } else {
-                "0".to_string()
-            });
+        witness.quotient_mul.push(if opcode == Opcode::Mul {
+            quotient.to_string()
+        } else {
+            "0".to_string()
+        });
 
         gas += opcode.gas();
 
@@ -478,8 +483,12 @@ pub fn lane_witness(trace: &Trace, statement: &LaneStatement) -> Result<Executio
             }
             memory[address] = step.rs2_val;
         }
-        witness.regs.push(step.regs.iter().map(u64::to_string).collect());
-        witness.mem.push(memory.iter().map(u64::to_string).collect());
+        witness
+            .regs
+            .push(step.regs.iter().map(u64::to_string).collect());
+        witness
+            .mem
+            .push(memory.iter().map(u64::to_string).collect());
     }
 
     if gas != statement.gas_used {
@@ -503,7 +512,6 @@ mod tests {
     use super::*;
     use crate::asm::assemble;
     use crate::vm::Vm;
-
 
     fn lane_program() -> Vec<u64> {
         let mut words = assemble(DEMO_PROGRAM_SOURCE).expect("the demonstration program assembles");
@@ -613,8 +621,14 @@ mod tests {
         .unwrap();
         program.resize(LANE_PROGRAM_WORDS, 0);
         let mut vm = Vm::new();
-        assert_eq!(vm.run(&program, LANE_STEPS), Err(crate::vm::VmError::StepLimitExceeded));
+        assert_eq!(
+            vm.run(&program, LANE_STEPS),
+            Err(crate::vm::VmError::StepLimitExceeded)
+        );
         let trace = pad_to(&vm.trace(&program), LANE_STEPS).unwrap_err();
-        assert!(trace.0.contains("did not end by executing a halt"), "{trace}");
+        assert!(
+            trace.0.contains("did not end by executing a halt"),
+            "{trace}"
+        );
     }
 }

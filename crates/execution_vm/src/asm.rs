@@ -61,7 +61,10 @@ fn parse_literal(token: &str) -> Result<i64, AsmError> {
     };
     // A literal is a plain integer, or a hexadecimal one, and it may use the
     // whole 64-bit width: `0xFFFFFFFFFFFFFFFF` is the wrapping minus one.
-    let value: i64 = if let Some(hex) = digits.strip_prefix("0x").or_else(|| digits.strip_prefix("0X")) {
+    let value: i64 = if let Some(hex) = digits
+        .strip_prefix("0x")
+        .or_else(|| digits.strip_prefix("0X"))
+    {
         match i64::from_str_radix(hex, 16) {
             Ok(value) => value,
             Err(_) => u64::from_str_radix(hex, 16)

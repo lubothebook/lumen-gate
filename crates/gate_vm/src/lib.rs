@@ -33,5 +33,7 @@ pub use field::Fp;
 pub use isa::{Inst, Opcode};
 pub use poseidon::poseidon2;
 pub use program::{assemble, demo_program, program_root};
-pub use vm::{run, Receipt, VmError};
-pub use witness::{circom_input, payload, public_inputs, DOMAIN_TAG_DEC, DOMAIN_TAG_HEX, PAYLOAD_LEN};
+pub use vm::{Receipt, VmError, run};
+pub use witness::{
+    DOMAIN_TAG_DEC, DOMAIN_TAG_HEX, PAYLOAD_LEN, circom_input, payload, public_inputs,
+};

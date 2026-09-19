@@ -295,7 +295,9 @@ impl Default for Vm {
 pub fn word_address(value: u64, imm: i32) -> Result<usize, VmError> {
     let offset = imm as i64;
     let base = i64::try_from(value).map_err(|_| VmError::InvalidMemoryAccess)?;
-    let address = base.checked_add(offset).ok_or(VmError::InvalidMemoryAccess)?;
+    let address = base
+        .checked_add(offset)
+        .ok_or(VmError::InvalidMemoryAccess)?;
     if address < 0 || address >= MEMORY_WORDS as i64 {
         return Err(VmError::InvalidMemoryAccess);
     }

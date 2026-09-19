@@ -34,9 +34,13 @@ pub enum VmError {
 impl std::fmt::Display for VmError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            VmError::InvalidProgram => write!(f, "a program cell does not decode into a valid instruction"),
+            VmError::InvalidProgram => {
+                write!(f, "a program cell does not decode into a valid instruction")
+            }
             VmError::NoHalt => write!(f, "the program did not halt inside the execution window"),
-            VmError::AssertionFailed => write!(f, "an AssertEq instruction compared two different values"),
+            VmError::AssertionFailed => {
+                write!(f, "an AssertEq instruction compared two different values")
+            }
         }
     }
 }
@@ -65,7 +69,12 @@ pub struct Receipt {
 
 /// Run the machine over `program` with the two public input elements, for
 /// exactly `window` rows (the last of which must find the machine halted).
-pub fn run(program: &[u16; PROGRAM_LINES], start: &Fp, event: &Fp, window: usize) -> Result<Receipt, VmError> {
+pub fn run(
+    program: &[u16; PROGRAM_LINES],
+    start: &Fp,
+    event: &Fp,
+    window: usize,
+) -> Result<Receipt, VmError> {
     let mut insts = Vec::with_capacity(PROGRAM_LINES);
     for cell in program {
         insts.push(Inst::decode(*cell).ok_or(VmError::InvalidProgram)?);
@@ -224,7 +233,10 @@ mod tests {
         ]);
         let receipt = run(&program, &Fp::from_u64(3), &Fp::from_u64(4), 8).expect("halts");
         assert_eq!(receipt.hash_steps, 1);
-        assert_eq!(receipt.output, poseidon2(&Fp::from_u64(3), &Fp::from_u64(4)));
+        assert_eq!(
+            receipt.output,
+            poseidon2(&Fp::from_u64(3), &Fp::from_u64(4))
+        );
     }
 
     #[test]

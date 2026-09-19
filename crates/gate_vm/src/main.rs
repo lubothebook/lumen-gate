@@ -11,7 +11,7 @@ use gate_vm::field::Fp;
 use gate_vm::isa::{Inst, Opcode, PROGRAM_LINES};
 use gate_vm::poseidon::poseidon2;
 use gate_vm::program::{assemble, demo_program, program_root};
-use gate_vm::vm::{run, VmError};
+use gate_vm::vm::{VmError, run};
 use gate_vm::witness;
 
 fn parse_op(word: &str) -> Option<Opcode> {
@@ -138,7 +138,7 @@ fn main() -> Result<(), String> {
                 "the program did not halt inside the window; no witness is emitted for an \
                  execution that did not finish"
                     .to_string(),
-            )
+            );
         }
         Err(other) => return Err(other.to_string()),
     };
@@ -169,13 +169,19 @@ fn main() -> Result<(), String> {
     )
     .map_err(|e| e.to_string())?;
 
-    println!("gate-vm: {window}-step window, {} active rows", receipt.steps.iter().filter(|s| !s.halted).count());
+    println!(
+        "gate-vm: {window}-step window, {} active rows",
+        receipt.steps.iter().filter(|s| !s.halted).count()
+    );
     println!("  program root : {}", root.to_hex());
     println!("  start        : {}", start.to_hex());
     println!("  event        : {}", event.to_hex());
     println!("  end (r2 out) : {}", receipt.output.to_hex());
     println!("  hash steps   : {}", receipt.hash_steps);
-    println!("  payload      : {emit_dir}/gate_vm_payload.hex ({} bytes)", payload.len());
+    println!(
+        "  payload      : {emit_dir}/gate_vm_payload.hex ({} bytes)",
+        payload.len()
+    );
     println!("  witness input: {emit_dir}/gate_vm_input.json");
     Ok(())
 }

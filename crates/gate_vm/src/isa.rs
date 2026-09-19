@@ -93,7 +93,10 @@ impl Inst {
     }
 
     pub fn encode(&self) -> u16 {
-        (u16::from(self.op.as_u8()) << 9) | (u16::from(self.a) << 6) | (u16::from(self.b) << 3) | u16::from(self.c)
+        (u16::from(self.op.as_u8()) << 9)
+            | (u16::from(self.a) << 6)
+            | (u16::from(self.b) << 3)
+            | u16::from(self.c)
     }
 
     pub fn decode(cell: u16) -> Option<Inst> {
