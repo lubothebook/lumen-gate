@@ -8,6 +8,10 @@
 #   finality_statement.circom            the single-statement finality circuit
 #   step_chain_statement.circom          the multi-step chained circuit
 #   execution_trace.circom               the execution lane's trace circuit
+#   gate_vm.circom                       the gate-vm lane: a register machine
+#                                        whose program is committed, not published
+#   poseidon_probe.circom                Poseidon calibration circuit; see
+#                                        gen_poseidon_probe.py — not a proof lane
 #
 # The include path is assembled at build time instead of being vendored into the
 # repository: circomlib is already a pinned dependency in package.json, and a
@@ -55,7 +59,7 @@ fi
 
 targets=("$@")
 if [ ${#targets[@]} -eq 0 ]; then
-  targets=(settlement_statement_fixture finality_statement step_chain_statement execution_trace)
+  targets=(settlement_statement_fixture finality_statement step_chain_statement execution_trace gate_vm poseidon_probe)
 fi
 
 for name in "${targets[@]}"; do

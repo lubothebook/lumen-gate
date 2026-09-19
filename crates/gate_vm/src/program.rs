@@ -66,6 +66,19 @@ mod tests {
     use crate::isa::{Inst, Opcode};
 
     #[test]
+    fn test_demo_program_is_the_cells_the_committed_vectors_prove() {
+        // The vectors under deployments/vectors/gate_vm/ were snarkjs-proved
+        // against exactly these eight cells. Pinned as literals, not derived
+        // from assemble(), because the point is to notice if the encoding
+        // moves: a demo program that quietly re-encodes would leave the
+        // registry's committed program_root pointing at nothing.
+        assert_eq!(
+            demo_program(),
+            [2, 2186, 2186, 2186, 2186, 3584, 3584, 3584]
+        );
+    }
+
+    #[test]
     fn test_padding_is_halt_not_zero() {
         let cells = assemble(&[Inst::new(Opcode::Move, 0, 0, 2)]);
         assert_eq!(cells[1..], [HALT_CELL; PROGRAM_LINES - 1]);

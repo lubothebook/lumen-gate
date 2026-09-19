@@ -1,0 +1,137 @@
+{
+  "lane": "gate vm",
+  "circuit": "circuits/gate_vm.circom",
+  "entrypoint": "submit_gate_vm_zk",
+  "network": "testnet",
+  "registry_id": "CDWJWDJVCB72ZFVVYVTIY4ZQF2676CJWWKXOSJCC7KQCGS2EI5ZKXI6T",
+  "registry_deployed_this_run": true,
+  "signer": "GAUJNOSC56E3PL6T3SJA5VRXLFQG7E6RYX4ZNQB5PBHFADBNVDCKZV3X",
+  "adapter_id": "3dcbf6f582455337083d5f6d36721f6d63d47af0bef870a043c02aca7850dac9",
+  "domain_key": "4c00370b422dcf0f72234af78a49d2fafa5196c3ee6b19f2b6a8e815f587137e",
+  "circuit_public_inputs": [
+    "15492189307050982087311888279135834018191786063605695340129142289408977322372",
+    "41",
+    "1",
+    "8539408991162650209299254005374742283858872778348593023586569303975975767767",
+    "4",
+    "163132376849949675609651075788839912391573001044923200866693845321210504281"
+  ],
+  "artifacts": {
+    "public_inputs": "build/gate_vm_public.json",
+    "proof": "build/gate_vm_proof.hex",
+    "vk": "build/gate_vm_vk.hex"
+  },
+  "checks_total": 14,
+  "checks_passed": 14,
+  "started_at": "2026-09-19T21:20:39.741Z",
+  "finished_at": "2026-09-19T21:21:34.827Z",
+  "records": [
+    {
+      "check": "gate_vm_key_accepted_at_896_bytes",
+      "passed": true,
+      "detail": "set_gate_vm_vk stored the 896-byte key (64 + 3x128 + 7x64) in its own slot",
+      "at": "2026-09-19T21:21:17.252Z",
+      "transaction": "ea319dfc0d69a38615d645f6f03fca60a042e8a7710976a6310e40feff756c7c"
+    },
+    {
+      "check": "gate_vm_key_of_the_wrong_length_refused",
+      "passed": true,
+      "detail": "an 895-byte key was refused and the stored key is unchanged",
+      "at": "2026-09-19T21:21:17.840Z",
+      "output": "❌ error: transaction simulation failed: HostError: Error(WasmVm, InvalidAction)\n\nEvent log (newest first):\n   0: [Diagnostic Event] contract:CDWJWDJVCB72ZFVVYVTIY4ZQF2676CJWWKXOSJCC7KQCGS2EI5ZKXI6T, topics:[error, Error(WasmVm, InvalidAction)], data:[\"VM call trapped: UnreachableCodeReached\", set_gate_vm_vk]\n   1: [Diagnostic Event] topics:[fn_call, CDWJWDJVCB72ZFVVYVTIY4ZQF2676CJWWKXOSJCC7KQCGS2E"
+    },
+    {
+      "check": "honest_gate_vm_run_accepted",
+      "passed": true,
+      "detail": "the network accepted the gate-vm proof: 4 hash steps in an 8-row window, start 41 -> end 8539408991162650209299254005374742283858872778348593023586569303975975767767 under a committed program",
+      "at": "2026-09-19T21:21:24.506Z",
+      "output": "{\"adapter_version\":1,\"domain\":\"4c00370b422dcf0f72234af78a49d2fafa5196c3ee6b19f2b6a8e815f587137e\",\"end_root\":\"12e1225b8855d525e9685b2218b90a76549b360306f1aaff5ea6e34b2588ced7\",\"evidence_digest\":\"e92d8ea0e661126b1df237a451e1448d4d001a0bc63ec7184e537571d24add4e\",\"evidence_version\":1,\"hash_steps\":4,\"height\":1,\"program_root\":\"224044b6a73cf791c7442cf543cf46fe78076a980efa8ef93aabc323d248c184\",\"security\":\"ZkProof\"}\nℹ️  Simulating transaction…\nℹ️  Signing transaction: 6d67f5f402fc954b6e3cbdc94234a649409cfd246c4a6f489c679acb5e26d7e8\n🌎 Sending transaction…\n✅ Transaction submitted successfully!\n🔗 https://stellar.expert/explorer/testnet/tx/6d67f5f402fc954b6e3cbdc94234a649409cfd246c4a6f489c679acb5e26d7e8\n📅 CDWJWDJVCB72ZFVVYVTIY4ZQF2676CJWWKXOSJCC7KQCGS2EI5ZKXI6T - Success - Event: [{\"symbol\":\"gate_vm_verified\"},{\"bytes\":\"4c00370b422dcf0f72234af78a49d2fafa5196c3ee6b19f2b6a8e815f587137e\"}] = {\"vec\":[",
+      "transaction": "6d67f5f402fc954b6e3cbdc94234a649409cfd246c4a6f489c679acb5e26d7e8"
+    },
+    {
+      "check": "recorded_run_agrees_with_the_payload",
+      "passed": true,
+      "detail": "recorded 4 hash steps and program root 224044b6a73cf791... — the fold the circuit computed and the registry bound are the same 32 bytes",
+      "at": "2026-09-19T21:21:24.835Z",
+      "output": "{\"domain\":\"4c00370b422dcf0f72234af78a49d2fafa5196c3ee6b19f2b6a8e815f587137e\",\"end_root\":\"12e1225b8855d525e9685b2218b90a76549b360306f1aaff5ea6e34b2588ced7\",\"event_root\":\"0000000000000000000000000000000000000000000000000000000000000001\",\"hash_steps\":4,\"height\":1,\"program_root\":\"224044b6a73cf791c7442cf543cf46fe78076a980efa8ef93aabc323d248c184\",\"settlement_anchored\":false,\"start_root\":\"0000000000000000000000000000000000000000000000000000000000000029\"}"
+    },
+    {
+      "check": "a_rewritten_program_root_is_refused",
+      "passed": true,
+      "detail": "the payload claims a different program than the proof commits: binding refuses it before any pairing (refused with #5 DeclaredMismatch)",
+      "at": "2026-09-19T21:21:25.139Z",
+      "output": "❌ error: transaction simulation failed: HostError: Error(Contract, #5)\n\nEvent log (newest first):\n   0: [Diagnostic Event] contract:CDWJWDJVCB72ZFVVYVTIY4ZQF2676CJWWKXOSJCC7KQCGS2EI5ZKXI6T, topics:[error, Error(Contract, #5)], data:\"escalating Ok(ScErrorType::Contract) frame-exit to Err\"\n   1: [Diagnostic Event] topics:[fn_call, CDWJWDJVCB72ZFVVYVTIY4ZQF2676CJWWKXOSJCC7KQCGS2EI5ZKXI6T, submit_gate",
+      "error_code": 5
+    },
+    {
+      "check": "an_inflated_hash_count_is_refused",
+      "passed": true,
+      "detail": "no trace of an 8-row window can count 9 hash steps; the bound is refused as a format error (refused with #6 InvalidPayload)",
+      "at": "2026-09-19T21:21:25.449Z",
+      "output": "❌ error: transaction simulation failed: HostError: Error(Contract, #6)\n\nEvent log (newest first):\n   0: [Diagnostic Event] contract:CDWJWDJVCB72ZFVVYVTIY4ZQF2676CJWWKXOSJCC7KQCGS2EI5ZKXI6T, topics:[error, Error(Contract, #6)], data:\"escalating Ok(ScErrorType::Contract) frame-exit to Err\"\n   1: [Diagnostic Event] topics:[fn_call, CDWJWDJVCB72ZFVVYVTIY4ZQF2676CJWWKXOSJCC7KQCGS2EI5ZKXI6T, submit_gate",
+      "error_code": 6
+    },
+    {
+      "check": "swapped_start_and_event_publics_is_refused",
+      "passed": true,
+      "detail": "both are roots; only position tells them apart, and position is exactly what the contract binds (refused with #5 DeclaredMismatch)",
+      "at": "2026-09-19T21:21:25.738Z",
+      "output": "❌ error: transaction simulation failed: HostError: Error(Contract, #5)\n\nEvent log (newest first):\n   0: [Diagnostic Event] contract:CDWJWDJVCB72ZFVVYVTIY4ZQF2676CJWWKXOSJCC7KQCGS2EI5ZKXI6T, topics:[error, Error(Contract, #5)], data:\"escalating Ok(ScErrorType::Contract) frame-exit to Err\"\n   1: [Diagnostic Event] topics:[fn_call, CDWJWDJVCB72ZFVVYVTIY4ZQF2676CJWWKXOSJCC7KQCGS2EI5ZKXI6T, submit_gate",
+      "error_code": 5
+    },
+    {
+      "check": "the_step_chain_lanes_tag_is_refused",
+      "passed": true,
+      "detail": "a proof that means another lane must not verify on this one, even where every other number agrees (refused with #5 DeclaredMismatch)",
+      "at": "2026-09-19T21:21:26.041Z",
+      "output": "❌ error: transaction simulation failed: HostError: Error(Contract, #5)\n\nEvent log (newest first):\n   0: [Diagnostic Event] contract:CDWJWDJVCB72ZFVVYVTIY4ZQF2676CJWWKXOSJCC7KQCGS2EI5ZKXI6T, topics:[error, Error(Contract, #5)], data:\"escalating Ok(ScErrorType::Contract) frame-exit to Err\"\n   1: [Diagnostic Event] topics:[fn_call, CDWJWDJVCB72ZFVVYVTIY4ZQF2676CJWWKXOSJCC7KQCGS2EI5ZKXI6T, submit_gate",
+      "error_code": 5
+    },
+    {
+      "check": "proof_one_byte_short_is_refused",
+      "passed": true,
+      "detail": "the length is checked before any decoding, so a short proof cannot be sliced into coordinates (refused with #8 InvalidProof)",
+      "at": "2026-09-19T21:21:26.336Z",
+      "output": "❌ error: transaction simulation failed: HostError: Error(Contract, #8)\n\nEvent log (newest first):\n   0: [Diagnostic Event] contract:CDWJWDJVCB72ZFVVYVTIY4ZQF2676CJWWKXOSJCC7KQCGS2EI5ZKXI6T, topics:[error, Error(Contract, #8)], data:\"escalating Ok(ScErrorType::Contract) frame-exit to Err\"\n   1: [Diagnostic Event] topics:[fn_call, CDWJWDJVCB72ZFVVYVTIY4ZQF2676CJWWKXOSJCC7KQCGS2EI5ZKXI6T, submit_gate",
+      "error_code": 8
+    },
+    {
+      "check": "payload_one_byte_short_is_refused",
+      "passed": true,
+      "detail": "a payload of the wrong length is a format error, refused before anything is parsed out of it (refused with #11 BadPayloadLength)",
+      "at": "2026-09-19T21:21:26.619Z",
+      "output": "❌ error: transaction simulation failed: HostError: Error(Contract, #11)\n\nEvent log (newest first):\n   0: [Diagnostic Event] contract:CDWJWDJVCB72ZFVVYVTIY4ZQF2676CJWWKXOSJCC7KQCGS2EI5ZKXI6T, topics:[error, Error(Contract, #11)], data:\"escalating Ok(ScErrorType::Contract) frame-exit to Err\"\n   1: [Diagnostic Event] topics:[fn_call, CDWJWDJVCB72ZFVVYVTIY4ZQF2676CJWWKXOSJCC7KQCGS2EI5ZKXI6T, submit_ga",
+      "error_code": 11
+    },
+    {
+      "check": "the_same_evidence_cannot_be_submitted_twice",
+      "passed": true,
+      "detail": "the evidence digest has already been consumed (refused with #9 EvidenceAlreadyProcessed)",
+      "at": "2026-09-19T21:21:26.902Z",
+      "output": "❌ error: transaction simulation failed: HostError: Error(Contract, #9)\n\nEvent log (newest first):\n   0: [Diagnostic Event] contract:CDWJWDJVCB72ZFVVYVTIY4ZQF2676CJWWKXOSJCC7KQCGS2EI5ZKXI6T, topics:[error, Error(Contract, #9)], data:\"escalating Ok(ScErrorType::Contract) frame-exit to Err\"\n   1: [Diag",
+      "error_code": 9
+    },
+    {
+      "check": "settlement_anchors_are_untouched",
+      "passed": true,
+      "detail": "the domain still anchors on nothing and is_machine_approved is still false: a run proof is not a chain root, and the storage layout keeps them apart",
+      "at": "2026-09-19T21:21:27.597Z",
+      "output": "{\"accepted_versions\":[1],\"adapter_id\":\"3dcbf6f582455337083d5f6d36721f6d63d47af0bef870a043c02aca7850dac9\",\"adapter_version\":1,\"last_event_root\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"last_height\":0,\"last_root\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"last_security\":\"None\",\"network\":\"source-testnet\",\"required_depth\":2,\"state\":1}"
+    },
+    {
+      "check": "admin_renounced",
+      "passed": true,
+      "detail": "the admin capability was given up, so no operator key can change any of the four verification keys",
+      "at": "2026-09-19T21:21:34.241Z",
+      "output": "ℹ️  Simulating transaction…\nℹ️  Signing transaction: 89b9247a6a3eee665799805b5314b6b7c482690f65326ae386353fd9da0a674c\n🌎 Sending transaction…\n✅ Transaction submitted successfully!\n🔗 https://stellar.expert/explorer/testnet/tx/89b9247a6a3eee665799805b5314b6b7c482690f65326ae386353fd9da0a674c\n📅 CDWJWDJVCB72ZFVVYVTIY4ZQF2676CJWWKXOSJCC7KQCGS2EI5ZKXI6T - Success - Event: [{\"symbol\":\"admin_renounced\"},",
+      "transaction": "89b9247a6a3eee665799805b5314b6b7c482690f65326ae386353fd9da0a674c"
+    },
+    {
+      "check": "key_cannot_be_replaced_after_renounce",
+      "passed": true,
+      "detail": "the gate-vm lane's key is as frozen as the other three: the call traps and the stored key is unchanged",
+      "at": "2026-09-19T21:21:34.826Z",
+      "output": "❌ error: transaction simulation failed: HostError: Error(WasmVm, InvalidAction)\n\nEvent log (newest first):\n   0: [Diagnostic Event] contract:CDWJWDJVCB72ZFVVYVTIY4ZQF2676CJWWKXOSJCC7KQCGS2EI5ZKXI6T, topics:[error, Error(WasmVm, InvalidAction)], data:[\"VM call trapped: UnreachableCodeReached\", set_gate_vm_vk]\n   1: [Diagnostic Event] topics:[fn_call, CDWJWDJVCB72ZFVVYVTIY4ZQF2676CJWWKXOSJCC7KQCGS2E"
+    }
+  ]
+}
