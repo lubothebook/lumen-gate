@@ -1,0 +1,176 @@
+{
+  "flow": "cash out to a local currency, driven through the facade",
+  "facade": "http://127.0.0.1:8081",
+  "amount": "0.2",
+  "started_at": "2026-09-19T20:10:46.850Z",
+  "finished_at": "2026-09-19T20:10:53.034Z",
+  "checks": [
+    {
+      "check": "facade_reads_the_anchor",
+      "passed": true,
+      "detail": "the facade discovered tr-mock-anchor.fly.dev and reports withdraw enabled",
+      "at": "2026-09-19T20:10:47.465Z"
+    },
+    {
+      "check": "facade_reports_the_bridge_honestly",
+      "passed": true,
+      "detail": "bridge route is \"none\": no order book route from the wrapped asset to the anchor asset exists on this network, so the swap is a counterparty exchange at a configured rate, no",
+      "at": "2026-09-19T20:10:47.858Z",
+      "route": "none",
+      "simplification": true
+    },
+    {
+      "check": "withdrawal_without_a_session_is_refused",
+      "passed": true,
+      "detail": "refused with HTTP 401 and the error envelope (unauthorized)",
+      "at": "2026-09-19T20:10:47.873Z"
+    },
+    {
+      "check": "the_operator_token_is_not_a_substitute_for_the_user",
+      "passed": true,
+      "detail": "the facade answered HTTP 502 instead of opening a record, because the anchor rejected a token that was not the user's",
+      "at": "2026-09-19T20:10:48.345Z",
+      "status": 502,
+      "output": "{\"error\":{\"code\":\"upstream_unavailable\",\"message\":\"the anchor did not open a withdrawal: https://tr-mock-anchor.fly.dev/sep6/withdraw?asset_code=USDC&type=bank_account&amount=0.2&account=GCWXGQO2UTLNHXHE7MZ6O6HMUS3AUJ3K2PTE4R2AJ47OLRHGS52A4GPI answered 403: missing or invalid SEP-10 token\",\"details\""
+    },
+    {
+      "check": "sep10_session_issued_through_the_facade",
+      "passed": true,
+      "detail": "the anchor issued a session for GCWXGQO2UTLNHXHE7MZ6O6HMUS3AUJ3K2PTE4R2AJ47OLRHGS52A4GPI and the facade passed it back without storing it",
+      "at": "2026-09-19T20:10:49.182Z"
+    },
+    {
+      "check": "withdrawal_opened",
+      "passed": true,
+      "detail": "withdrawal sep_haj3qjt444k7x20danos: pay 0.2 USDC to GCLCZEQZ2THTEDAOFI66LACNPLY4OBKN7VKLEZFMBIHYKYQOW2W7T3Z6 with memo 628922530825 (id)",
+      "at": "2026-09-19T20:10:49.545Z",
+      "transaction_id": "sep_haj3qjt444k7x20danos",
+      "treasury": "GCLCZEQZ2THTEDAOFI66LACNPLY4OBKN7VKLEZFMBIHYKYQOW2W7T3Z6",
+      "memo": "628922530825"
+    },
+    {
+      "check": "paid_the_anchor_treasury_with_the_memo",
+      "passed": true,
+      "detail": "sent 0.2 USDC with memo 628922530825, transaction 6fa9732d55bad6cb7f1dbc84c3b0c353817ed1ba7793af4c19c3738931ded4bc on ledger 4765013",
+      "at": "2026-09-19T20:10:52.609Z",
+      "hash": "6fa9732d55bad6cb7f1dbc84c3b0c353817ed1ba7793af4c19c3738931ded4bc",
+      "ledger": 4765013
+    },
+    {
+      "check": "anchor_reports_the_payout",
+      "passed": true,
+      "detail": "anchor reports completed, paid out 9.70, reference FAST-KHPOFIV58V",
+      "at": "2026-09-19T20:10:53.034Z",
+      "final": {
+        "id": "sep_haj3qjt444k7x20danos",
+        "status": "completed",
+        "amount_in": "0.2000000",
+        "amount_out": "9.70",
+        "amount_fee": "0.05",
+        "external_transaction_id": "FAST-KHPOFIV58V",
+        "stellar_transaction_id": "6fa9732d55bad6cb7f1dbc84c3b0c353817ed1ba7793af4c19c3738931ded4bc",
+        "message": "TRY paid to TR810009903438053742215692 via FAST (simulated)."
+      }
+    }
+  ],
+  "passed": 8,
+  "total": 8,
+  "all_passed": true,
+  "anchor": {
+    "home_domain": "tr-mock-anchor.fly.dev",
+    "base_url": "https://tr-mock-anchor.fly.dev",
+    "network_passphrase": "Test SDF Network ; September 2015",
+    "signing_key": "GDXYO6FJCNXZEWGXD54GT76FGFYLOLSOGSOJLNQ6WGHCGEQPO7NTE73M",
+    "web_auth_endpoint": "https://tr-mock-anchor.fly.dev/auth",
+    "transfer_server": "https://tr-mock-anchor.fly.dev/sep6",
+    "kyc_server": "https://tr-mock-anchor.fly.dev/sep12",
+    "quote_server": "https://tr-mock-anchor.fly.dev/sep38",
+    "usdc": {
+      "code": "USDC",
+      "issuer": "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5"
+    }
+  },
+  "account": "GCWXGQO2UTLNHXHE7MZ6O6HMUS3AUJ3K2PTE4R2AJ47OLRHGS52A4GPI",
+  "instructions": {
+    "transaction_id": "sep_haj3qjt444k7x20danos",
+    "treasury": "GCLCZEQZ2THTEDAOFI66LACNPLY4OBKN7VKLEZFMBIHYKYQOW2W7T3Z6",
+    "memo": "628922530825",
+    "memo_type": "id",
+    "amount": "0.2",
+    "asset_code": "USDC",
+    "asset_issuer": "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+    "eta": 10,
+    "fee_percent": 0.5,
+    "extra_info": {
+      "message": "Send 0.2000000 USDC to GCLCZEQZ2THTEDAOFI66LACNPLY4OBKN7VKLEZFMBIHYKYQOW2W7T3Z6 with memo (type id) 628922530825. Rate 48.541152 TRY/USDC locked until 2026-09-19T20:40:49.488Z. TRY is paid (simulated) to TR810009903438053742215692.",
+      "payment_uri": "web+stellar:pay?destination=GCLCZEQZ2THTEDAOFI66LACNPLY4OBKN7VKLEZFMBIHYKYQOW2W7T3Z6&amount=0.2000000&asset_code=USDC&asset_issuer=GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5&memo=628922530825&memo_type=MEMO_ID&msg=TR+Mock+Anchor+withdrawal"
+    },
+    "note": "pay the asset to the treasury with the memo attached; the anchor identifies the deposit by the memo alone"
+  },
+  "payment": {
+    "memo": "628922530825",
+    "_links": {
+      "self": {
+        "href": "https://horizon-testnet.stellar.org/transactions/6fa9732d55bad6cb7f1dbc84c3b0c353817ed1ba7793af4c19c3738931ded4bc"
+      },
+      "account": {
+        "href": "https://horizon-testnet.stellar.org/accounts/GCWXGQO2UTLNHXHE7MZ6O6HMUS3AUJ3K2PTE4R2AJ47OLRHGS52A4GPI"
+      },
+      "ledger": {
+        "href": "https://horizon-testnet.stellar.org/ledgers/4765013"
+      },
+      "operations": {
+        "href": "https://horizon-testnet.stellar.org/transactions/6fa9732d55bad6cb7f1dbc84c3b0c353817ed1ba7793af4c19c3738931ded4bc/operations{?cursor,limit,order}",
+        "templated": true
+      },
+      "effects": {
+        "href": "https://horizon-testnet.stellar.org/transactions/6fa9732d55bad6cb7f1dbc84c3b0c353817ed1ba7793af4c19c3738931ded4bc/effects{?cursor,limit,order}",
+        "templated": true
+      },
+      "precedes": {
+        "href": "https://horizon-testnet.stellar.org/transactions?order=asc&cursor=20465575000023040"
+      },
+      "succeeds": {
+        "href": "https://horizon-testnet.stellar.org/transactions?order=desc&cursor=20465575000023040"
+      },
+      "transaction": {
+        "href": "https://horizon-testnet.stellar.org/transactions/6fa9732d55bad6cb7f1dbc84c3b0c353817ed1ba7793af4c19c3738931ded4bc"
+      }
+    },
+    "id": "6fa9732d55bad6cb7f1dbc84c3b0c353817ed1ba7793af4c19c3738931ded4bc",
+    "paging_token": "20465575000023040",
+    "successful": true,
+    "hash": "6fa9732d55bad6cb7f1dbc84c3b0c353817ed1ba7793af4c19c3738931ded4bc",
+    "ledger": 4765013,
+    "created_at": "2026-09-19T20:10:52Z",
+    "source_account": "GCWXGQO2UTLNHXHE7MZ6O6HMUS3AUJ3K2PTE4R2AJ47OLRHGS52A4GPI",
+    "source_account_sequence": "20463307257282594",
+    "fee_account": "GCWXGQO2UTLNHXHE7MZ6O6HMUS3AUJ3K2PTE4R2AJ47OLRHGS52A4GPI",
+    "fee_charged": "100",
+    "max_fee": "10000",
+    "operation_count": 1,
+    "envelope_xdr": "AAAAAgAAAACtc0HapNbT3OT7M+d47KS2Cidq0+ZOR0BPPuXE5pd0DgAAJxAASLNFAAAAIgAAAAEAAAAAAAAAAAAAAABqruyFAAAAAgAAAJJutDwJAAAAAQAAAAAAAAABAAAAAJYskhnUzzIMDio95YBNevHHBU39VLJkrAoPhWIOtq35AAAAAVVTREMAAAAAQj59BfLsr7/sGSshWj8b6WrtuNjnAlSr40E+AgfeVrIAAAAAAB6EgAAAAAAAAAAB5pd0DgAAAECW9FaL0/fDfJlGzblztA4ayqnplTuafZ+0AVOFcyxpgLPDOREOk1EVeeAM3n880J856MobNIw/WqMSfdSbjlAG",
+    "result_xdr": "AAAAAAAAAGQAAAAAAAAAAQAAAAAAAAABAAAAAAAAAAA=",
+    "fee_meta_xdr": "AAAAAgAAAAMASLVPAAAAAAAAAACtc0HapNbT3OT7M+d47KS2Cidq0+ZOR0BPPuXE5pd0DgAAABdGDlUnAEizRQAAACEAAAABAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAIAAAAAAAAAAAAAAAAAAAADAAAAAABItU8AAAAAaq7sLgAAAAAAAAABAEi1VQAAAAAAAAAArXNB2qTW09zk+zPneOyktgonatPmTkdATz7lxOaXdA4AAAAXRg5UwwBIs0UAAAAhAAAAAQAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAACAAAAAAAAAAAAAAAAAAAAAwAAAAAASLVPAAAAAGqu7C4AAAAA",
+    "memo_type": "id",
+    "signatures": [
+      "lvRWi9P3w3yZRs25c7QOGsqp6ZU7mn2ftAFThXMsaYCzwzkRDpNRFXngDN5/PNCfOejKGzSMP1qjEn3Um45QBg=="
+    ],
+    "preconditions": {
+      "timebounds": {
+        "min_time": "0",
+        "max_time": "1789848709"
+      }
+    }
+  },
+  "final": {
+    "id": "sep_haj3qjt444k7x20danos",
+    "status": "completed",
+    "amount_in": "0.2000000",
+    "amount_out": "9.70",
+    "amount_fee": "0.05",
+    "external_transaction_id": "FAST-KHPOFIV58V",
+    "stellar_transaction_id": "6fa9732d55bad6cb7f1dbc84c3b0c353817ed1ba7793af4c19c3738931ded4bc",
+    "message": "TRY paid to TR810009903438053742215692 via FAST (simulated)."
+  }
+}

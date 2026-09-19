@@ -538,6 +538,21 @@ SEP-6   GET  /sep6/transaction?id=...          -> pending_user_transfer_start ->
 
 The payment is the user's own: their key signs it and their XLM pays for it. The exit direction is not gasless, and the README says so rather than borrowing the inbound direction's stronger claim.
 
+**The same exit, driven through the deployment.** A client that works when run by hand and a deployment that works are two different claims, so the exit is also exercised **through the facade's own routes** — the path the console takes — by [`tools/cashout-live.js`](tools/cashout-live.js), and the result is recorded in [`deployments/cashout-live.json`](deployments/cashout-live.json). 8/8 checks:
+
+| check | result |
+| --- | --- |
+| the facade discovers the anchor | the anchor's home domain, auth and transfer endpoints read from its `stellar.toml` |
+| the bridge route is reported honestly | `"route": "none"`, naming the pair it looked up (`wSRC:<issuer>` → the anchor's USDC) instead of inventing a rate |
+| a withdrawal without a session is refused | HTTP 401 with the error envelope |
+| the operator token is not a substitute for the user | refused: the facade does not accept its own operator credential where the anchor's user session belongs |
+| SEP-10 through the facade | the anchor issued a session for the paying account, and the facade passed it back without storing it |
+| the withdrawal opens | treasury `GCLCZEQZ…`, memo type `id`, 0.2 USDC |
+| the payment lands | `0.2000000 USDC` with the memo, transaction `6fa9732d55bad6cb7f1dbc84c3b0c353817ed1ba7793af4c19c3738931ded4bc` on ledger 4,765,013 |
+| the anchor reports the payout | **`completed`**, 9.70 TRY out, reference `FAST-KHPOFIV58V` |
+
+The third and fourth rows are the ones worth reading: they are refusals, and they are the reason the panel can be handed to a stranger. The facade holds no anchor token and cannot open a withdrawal on anyone's behalf, and its own operator token buys nothing on that path — an operator is not the user.
+
 **The bridge from wSRC to the anchor's asset — and its simplification, stated plainly.** The exit asset at this anchor is USDC, so a wSRC holder needs a swap first. `bridgeToUsdc()` asks Horizon for a real `pathPaymentStrictSend` route: **on Testnet there is none, in either direction**, and that is a fact anyone can re-check with one call (`GET /v1/cashout/bridge` reports it). With no order book to trade against, the code falls back to a **counterparty exchange at a configured rate**, and only when an operator configures one — the wSRC goes to the counterparty, the counterparty pays USDC back at `TR_SWAP_RATE`, and both legs carry a `lg-swap` memo so they can be matched on the ledger. That is a swap with an operator standing behind it, not a market trade, and calling it a DEX would be a lie. So: **the swap step is simplified, deliberately, and the reason is that no market exists to trade against on this network.** On a network where a wSRC/USDC market exists, the same function takes the order-book branch and no configuration is involved.
 
 **Nothing here needs the operator.** The console's cash-out panel authenticates the *user* to the anchor, forwards the signed challenge, and hands the resulting token to the anchor through the facade. The facade stores no token, mints no token and cannot open a withdrawal on anyone's behalf: the anchor's session token belongs to the user, and the facade's own operator token is explicitly not accepted on that path.

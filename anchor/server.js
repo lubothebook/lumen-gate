@@ -998,7 +998,15 @@ async function handle(req, res, pathname, query) {
     // anchor exits? The answer is read from Horizon, not assumed, and when there
     // is no route this endpoint says so instead of quoting a made-up price.
     try {
-      const source = query.get('source_asset') || process.env.CASHOUT_SOURCE_ASSET || TOKEN_ID || '';
+      // The wrapped asset this deployment issues: an explicit CODE:ISSUER when
+      // one is configured, otherwise the code and the issuer account the
+      // manifest already records. A lookup that silently skips because nothing
+      // was configured is not a lookup, and this endpoint exists precisely to
+      // answer the question honestly.
+      const explicit = query.get('source_asset') || process.env.CASHOUT_SOURCE_ASSET || '';
+      const manifestCode = (MANIFEST && MANIFEST.asset && MANIFEST.asset.code) || process.env.CASHOUT_SOURCE_CODE || 'wSRC';
+      const manifestIssuer = (MANIFEST && MANIFEST.accounts && MANIFEST.accounts.deployer_and_relayer) || '';
+      const source = explicit || (manifestIssuer ? `${manifestCode}:${manifestIssuer}` : '');
       const amount = /^\d+(\.\d{1,7})?$/.test(String(query.get('amount') || '1')) ? query.get('amount') || '1' : '1';
       const discovered = await trAnchor.discover();
       const usdc = discovered.usdc || {code: 'USDC', issuer: trAnchor.USDC_ISSUER_FALLBACK};
@@ -1021,6 +1029,7 @@ async function handle(req, res, pathname, query) {
         return json(res, 200, {
           route: 'order_book',
           simplification: false,
+          looked_up: {source: `${code}:${issuer}`, destination: `${usdc.code}:${usdc.issuer}`, amount},
           detail: `a path payment route exists for ${amount} ${code}: the swap can be executed as a real DEX trade`,
           path,
         });
@@ -1030,6 +1039,7 @@ async function handle(req, res, pathname, query) {
         simplification: true,
         detail:
           'no order book route from the wrapped asset to the anchor asset exists on this network, so the swap is a counterparty exchange at a configured rate, not a market trade',
+        looked_up: {source: `${code}:${issuer}`, destination: `${usdc.code}:${usdc.issuer}`, amount},
         lookup: path,
         configured: {
           counterparty: process.env.TR_SWAP_SECRET ? 'configured' : 'not configured',

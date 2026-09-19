@@ -162,6 +162,90 @@ functionality belongs in the off-chain surface, the facade and the docs.
 - [x] README explains machine approval from first principles and draws the
       honest boundary at "Is this a zkVM? No", now with what a real zkVM would
       require (trace columns, transition constraints, a memory argument).
+- [x] **The ZK lane is no longer a single fixed statement.** A second circuit,
+      `circuits/step_chain_statement.circom`, proves an **N-step chained state
+      transition**: `state_root_0 → … → state_root_3`, every link derived from
+      the previous root and that step's own evidence digest. 2259 non-linear and
+      2784 linear constraints (was 628), six public inputs, its own domain tag
+      (`lumen-gate-step-chain-v1`, a different label from the single statement
+      and the BLS hash-to-curve path), and no `signal output` so the public
+      vector cannot grow a silent extra element. The old circuits are untouched
+      and still build and verify.
+- [x] **Constraint-level hardening, not witness-side convention.** Every signal
+      is boolean-forced, equated to an expression of other signals, or bound to a
+      public input; `is_active` gates the count *and* leaves the root unchanged
+      on a padded step; `chain_length` is range-checked with bits and required to
+      equal the sum of `is_active`; zero/inequality checks use the circomlib
+      inverse-witness components rather than a reinvented comparison; every
+      public input appears in at least one constraint. The list is in the
+      circuit header, signal by signal.
+- [x] **One negative test per constraint family, not one byte flip**:
+      `tools/step-chain-tests.mjs` runs 18 checks against the compiled witness
+      generator — non-boolean activity, non-boolean approvals, an active step
+      without a quorum, activating a padded step, a length mismatch, a zero-length
+      chain, a length above capacity, a lowered threshold, a wrong domain tag,
+      wrong end/start/event roots, a forged intermediate root, and the degenerate
+      unmoving chain — each requiring its own refusal, plus a positive check that
+      padded approvals really do not reach the digest.
+- [x] **The second lane is live on testnet, on a registry of its own.** The
+      earlier registry's admin was renounced before this lane existed and a
+      renounced admin cannot set a key, so the lane was deployed beside it rather
+      than by weakening it: `CCR3NZD5ASZAC3RPHDJOVSHWZBIF46ELP3JGWFC37ZL65YZ443ULZLMM`.
+      `tools/step-chain-live.js` reports **12/12**: key accepted at 896 bytes, a
+      3-step chain accepted (`2269641a…`, event `step_chain_verified`),
+      wrong-length key refused with the stored key unchanged, swapped roots
+      refused `#5`, lowered quorum refused `#5`, 255-byte proof refused `#8`,
+      replay refused `#9`, the settlement anchor unmoved, the domain still not
+      active on the strength of a quorum proof, then renounce and a second key
+      write that traps. Recorded in `deployments/step-chain.json`.
+- [x] **Explicit size bounds on the decode path.** The step-chain key length
+      (896 = 64 + 3×128 + 7×64), the proof length (256), the public-input count
+      (6) and the payload length (112) are each checked before any decoding, and
+      a proof one byte short and one byte long are both refused with `InvalidProof`
+      rather than sliced into coordinates. The two lanes keep their keys in
+      separate slots with separate length rules, so neither can borrow the other's.
+- [x] **The chained lane cannot influence settlement**, and the live record
+      proves it rather than asserting it: an accepted chain does not move
+      `last_root` or `last_event_root`, does not mark the domain active, and is
+      stored in its own slot. A quorum proof is not a signature proof, so it does
+      not get to move the anchor settlement reads.
+- [x] **The exit into a local currency runs through a real SEP-6 anchor.** New
+      `anchor/tr-anchor-client.js` (SEP-1 discovery, SEP-10 auth, a firm SEP-38
+      quote, SEP-6 withdrawal, a memo-bearing USDC payment, polled to a terminal
+      status) and six new facade routes behind `api/cashout.js`. Live:
+      `deployments/tr-cashout.json` (0.5 USDC → `completed`, 24.27 out, reference
+      `FAST-0UDDCJJKSY`) and `deployments/cashout-live.json`, which drives the same
+      exit **through the facade** in 8/8 checks, including two refusals: no
+      session → 401, and the operator token is not a substitute for the user.
+- [x] **The wSRC→USDC step is honest about itself.** `bridgeToUsdc()` asks
+      Horizon for a real `pathPaymentStrictSend` route; there is none on Testnet
+      in either direction (checked live, and `GET /v1/cashout/bridge` reports the
+      pair it looked up). With no market to trade against, the fallback is a
+      counterparty exchange at a configured rate, opt-in, memo-tagged on both
+      legs, and described as a simplification in the README rather than as a DEX.
+- [x] **User-initiated actions without the operator token**: `POST /v1/user/lock`
+      and `POST /v1/user/relay` accept the deployment's own SEP-10 session. The
+      lock's recipient is forced to the session account (a caller-supplied
+      recipient is ignored — verified live), the relay is opt-in with a
+      per-account cooldown, and neither grants mint authority: the relayer still
+      signs and pays and the registry still decides what is final.
+- [x] **SEP-1 documentation fields completed** (`ORG_OFFICIAL_EMAIL`,
+      `ORG_SUPPORT_EMAIL`, `ORG_LOGO`, `ACCOUNTS_REQUIRE_MEMO`) and the logo URL
+      is actually served (`GET /v1/logo.png`), because a discovery field that
+      points at a 404 is a field that lies. `TRANSFER_SERVER_SEP0024`,
+      `KYC_SERVER`, `DIRECT_PAYMENT_SERVER` and `ANCHOR_QUOTE_SERVER` stay absent
+      with a comment saying why: those roles are not implemented, and discovery
+      fields are acted on without asking.
+- [x] **The fee wording states the mechanism and refuses to imply a price**: the
+      relayer fronts its own XLM at submission, is repaid from the locked
+      source-chain amount in the wrapped asset, the current `0.1 wSRC` is a fixed
+      constant chosen at submission time, and there is **no real-time pricing**
+      anywhere — no feed, no spread, no repricing. README says which part is
+      missing (market pricing) instead of describing the constant as a market.
+- [x] `cargo test --workspace` → **59 passed** (25 registry, 11 gateway, 3
+      simulator, 20 adapter); README states the same number. The circuit suite is
+      separate and needs no network: 18 checks from `tools/step-chain-tests.mjs`.
+
 - [x] Project name is Lumen Gate everywhere; the retired brand name appears in
       no tracked file, and that is machine-checked.
 - [x] Single directive file (this document), English only, no country or region
@@ -171,7 +255,7 @@ functionality belongs in the off-chain surface, the facade and the docs.
       (`crates/domain_adapter`): adapter interface with raw evidence in and an
       attestation out, security-backing descriptor, no assume-valid branch,
       content-derived message ids, per-direction nonce high-water marks.
-- [x] `cargo test --workspace` → 46 passed (12 registry, 11 gateway, 3
+- [x] `cargo test --workspace` → 59 passed (25 registry, 11 gateway, 3
       simulator, 20 adapter). README states the same number.
 - [x] The lattice is the submitted 60x60 cube tile painted at exactly 60x60
       with a 4px inset white frame snapping to the cube under the pointer;
@@ -208,9 +292,36 @@ functionality belongs in the off-chain surface, the facade and the docs.
 - [ ] Production validator set: the BLS lane runs 3 demo keys with a threshold
       of 2, unbonded. Real DKG and a slashable set are roadmap, and the adapter
       descriptor says so in its own `not_claimed` list.
-- [ ] A source-root-bound ZK circuit. The existing one proves a quorum and a
-      root binding; it is not a signature proof, so settlement never anchors on
-      it.
+- [ ] **Signatures inside the circuit.** Both Groth16 lanes prove a quorum of
+      approval *bits*; neither verifies a signature. The chained lane carries the
+      quorum step by step and binds each step's evidence into the state it
+      produces, but a production chain puts a signature gadget inside the
+      circuit — that is the next step, not a relabelling of this one.
+- [ ] **Chain continuity across accepted proofs.** A chained proof carries
+      `chain_start_root` as a public input bound to the payload; the registry
+      enforces a forward-only height trail, but it does not yet *prove* that a
+      new chain starts at the previously accepted root. Closing that means
+      committing to the previous root inside the circuit.
+- [ ] **A per-domain quorum for the chained lane.** Its threshold is the
+      constant compiled into the circuit (2) and the contract binds the public
+      input to that same constant, so neither a prover nor an operator can choose
+      it. Moving it to a per-domain policy without weakening the binding means
+      committing to the threshold inside the circuit rather than trusting a
+      storage read.
+- [ ] **A general-purpose execution lane.** An N-step special-purpose chain is
+      not a VM: no instruction set, no memory model, no program commitment, no
+      execution trace. Stated at the top of the circuit, in the README and in
+      `docs/PROVING_SYSTEM.md` §7.
+- [ ] **A market for the exit bridge.** The wSRC→USDC swap falls back to a
+      counterparty exchange at a configured rate because no order book route
+      exists on Testnet in either direction. On a network with a market the same
+      function takes the order-book branch; until then the simplification is
+      written down rather than hidden.
+- [ ] **A production anchor.** The exit integrates with a Testnet sandbox
+      anchor whose bank and KYC are simulated by the anchor itself. Moving to a
+      real one is a home-domain and network change, but it is not this
+      deployment's decision to make, and the README does not pretend it already
+      happened.
 - [ ] Market-priced fees. The relayer fee is a fixed 0.1 wSRC chosen at
       submission time, not derived from the live XLM fee and a rate. The
       mechanism is proven; the pricing is not built.
