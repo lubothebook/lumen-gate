@@ -331,6 +331,8 @@ The visual language comes from the project's own assets. The page background is 
 
 The header and favicon use the project wordmark and mark.
 
+The wallet has three tabs — receive, send back, and **cash out to TRY** — and the third one drives the flow in [Cashing out to a local currency](#cashing-out-to-a-local-currency) from the browser: read the anchor, quote the amount, sign the SEP-10 challenge with Freighter, open the withdrawal, pay the anchor's treasury with the memo attached through Freighter, and poll until the anchor reports the payout. Two other actions moved behind the *user's* own session this round, so a visitor can start something without holding a shared operator secret: `POST /v1/user/lock` opens a source-chain lock whose recipient is forced to the session account, and `POST /v1/user/relay` asks for one relayer pass under a per-account cooldown. Neither grants mint authority: the relayer still signs and pays, and the registry still decides what is final.
+
 The wallet sits below the overview and the explanation of how settlement works, on purpose: a reader should arrive at a wallet already knowing what it is about to do. It has the two directions as tabs, an account panel that reads real balances, and a live step readout (`Lock`, `Finality`, `Mint`) whose state comes from the responses, not from a hard-coded sequence. Amounts are entered in base units because that is what the contracts take, so each amount field carries its own translation under it (`137000000` → `= 13.7 wSRC minted, minus the relayer fee`) and refuses a fraction or a zero with a reason instead of a silent failure. The card header states whether this tab may write, and setting the operator token repaints that state immediately rather than waiting for the next status poll.
 
 **What it refuses to do.** A control this deployment cannot honour is disabled with the reason printed under it, never offered and then failed:
@@ -359,6 +361,9 @@ What it does:
 | `POST /v1/relay?height=H`, `POST /v1/reconcile` | one relayer pass, and a reconciliation pass that advances SEP-6 records against live ledgers. Operator token only |
 | `GET /v1/sep10/auth`, `POST /v1/sep10/auth` | SEP-10 authentication: the anchor signs a challenge transaction, the client proves key control by signing it back, and the anchor issues a short-lived JWT. Unfunded accounts are the normal case, not an error |
 | `GET /v1/sep6/info`, `GET /v1/deposit`, `GET /v1/withdraw`, `GET /v1/transactions` | a real SEP-6 surface: official field names, records that advance only on evidence read from a ledger, and an explicit list of what is not implemented. Opening a record and reading history require a SEP-10 session, and the account is the token subject - never a caller-chosen one |
+| `POST /v1/user/lock`, `POST /v1/user/relay` | the user's own SEP-10 session instead of the operator token. Lock forces the recipient to the session account; relay is opt-in (`LUMEN_ALLOW_USER_RELAY=1`) with a per-account cooldown. Neither grants mint authority |
+| `GET /v1/cashout/anchor`, `/bridge`, `/challenge`, `POST /v1/cashout/token`, `/start`, `GET /v1/cashout/status` | the exit path in [Cashing out to a local currency](#cashing-out-to-a-local-currency): a transparent proxy to an external SEP-6 anchor. The anchor's token travels in `X-Anchor-Token` and is never stored, and the operator token is not accepted here |
+| `GET /v1/logo.png` | the asset `ORG_LOGO` names in the served `stellar.toml`, so discovery does not point at a 404 |
 | `GET /v1/sep12/customer` | answers `501 not_implemented`. No KYC is collected and the file says so instead of implying otherwise |
 
 Full detail, including which ledger event advances which record and what is
@@ -492,6 +497,50 @@ The facade exposes the minimum integration surface:
   implemented.
 
 An anchor must not be described as operating source-chain validators. It only configures the asset and settlement relationship.
+
+### What the facade charges, and who pays it first
+
+The Stellar network fee is paid in XLM by the relayer, out of the relayer's own balance, at the moment it submits. The user whose transfer is being settled never touches XLM: the amount the user locked on the source chain already contains the fee, and the relayer is repaid **from that locked amount in the wrapped asset** when the gateway mints — `0.1 wSRC` per message today.
+
+That `0.1 wSRC` is a **fixed** amount, chosen at submission time and written into the deployment, not a price. There is **no real-time pricing anywhere in this system**: no oracle feed, no exchange rate, no spread, no repricing when XLM moves. If XLM becomes expensive, this deployment pays the difference rather than charging more, and the README says so because a fee that silently floats is a fee nobody can audit. Market-priced fees are listed under [What is still genuinely missing](#what-is-still-genuinely-missing), and moving to them means adding a price source, not relabelling this constant.
+
+## Cashing out to a local currency
+
+A wrapped asset that can only go back where it came from is a receipt, not a currency. The step that makes it useful is the one that hands it to an institution that pays out in the local banking system — and that institution is a licensed anchor, not this project. Lumen Gate is the settlement layer in front of an anchor, so it integrates with one instead of pretending to be one.
+
+The integration is [`anchor/tr-anchor-client.js`](anchor/tr-anchor-client.js), a client of a real SEP-6 anchor on Testnet. It is a client, not a mock: it reads the anchor's `stellar.toml`, authenticates over SEP-10, asks for a firm quote over SEP-38, opens a withdrawal, sends real Testnet USDC with the memo the anchor asked for, and polls the transaction until the anchor reports it is done. The anchor it talks to is a Testnet sandbox whose **bank and KYC are simulated by the anchor** — that part is the anchor's business and is labelled as such everywhere — but the Stellar leg is real USDC on the public Testnet ledger.
+
+The flow, in the order it actually happens:
+
+```text
+SEP-1   GET  /.well-known/stellar.toml         -> WEB_AUTH_ENDPOINT, TRANSFER_SERVER, the asset
+SEP-10  GET  /auth?account=G...                -> challenge XDR (never submitted to the ledger)
+        sign the challenge with the user's key
+        POST /auth {transaction}               -> JWT
+SEP-38  GET  /sep38/price                      -> a firm quote, with the spread broken out
+SEP-6   GET  /sep6/withdraw?asset_code=USDC&type=bank_account&amount=...
+                                               -> treasury account + memo + rate lock
+        send the asset on-chain to that treasury, with the memo
+SEP-6   GET  /sep6/transaction?id=...          -> pending_user_transfer_start -> completed
+```
+
+**The live exit, with a receipt.** [`deployments/tr-cashout.json`](deployments/tr-cashout.json) is one run of `node anchor/tr-anchor-client.js`, end to end:
+
+| | |
+| --- | --- |
+| anchor | the sandbox anchor's home domain, discovered from its `stellar.toml` |
+| authentication | SEP-10 JWT for the account that paid |
+| quote | SEP-38 quoted a price for the exact amount, with the 50 bps spread itemised as a fee |
+| withdrawal | treasury `GCLCZEQZ2THTEDAOFI66LACNPLY4OBKN7VKLEZFMBIHYKYQOW2W7T3Z6`, memo type `id` |
+| payment | **0.5000000 USDC** to the treasury with that memo, transaction `4ed47692824fdbcf76ef098ada65b49fdb586f215bcd10df9204a12010c970c3` on ledger 4,764,945 |
+| result | anchor reports **`completed`**, `amount_out` 24.27 TRY, fee 0.12, reference `FAST-0UDDCJJKSY` |
+| status history | `pending_user_transfer_start` → `completed`, both recorded with timestamps |
+
+The payment is the user's own: their key signs it and their XLM pays for it. The exit direction is not gasless, and the README says so rather than borrowing the inbound direction's stronger claim.
+
+**The bridge from wSRC to the anchor's asset — and its simplification, stated plainly.** The exit asset at this anchor is USDC, so a wSRC holder needs a swap first. `bridgeToUsdc()` asks Horizon for a real `pathPaymentStrictSend` route: **on Testnet there is none, in either direction**, and that is a fact anyone can re-check with one call (`GET /v1/cashout/bridge` reports it). With no order book to trade against, the code falls back to a **counterparty exchange at a configured rate**, and only when an operator configures one — the wSRC goes to the counterparty, the counterparty pays USDC back at `TR_SWAP_RATE`, and both legs carry a `lg-swap` memo so they can be matched on the ledger. That is a swap with an operator standing behind it, not a market trade, and calling it a DEX would be a lie. So: **the swap step is simplified, deliberately, and the reason is that no market exists to trade against on this network.** On a network where a wSRC/USDC market exists, the same function takes the order-book branch and no configuration is involved.
+
+**Nothing here needs the operator.** The console's cash-out panel authenticates the *user* to the anchor, forwards the signed challenge, and hands the resulting token to the anchor through the facade. The facade stores no token, mints no token and cannot open a withdrawal on anyone's behalf: the anchor's session token belongs to the user, and the facade's own operator token is explicitly not accepted on that path.
 
 ## Implementation status
 

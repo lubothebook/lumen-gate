@@ -208,3 +208,69 @@ export async function buildFinalizeInboundTx(
   const prepared = StellarSdk.SorobanRpc.assembleTransaction(tx, sim).build();
   return prepared;
 }
+
+// ---------------------------------------------------------- cash-out helpers
+// The withdrawal flow needs two things the rest of this file does not: a classic
+// payment signed by the user's own key, and the SEP-10 challenge signed the same
+// way. Neither is a contract call, so neither goes through Soroban RPC -- a
+// challenge that never reaches the ledger and a payment that goes straight to
+// Horizon.
+
+const HORIZON_URL = (import.meta as any).env?.VITE_HORIZON_URL || 'https://horizon-testnet.stellar.org';
+const USDC_ISSUER_FALLBACK = 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5';
+
+/**
+ * Signs the anchor's SEP-10 challenge.
+ *
+ * The challenge arrives as base64 XDR. It is parsed, signed by the user, and
+ * handed back as XDR: this code never mutates the transaction it was given
+ * beyond adding a signature, because an anchor verifies a signature over the
+ * exact transaction it issued.
+ */
+export async function signAnchorChallenge(challengeXdr: string, account: string): Promise<string> {
+  const transaction = StellarSdk.TransactionBuilder.fromXDR(challengeXdr, NETWORK_PASSPHRASE);
+  const freighter = (window as any).freighterApi || (window as any).freighter;
+  if (!freighter) throw new Error('Freighter is not available to sign the challenge');
+  const signed = await freighter.signTransaction(transaction.toXDR(), {
+    networkPassphrase: NETWORK_PASSPHRASE,
+    address: account,
+  });
+  const xdr = typeof signed === 'string' ? signed : signed.signedTxXdr;
+  if (!xdr) throw new Error('Freighter returned no signed challenge');
+  return xdr;
+}
+
+/**
+ * Builds the payment the anchor asked for: the asset, the treasury, the amount,
+ * and the memo the anchor will match on.
+ *
+ * Returns the transaction *unsigned*, so the caller can hand exactly these bytes
+ * to the wallet. Nothing is submitted from here.
+ */
+export async function buildAnchorPaymentTx(
+  destination: string,
+  amount: string,
+  assetIssuer: string | undefined,
+  memo: string,
+  source: string
+): Promise<any> {
+  const horizon = new StellarSdk.Horizon.Server(HORIZON_URL);
+  const account = await horizon.loadAccount(source);
+  const asset = new StellarSdk.Asset('USDC', assetIssuer || USDC_ISSUER_FALLBACK);
+  if (!/^\d+$/.test(String(memo))) {
+    throw new Error(`the anchor asked for a memo of type id; "${memo}" is not numeric`);
+  }
+  return new StellarSdk.TransactionBuilder(account, { fee: '10000', networkPassphrase: NETWORK_PASSPHRASE })
+    .addOperation(StellarSdk.Operation.payment({ destination, asset, amount }))
+    .addMemo(StellarSdk.Memo.id(String(memo)))
+    .setTimeout(60)
+    .build();
+}
+
+/** Submits an already-signed classic transaction to Horizon. */
+export async function submitClassic(signedXdr: string): Promise<string> {
+  const horizon = new StellarSdk.Horizon.Server(HORIZON_URL);
+  const transaction = StellarSdk.TransactionBuilder.fromXDR(signedXdr, NETWORK_PASSPHRASE);
+  const result = await horizon.submitTransaction(transaction as any);
+  return result.hash;
+}

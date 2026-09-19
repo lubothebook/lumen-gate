@@ -258,6 +258,19 @@ function capabilities() {
       burn_and_relay: 'signed by the end user in the browser through Freighter',
       inbound_mint: 'signed by the relayer, never by the end user',
     },
+    user_initiated: {
+      lock: 'enabled: POST /v1/user/lock with a SEP-10 session; the recipient is forced to the session account',
+      relay: process.env.LUMEN_ALLOW_USER_RELAY === '1'
+        ? `enabled: POST /v1/user/relay with a SEP-10 session, ${Math.ceil(USER_RELAY_COOLDOWN_MS / 1000)}s cooldown per account`
+        : 'disabled: set LUMEN_ALLOW_USER_RELAY=1 to let a session ask for a relay pass',
+      operator_token_required: false,
+      note: 'a session substitutes for the operator token for these two actions only; it grants no mint authority and cannot redirect a mint',
+    },
+    cashout: {
+      anchor_home_domain: trAnchor.homeDomain(),
+      routes: ['GET /v1/cashout/anchor', 'GET /v1/cashout/bridge', 'GET /v1/cashout/challenge', 'POST /v1/cashout/token', 'POST /v1/cashout/start', 'GET /v1/cashout/status'],
+      note: 'an exit through an external SEP-6 anchor; this facade proxies and stores nothing',
+    },
   };
 }
 
@@ -389,6 +402,16 @@ function readBody(req, limitBytes = 64 * 1024) {
 // route table
 // ---------------------------------------------------------------------------
 
+// The TRY exit client. It is a client of an external anchor, used only by the
+// cash-out routes below; nothing else in the facade depends on it, and if the
+// external anchor is unreachable those routes fail alone.
+const trAnchor = require('./tr-anchor-client');
+
+/** Per-account cooldown for user-initiated relay passes. A map, not a counter:
+ *  one account hammering the endpoint must not slow down another account. */
+const userRelayAt = new Map();
+const USER_RELAY_COOLDOWN_MS = Number(process.env.USER_RELAY_COOLDOWN_MS || '60000');
+
 const PUBLIC_READS = new Set([
   'GET /v1/health',
   'GET /v1/info',
@@ -403,6 +426,9 @@ const PUBLIC_READS = new Set([
   'GET /v1/sep10/auth',
   'GET /v1/sep12/customer',
   'GET /.well-known/stellar.toml',
+  'GET /v1/cashout/anchor',
+  'GET /v1/cashout/bridge',
+  'GET /v1/cashout/challenge',
 ]);
 
 const ROUTES = [
@@ -420,8 +446,17 @@ const ROUTES = [
   'GET  /v1/transactions[?id=]                    (SEP-10 session; history scoped to the token subject)',
   'POST /v1/transactions/{id}/burn {stellar_transaction_id}  (SEP-10 session of the record owner)',
   'GET  /v1/sep12/customer  (not implemented, answers 501)',
+  'POST /v1/user/lock {amount,count}   (SEP-10 session; recipient forced to the session account)',
+  'POST /v1/user/relay?height=N       (SEP-10 session; needs LUMEN_ALLOW_USER_RELAY=1)',
   'POST /v1/relay?height=N  (operator token)',
   'POST /v1/reconcile       (operator token)',
+  'GET  /v1/cashout/anchor                       (external SEP-6 anchor, discovered live)',
+  'GET  /v1/cashout/bridge[?source_asset=&amount=]  (is there a real market route to the anchor asset?)',
+  'GET  /v1/cashout/challenge?account=G...        (SEP-10 challenge, proxied)',
+  'POST /v1/cashout/token {transaction}           (signed challenge -> anchor JWT, proxied)',
+  'POST /v1/cashout/start {amount,account}        (X-Anchor-Token; opens a real SEP-6 withdrawal)',
+  'GET  /v1/cashout/status?id=                    (X-Anchor-Token; polls the anchor)',
+  'GET  /v1/logo.png            (the asset ORG_LOGO names in stellar.toml)',
   'GET  /.well-known/stellar.toml',
 ];
 
@@ -458,6 +493,27 @@ async function handle(req, res, pathname, query) {
       return text(res, 200, renderStellarToml());
     } catch (error) {
       return fail(res, 500, 'internal_error', `stellar.toml could not be rendered: ${error.message}`);
+    }
+  }
+
+  // ---- the logo ORG_LOGO points at ---------------------------------------
+  // SEP-1 asks for ORG_LOGO and other people's software renders it, so the URL
+  // is served rather than pointed at a path that 404s. It is the same asset the
+  // console embeds, read from disk on each request so a redeploy cannot leave a
+  // stale copy behind.
+  if (pathname === '/v1/logo.png') {
+    if (req.method !== 'GET') return fail(res, 405, 'method_not_allowed', 'the logo is read-only');
+    try {
+      const body = fs.readFileSync(path.join(__dirname, '..', 'frontend', 'public', 'logo-mark.png'));
+      res.writeHead(200, {
+        'Content-Type': 'image/png',
+        'Content-Length': body.length,
+        'Cache-Control': 'public, max-age=86400',
+        'X-Content-Type-Options': 'nosniff',
+      });
+      return res.end(body);
+    } catch (error) {
+      return fail(res, 500, 'internal_error', `the logo asset is unreadable on this deployment: ${error.message}`);
     }
   }
 
@@ -790,6 +846,341 @@ async function handle(req, res, pathname, query) {
         ],
       },
     });
+  }
+
+  // ---- user-initiated lock and relay (SEP-10, no operator token) -----------
+  //
+  // The first two entrypoints on this facade were operator-only: a demo where a
+  // user cannot start anything is a demo of an API, not of a system. These two
+  // put the same two actions behind the *user's* own SEP-10 session instead of a
+  // shared operator secret:
+  //
+  //   POST /v1/user/lock   a user opens a lock on the source chain for themselves
+  //   POST /v1/user/relay  a user asks for one relayer pass, without holding the
+  //                        operator token
+  //
+  // What that deliberately does NOT change:
+  //
+  //   * It grants no new authority. The relayer still signs and pays, the
+  //     registry still decides whether anything is final, and the gateway still
+  //     mints only against a verified Merkle proof. A user who can ask for a
+  //     relay pass can ask for work the operator could already trigger.
+  //   * It cannot redirect value. The lock's recipient is forced to the session
+  //     subject, so a session cannot open a lock that mints to somebody else.
+  //   * It is off by default (LUMEN_ALLOW_USER_RELAY=1) and per-account
+  //     cooldown-limited, so a stranger with a session cannot use the relayer's
+  //     XLM as a free faucet.
+
+  if (pathname === '/v1/user/lock') {
+    if (req.method !== 'POST') return fail(res, 405, 'method_not_allowed', 'opening a lock is POST');
+    const claims = requireSession(req, res);
+    if (!claims) return undefined;
+    const parsed = await readBody(req);
+    if (parsed.error) return fail(res, 400, 'invalid_request', parsed.error);
+    const body = parsed.body || {};
+    const amount = String(body.amount === undefined ? '' : body.amount).trim();
+    if (!/^\d{1,18}$/.test(amount) || Number(amount) <= 0) {
+      return fail(res, 400, 'invalid_request', 'amount must be positive base units', {example: '{ "amount": "137000000", "count": 3 }'});
+    }
+    const count = body.count === undefined ? 1 : Number(body.count);
+    if (!Number.isInteger(count) || count < 1 || count > 5) {
+      return fail(res, 400, 'invalid_request', 'count must be an integer between 1 and 5');
+    }
+    // The recipient is not a parameter. It is the session's own account, so a
+    // session cannot lock funds that will be minted to somebody else.
+    const recipient = claims.sub;
+    const result = rateLimit.consume(req);
+    for (const [key, value] of Object.entries(rateLimit.headers(result))) res.setHeader(key, value);
+    if (!result.allowed) return fail(res, 429, 'rate_limited', undefined, {limit_per_minute: result.limit});
+    try {
+      const response = await fetch(`${SIM_URL}/lock`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        // The simulator takes base units as a number; the facade accepts a
+        // string so that an 18-digit amount survives the trip through JSON
+        // without being rounded by a float on the way in or out.
+        body: JSON.stringify({amount: Number(amount), recipient, count}),
+      });
+      // The source simulator answers a refusal with a plain-text reason rather
+      // than an envelope, and piping that through JSON.parse turned a clear
+      // "that recipient is not a strkey" into "Unexpected token F".
+      const raw = await response.text();
+      let payload;
+      try {
+        payload = raw ? JSON.parse(raw) : null;
+      } catch {
+        payload = {reason: raw.slice(0, 400)};
+      }
+      if (!response.ok) {
+        return fail(res, response.status === 400 ? 400 : 502, 'source_refused', 'the source chain refused to open the lock', payload);
+      }
+      return json(res, 200, {
+        ...payload,
+        opened_for: recipient,
+        initiated_by: 'sep10 session',
+        note: 'the recipient is forced to the session account; a session cannot open a lock that mints elsewhere',
+      });
+    } catch (error) {
+      return fail(res, 502, 'upstream_unavailable', `the source chain is not reachable: ${error.message}`);
+    }
+  }
+
+  if (pathname === '/v1/user/relay') {
+    if (req.method !== 'POST') return fail(res, 405, 'method_not_allowed', 'a relay pass is POST');
+    if (process.env.LUMEN_ALLOW_USER_RELAY !== '1') {
+      return fail(res, 403, 'relay_disabled', undefined, {
+        enable: 'LUMEN_ALLOW_USER_RELAY=1 (the operator relay stays behind OPERATOR_TOKEN either way)',
+      });
+    }
+    const claims = requireSession(req, res);
+    if (!claims) return undefined;
+    const parsed = parseHeight(query.get('height'));
+    if (!parsed.ok) return fail(res, 400, 'invalid_request', 'height must be a positive integer');
+
+    const since = Date.now() - (userRelayAt.get(claims.sub) || 0);
+    if (since < USER_RELAY_COOLDOWN_MS) {
+      return fail(res, 429, 'relay_cooldown', undefined, {
+        retry_after_seconds: Math.ceil((USER_RELAY_COOLDOWN_MS - since) / 1000),
+        per: 'account',
+      });
+    }
+    if (relayInFlight) return fail(res, 429, 'relay_busy');
+    relayInFlight = true;
+    userRelayAt.set(claims.sub, Date.now());
+    try {
+      const result = await runRelayer(parsed.height);
+      const reconciled = await sep6.reconcile().catch(() => null);
+      return json(res, result.ok ? 200 : 500, {
+        ...result,
+        reconciled,
+        initiated_by: 'sep10 session',
+        account: claims.sub,
+        note: 'the relayer signed and paid; the user asked for the pass and nothing more',
+      });
+    } finally {
+      relayInFlight = false;
+      lastRelayFinishedAt = Date.now();
+    }
+  }
+
+  // ---- cash out to a local currency through an external SEP-6 anchor -------
+  //
+  // These routes are new, and they are additive: the existing SEP surface is
+  // untouched. The reason they exist at all is that Lumen Gate is not an anchor
+  // and does not intend to become one -- the exit into a bank account belongs to
+  // a licensed counterparty, and the state of the art for plugging into one is
+  // SEP-1 + SEP-10 + SEP-6. Everything here is a thin, transparent proxy: the
+  // user's own authorisation travels to the anchor, the anchor's answers travel
+  // back unedited, and the facade stores nothing.
+
+  if (route === 'GET /v1/cashout/anchor') {
+    try {
+      const discovered = await trAnchor.discover();
+      const rateNote = await trAnchor.info(null, discovered).then(
+        (info) => (info.withdraw && info.withdraw.USDC ? 'withdraw enabled' : 'withdraw not offered'),
+        () => 'info endpoint requires authentication'
+      );
+      return json(res, 200, {
+        anchor: discovered,
+        withdraw: rateNote,
+        note: "read live from the anchor's stellar.toml; the facade adds nothing and caches nothing",
+      });
+    } catch (error) {
+      return fail(res, 502, 'upstream_unavailable', `the cash-out anchor could not be read: ${error.message}`, {
+        anchor_home_domain: trAnchor.homeDomain(),
+        code: error.code || null,
+      });
+    }
+  }
+
+  if (route === 'GET /v1/cashout/bridge') {
+    // Is there a real market route from our wrapped asset into the asset the
+    // anchor exits? The answer is read from Horizon, not assumed, and when there
+    // is no route this endpoint says so instead of quoting a made-up price.
+    try {
+      const source = query.get('source_asset') || process.env.CASHOUT_SOURCE_ASSET || TOKEN_ID || '';
+      const amount = /^\d+(\.\d{1,7})?$/.test(String(query.get('amount') || '1')) ? query.get('amount') || '1' : '1';
+      const discovered = await trAnchor.discover();
+      const usdc = discovered.usdc || {code: 'USDC', issuer: trAnchor.USDC_ISSUER_FALLBACK};
+      const [code, issuer] = String(source).split(':');
+      if (!issuer) {
+        return json(res, 200, {
+          route: 'unknown',
+          simplification: true,
+          detail: 'no wrapped-asset issuer is configured on this deployment, so no market route can be looked up',
+          configured_source_asset: source || null,
+          usdc,
+        });
+      }
+      const path = await trAnchor.findBridgePath({
+        sourceAsset: {code, issuer},
+        amount,
+        destinationAsset: {code: usdc.code, issuer: usdc.issuer},
+      });
+      if (path && path.kind === 'order_book') {
+        return json(res, 200, {
+          route: 'order_book',
+          simplification: false,
+          detail: `a path payment route exists for ${amount} ${code}: the swap can be executed as a real DEX trade`,
+          path,
+        });
+      }
+      return json(res, 200, {
+        route: 'none',
+        simplification: true,
+        detail:
+          'no order book route from the wrapped asset to the anchor asset exists on this network, so the swap is a counterparty exchange at a configured rate, not a market trade',
+        lookup: path,
+        configured: {
+          counterparty: process.env.TR_SWAP_SECRET ? 'configured' : 'not configured',
+          rate: Number(process.env.TR_SWAP_RATE || '1'),
+        },
+      });
+    } catch (error) {
+      return fail(res, 502, 'upstream_unavailable', `the bridge route could not be read: ${error.message}`);
+    }
+  }
+
+  if (route === 'GET /v1/cashout/challenge') {
+    const account = query.get('account');
+    if (!account || !/^G[A-Z0-9]{55}$/.test(account)) {
+      return fail(res, 400, 'invalid_request', 'a Stellar account is required', {example: '/v1/cashout/challenge?account=G...'});
+    }
+    try {
+      const discovery = await trAnchor.discover();
+      const response = await fetch(`${discovery.web_auth_endpoint}?account=${encodeURIComponent(account)}`);
+      const body = await response.text();
+      if (!response.ok) {
+        return fail(res, 502, 'upstream_unavailable', `the anchor refused to issue a challenge (${response.status})`, {
+          anchor: discovery.home_domain,
+        });
+      }
+      res.writeHead(200, {'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store'});
+      return res.end(body);
+    } catch (error) {
+      return fail(res, 502, 'upstream_unavailable', `the cash-out anchor is unreachable: ${error.message}`);
+    }
+  }
+
+  if (route === 'POST /v1/cashout/token') {
+    // The challenge comes back signed by the user's own key. The facade forwards
+    // it and returns the anchor's token; it does not mint one, cannot forge one,
+    // and does not keep a copy.
+    const parsed = await readBody(req);
+    if (parsed.error) return fail(res, 400, 'invalid_request', parsed.error);
+    const transaction = parsed.body && parsed.body.transaction;
+    if (!transaction || typeof transaction !== 'string') {
+      return fail(res, 400, 'invalid_request', 'the signed challenge transaction is required', {
+        expect: '{ "transaction": "<base64 XDR>" }',
+      });
+    }
+    try {
+      const discovery = await trAnchor.discover();
+      const response = await fetch(discovery.web_auth_endpoint, {
+        method: 'POST',
+        headers: {'content-type': 'application/json'},
+        body: JSON.stringify({transaction}),
+      });
+      const body = await response.text();
+      if (!response.ok) {
+        let anchorMessage = body;
+        try {
+          const parsedBody = JSON.parse(body);
+          anchorMessage = parsedBody.error || parsedBody.detail || body;
+        } catch {
+          // keep the raw text
+        }
+        return fail(res, 401, 'unauthorized', `the anchor rejected the signed challenge: ${anchorMessage}`, {
+          anchor: discovery.home_domain,
+        });
+      }
+      res.writeHead(200, {'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store'});
+      return res.end(body);
+    } catch (error) {
+      return fail(res, 502, 'upstream_unavailable', `the cash-out anchor is unreachable: ${error.message}`);
+    }
+  }
+
+  if (route === 'POST /v1/cashout/start') {
+    // Starts a real SEP-6 withdrawal. The anchor's own token is required, sent as
+    // X-Anchor-Token: it is the user's credential for the external anchor, not
+    // this facade's operator token, and conflating the two would let an operator
+    // open withdrawals on somebody else's behalf.
+    const anchorToken = String(req.headers['x-anchor-token'] || '').trim();
+    if (!anchorToken) {
+      return fail(res, 401, 'unauthorized', 'the anchor session token is required', {
+        how: 'send X-Anchor-Token: <token minted by POST /v1/cashout/token>',
+      });
+    }
+    const parsed = await readBody(req);
+    if (parsed.error) return fail(res, 400, 'invalid_request', parsed.error);
+    const body = parsed.body || {};
+    const amount = String(body.amount || '').trim();
+    const account = String(body.account || '').trim();
+    if (!/^\d+(\.\d{1,7})?$/.test(amount)) {
+      return fail(res, 400, 'invalid_request', 'amount must be a positive decimal with at most 7 places', {
+        example: '{ "amount": "25", "account": "G..." }',
+      });
+    }
+    if (!/^G[A-Z0-9]{55}$/.test(account)) {
+      return fail(res, 400, 'invalid_request', 'account must be the Stellar account that owns the anchor session');
+    }
+    try {
+      const discovery = await trAnchor.discover();
+      const instructions = await trAnchor.startWithdraw({
+        amount,
+        account,
+        assetCode: 'USDC',
+        token: anchorToken,
+        discovered: discovery,
+      });
+      return json(res, 200, {
+        transaction_id: instructions.transaction_id,
+        treasury: instructions.treasury,
+        memo: instructions.memo,
+        memo_type: instructions.memo_type,
+        amount,
+        asset_code: 'USDC',
+        asset_issuer: discovery.usdc ? discovery.usdc.issuer : trAnchor.USDC_ISSUER_FALLBACK,
+        eta: instructions.eta,
+        fee_percent: instructions.fee_percent,
+        extra_info: instructions.extra_info,
+        note: 'pay the asset to the treasury with the memo attached; the anchor identifies the deposit by the memo alone',
+      });
+    } catch (error) {
+      return fail(res, 502, 'upstream_unavailable', `the anchor did not open a withdrawal: ${error.message}`, {
+        code: error.code || null,
+      });
+    }
+  }
+
+  if (route === 'GET /v1/cashout/status') {
+    const anchorToken = String(req.headers['x-anchor-token'] || '').trim();
+    if (!anchorToken) {
+      return fail(res, 401, 'unauthorized', 'the anchor session token is required', {
+        how: 'send X-Anchor-Token: <token minted by POST /v1/cashout/token>',
+      });
+    }
+    const id = String(query.get('id') || '').trim();
+    if (!/^[A-Za-z0-9_-]{4,64}$/.test(id)) {
+      return fail(res, 400, 'invalid_request', 'id must be the transaction id the anchor returned');
+    }
+    try {
+      const discovery = await trAnchor.discover();
+      const current = await trAnchor.transaction({id, token: anchorToken, discovered: discovery});
+      return json(res, 200, {
+        id,
+        status: current.status,
+        amount_in: current.amount_in,
+        amount_out: current.amount_out,
+        amount_fee: current.amount_fee,
+        external_transaction_id: current.external_transaction_id,
+        stellar_transaction_id: current.stellar_transaction_id,
+        message: current.message || null,
+      });
+    } catch (error) {
+      return fail(res, 502, 'upstream_unavailable', `the anchor did not answer for ${id}: ${error.message}`);
+    }
   }
 
   if (req.method === 'GET') {

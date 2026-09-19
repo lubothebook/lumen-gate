@@ -559,6 +559,7 @@
             <div class="tabs" role="tablist">
               <button id="tabInbound" type="button" role="tab" aria-selected="true">Receive &middot; lock to mint</button>
               <button id="tabOutbound" type="button" role="tab" aria-selected="false">Send back &middot; burn to unlock</button>
+              <button id="tabCashout" type="button" role="tab" aria-selected="false">Cash out &middot; TRY</button>
             </div>
 
             <div id="paneInbound">
@@ -612,6 +613,53 @@
                 </div>
               </div>
               <p class="note" id="redeemNote" style="margin-top:16px">Signs and submits a <code>burn_and_relay</code> call with your own key through Freighter. You pay this fee yourself.</p>
+            </div>
+
+            <div id="paneCashout" class="hidden">
+              <div class="form-grid">
+                <div class="field">
+                  <label for="cashoutAmount">Amount to cash out <span class="faint">(USDC)</span></label>
+                  <input class="amount" id="cashoutAmount" type="text" inputmode="decimal" value="25" />
+                  <span class="hint" id="cashoutAmountHint"></span>
+                </div>
+                <div class="field">
+                  <label>Anchor</label>
+                  <div class="btn-row">
+                    <button class="btn small" id="cashoutQuoteBtn" type="button">Read anchor &amp; quote</button>
+                    <span class="chip" id="cashoutAnchorChip">not read yet</span>
+                  </div>
+                  <span class="hint">SEP-1 discovery, then a firm SEP-38 quote. Nothing is signed for either.</span>
+                </div>
+                <div class="field span-2">
+                  <label>Your exit account</label>
+                  <div class="btn-row">
+                    <button class="btn small" id="cashoutAuthBtn" type="button">Authenticate (SEP-10)</button>
+                    <span class="chip" id="cashoutAuthChip">no anchor session</span>
+                  </div>
+                  <span class="hint">Signs the anchor's challenge with your own key. The challenge never touches the ledger.</span>
+                </div>
+                <div class="span-2">
+                  <button class="btn primary wide" id="cashoutStartBtn" type="button">Open the withdrawal</button>
+                </div>
+                <div class="field span-2">
+                  <label>Payment instructions</label>
+                  <div class="kv" id="cashoutInstructions"><div class="kv-row"><span>treasury</span><span class="faint">not opened yet</span></div></div>
+                  <span class="hint" id="cashoutPayHint">The anchor identifies your deposit by the memo alone, so the memo is not optional.</span>
+                </div>
+                <div class="span-2">
+                  <div class="btn-row">
+                    <button class="btn small" id="cashoutPayBtn" type="button" disabled>Pay with Freighter</button>
+                    <button class="btn small" id="cashoutStatusBtn" type="button" disabled>Check status</button>
+                  </div>
+                </div>
+              </div>
+              <p class="note" id="cashoutNote" style="margin-top:16px">
+                The exit is run through a real SEP-6 anchor on Testnet: discovery, authentication, a firm quote and a
+                polled transaction. Lumen Gate is not the anchor and holds no licence to be one &mdash; it is the
+                settlement layer in front of it. The anchor is a Testnet sandbox whose bank and KYC are simulated; the
+                USDC you send is real Testnet USDC. If wSRC has no market route to that anchor's asset, the swap step
+                is a counterparty exchange at a configured rate and the README says exactly that.
+              </p>
             </div>
           </div>
         </div>

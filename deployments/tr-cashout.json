@@ -1,0 +1,143 @@
+{
+  "home_domain": "tr-mock-anchor.fly.dev",
+  "account": "GCWXGQO2UTLNHXHE7MZ6O6HMUS3AUJ3K2PTE4R2AJ47OLRHGS52A4GPI",
+  "amount": "0.5",
+  "asset": "USDC",
+  "quote": {
+    "total_price": "0.0206015657",
+    "price": "0.0204980712",
+    "sell_amount": "0.5000000",
+    "buy_amount": "24.27",
+    "fee": {
+      "total": "0.0025119",
+      "asset": "stellar:USDC:GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+      "details": [
+        {
+          "name": "spread",
+          "description": "50 bps from the USD/TRY mid rate",
+          "amount": "0.0025119"
+        }
+      ]
+    },
+    "buy_asset": "iso4217:TRY",
+    "sell_asset": "stellar:USDC:GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+    "source": "https://tr-mock-anchor.fly.dev/sep38/price?sell_asset=stellar%3AUSDC%3AGBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5&buy_asset=iso4217%3ATRY&sell_amount=0.5&context=sep6"
+  },
+  "treasury": "GCLCZEQZ2THTEDAOFI66LACNPLY4OBKN7VKLEZFMBIHYKYQOW2W7T3Z6",
+  "memo": "519904443968",
+  "memo_type": "id",
+  "payment": {
+    "hash": "4ed47692824fdbcf76ef098ada65b49fdb586f215bcd10df9204a12010c970c3",
+    "ledger": 4764945,
+    "successful": true
+  },
+  "transaction_id": "sep_0kuumpjhebhwp1u9nrm5",
+  "final_status": "completed",
+  "amount_out": "24.27",
+  "amount_fee": "0.12",
+  "external_transaction_id": "FAST-0UDDCJJKSY",
+  "steps": [
+    {
+      "step": "discover",
+      "ok": true,
+      "detail": "anchor tr-mock-anchor.fly.dev: auth https://tr-mock-anchor.fly.dev/auth, transfer https://tr-mock-anchor.fly.dev/sep6",
+      "at": "2026-09-19T20:05:08.248Z",
+      "signing_key": "GDXYO6FJCNXZEWGXD54GT76FGFYLOLSOGSOJLNQ6WGHCGEQPO7NTE73M",
+      "usdc": {
+        "code": "USDC",
+        "issuer": "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5"
+      }
+    },
+    {
+      "step": "sep10_authenticate",
+      "ok": true,
+      "detail": "authenticated GCWXGQO2UTLNHXHE7MZ6O6HMUS3AUJ3K2PTE4R2AJ47OLRHGS52A4GPI against https://tr-mock-anchor.fly.dev/auth",
+      "at": "2026-09-19T20:05:08.913Z"
+    },
+    {
+      "step": "sep6_capabilities",
+      "ok": true,
+      "detail": "USDC withdrawal enabled, fee_percent 0.5, types bank_account",
+      "at": "2026-09-19T20:05:09.085Z",
+      "fee_percent": 0.5,
+      "funding_methods": [
+        "bank_account"
+      ]
+    },
+    {
+      "step": "sep38_price",
+      "ok": true,
+      "detail": "1 USDC = 0.0204980712 iso4217:TRY, as quoted by the anchor's SEP-38 endpoint",
+      "at": "2026-09-19T20:05:09.277Z",
+      "quote": {
+        "total_price": "0.0206015657",
+        "price": "0.0204980712",
+        "sell_amount": "0.5000000",
+        "buy_amount": "24.27",
+        "fee": {
+          "total": "0.0025119",
+          "asset": "stellar:USDC:GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+          "details": [
+            {
+              "name": "spread",
+              "description": "50 bps from the USD/TRY mid rate",
+              "amount": "0.0025119"
+            }
+          ]
+        },
+        "buy_asset": "iso4217:TRY",
+        "sell_asset": "stellar:USDC:GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+        "source": "https://tr-mock-anchor.fly.dev/sep38/price?sell_asset=stellar%3AUSDC%3AGBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5&buy_asset=iso4217%3ATRY&sell_amount=0.5&context=sep6"
+      }
+    },
+    {
+      "step": "sep6_withdraw_started",
+      "ok": true,
+      "detail": "withdrawal sep_0kuumpjhebhwp1u9nrm5: pay 0.5 USDC to GCLCZEQZ2THTEDAOFI66LACNPLY4OBKN7VKLEZFMBIHYKYQOW2W7T3Z6 with id memo 519904443968",
+      "at": "2026-09-19T20:05:09.450Z",
+      "transaction_id": "sep_0kuumpjhebhwp1u9nrm5",
+      "treasury": "GCLCZEQZ2THTEDAOFI66LACNPLY4OBKN7VKLEZFMBIHYKYQOW2W7T3Z6",
+      "memo": "519904443968",
+      "memo_type": "id",
+      "eta": 10,
+      "extra_info": {
+        "message": "Send 0.5000000 USDC to GCLCZEQZ2THTEDAOFI66LACNPLY4OBKN7VKLEZFMBIHYKYQOW2W7T3Z6 with memo (type id) 519904443968. Rate 48.541152 TRY/USDC locked until 2026-09-19T20:35:09.400Z. TRY is paid (simulated) to TR810009903438053742215692.",
+        "payment_uri": "web+stellar:pay?destination=GCLCZEQZ2THTEDAOFI66LACNPLY4OBKN7VKLEZFMBIHYKYQOW2W7T3Z6&amount=0.5000000&asset_code=USDC&asset_issuer=GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5&memo=519904443968&memo_type=MEMO_ID&msg=TR+Mock+Anchor+withdrawal"
+      }
+    },
+    {
+      "step": "stellar_payment",
+      "ok": true,
+      "detail": "sent 0.5 USDC to the anchor treasury, transaction 4ed47692824fdbcf76ef098ada65b49fdb586f215bcd10df9204a12010c970c3",
+      "at": "2026-09-19T20:05:13.050Z",
+      "hash": "4ed47692824fdbcf76ef098ada65b49fdb586f215bcd10df9204a12010c970c3",
+      "ledger": 4764945,
+      "successful": true
+    },
+    {
+      "step": "sep6_status",
+      "ok": true,
+      "status": "pending_user_transfer_start",
+      "at": "2026-09-19T20:05:13.317Z"
+    },
+    {
+      "step": "sep6_status",
+      "ok": true,
+      "status": "completed",
+      "at": "2026-09-19T20:05:16.745Z"
+    },
+    {
+      "step": "sep6_completed",
+      "ok": true,
+      "detail": "the anchor reports status completed",
+      "at": "2026-09-19T20:05:16.745Z",
+      "status": "completed",
+      "amount_in": "0.5000000",
+      "amount_out": "24.27",
+      "amount_fee": "0.12",
+      "external_transaction_id": "FAST-0UDDCJJKSY",
+      "stellar_transaction_id": "4ed47692824fdbcf76ef098ada65b49fdb586f215bcd10df9204a12010c970c3"
+    }
+  ],
+  "finished_at": "2026-09-19T20:05:16.745Z"
+}

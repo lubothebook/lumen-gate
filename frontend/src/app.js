@@ -766,11 +766,194 @@ function restoreOperatorFocus() {
 }
 
 function showTab(which) {
-  const inbound = which === 'inbound';
-  $('tabInbound').setAttribute('aria-selected', String(inbound));
-  $('tabOutbound').setAttribute('aria-selected', String(!inbound));
-  $('paneInbound').classList.toggle('hidden', !inbound);
-  $('paneOutbound').classList.toggle('hidden', inbound);
+  const panes = { inbound: 'paneInbound', outbound: 'paneOutbound', cashout: 'paneCashout' };
+  for (const [name, pane] of Object.entries(panes)) {
+    const selected = name === which;
+    $(`tab${name[0].toUpperCase()}${name.slice(1)}`).setAttribute('aria-selected', String(selected));
+    $(pane).classList.toggle('hidden', !selected);
+  }
+}
+
+
+// ------------------------------------------------- cash out to a local currency
+// This panel drives a real SEP-6 anchor from the browser. Nothing here is a
+// mock: discovery, the SEP-10 challenge, the firm quote, the withdrawal
+// instructions and the status poll all travel to the anchor, and the payment is
+// signed by the user's own Freighter key.
+//
+// The one thing worth reading carefully is `X-Anchor-Token`. The anchor's token
+// is the *user's* credential for the external anchor. It is deliberately not the
+// operator token this facade uses for its own writes: an operator is not the
+// user, and an operator must not be able to open a withdrawal on somebody
+// else's behalf.
+const CASHOUT = {
+  anchorToken: null,
+  transactionId: null,
+  instructions: null,
+  anchor: null,
+};
+
+async function cashoutApi(query, { method = 'GET', body, anchorToken = null } = {}) {
+  // Through /api/cashout rather than straight at the facade: the browser never
+  // has to reach a host the page does not control, and the deployment can say
+  // honestly that the exit is unavailable instead of failing with a network
+  // error. The anchor's own token is passed through untouched.
+  const headers = { 'Content-Type': 'application/json' };
+  if (anchorToken) headers['X-Anchor-Token'] = anchorToken;
+  const response = await fetch(`/api/cashout${query}`, { method, headers, body: body ? JSON.stringify(body) : undefined });
+  const text = await response.text();
+  let payload;
+  try {
+    payload = JSON.parse(text);
+  } catch {
+    payload = { raw: text.slice(0, 400) };
+  }
+  return { ok: response.ok, status: response.status, payload };
+}
+
+function cashoutPaintInstructions(instructions) {
+  const rows = instructions
+    ? [
+        ['treasury', short(instructions.treasury, 8)],
+        ['memo', `${instructions.memo} (${instructions.memo_type})`],
+        ['amount', `${instructions.amount} ${instructions.asset_code}`],
+        ['transaction', instructions.transaction_id],
+      ]
+    : [['treasury', 'not opened yet']];
+  // Built as nodes rather than as an HTML string: these values come from an
+  // external anchor, and interpolating an external string into markup is how a
+  // page ends up rendering somebody else's tags.
+  const container = $('cashoutInstructions');
+  container.textContent = '';
+  for (const [key, value] of rows) {
+    const row = document.createElement('div');
+    row.className = 'kv-row';
+    const left = document.createElement('span');
+    left.textContent = key;
+    const right = document.createElement('span');
+    right.className = 'mono';
+    right.textContent = String(value);
+    row.append(left, right);
+    container.append(row);
+  }
+  $('cashoutPayBtn').disabled = !instructions;
+  $('cashoutStatusBtn').disabled = !CASHOUT.transactionId;
+  if (instructions && instructions.extra_info && instructions.extra_info.message) {
+    $('cashoutPayHint').textContent = instructions.extra_info.message;
+  }
+}
+
+async function cashoutReadAnchor() {
+  const result = await cashoutApi('?action=anchor');
+  if (!result.ok) return log(`Anchor unreachable: ${failureText(result.payload)}`, 'bad');
+  CASHOUT.anchor = result.payload.anchor;
+  $('cashoutAnchorChip').textContent = result.payload.anchor.home_domain;
+  const usdc = result.payload.anchor.usdc || {};
+  log(`Anchor ${result.payload.anchor.home_domain}: auth ${result.payload.anchor.web_auth_endpoint}, transfer ${result.payload.anchor.transfer_server}`, 'ok');
+  log(`It exits ${usdc.code || 'the asset'} issued by ${short(usdc.issuer || 'unknown', 8)}; ${result.payload.withdraw}.`, '');
+
+  const amount = ($('cashoutAmount').value || '').trim();
+  const quote = await cashoutApi(`?action=bridge&amount=${encodeURIComponent(amount || '1')}`);
+  if (quote.ok) {
+    if (quote.payload.route === 'order_book') {
+      log(`Bridge: a real market route exists (${quote.payload.detail.slice(0, 120)}).`, 'ok');
+    } else {
+      log(`Bridge: ${quote.payload.detail}`, 'warn');
+    }
+  }
+  return result.payload;
+}
+
+async function cashoutAuthenticate() {
+  if (!state.wallet) {
+    const address = await connectWallet();
+    if (!address) return null;
+  }
+  const challenge = await cashoutApi(`?action=challenge&account=${encodeURIComponent(state.wallet)}`);
+  if (!challenge.ok) {
+    log(`No challenge: ${failureText(challenge.payload)}`, 'bad');
+    return null;
+  }
+  const freighter = window.freighterApi || window.freighter;
+  if (!freighter) {
+    log('Freighter is required to sign the anchor challenge.', 'bad');
+    return null;
+  }
+  try {
+    const module = await import('./soroban.ts');
+    const signed = await module.signAnchorChallenge(challenge.payload.transaction, state.wallet);
+    const token = await cashoutApi('?action=token', { method: 'POST', body: { transaction: signed } });
+    if (!token.ok) {
+      log(`The anchor refused the signed challenge: ${failureText(token.payload)}`, 'bad');
+      return null;
+    }
+    CASHOUT.anchorToken = token.payload.token;
+    $('cashoutAuthChip').textContent = `session for ${short(state.wallet, 4)}`;
+    log('Authenticated with the anchor. The token lives in this tab only.', 'ok');
+    return CASHOUT.anchorToken;
+  } catch (error) {
+    log(`Authentication failed: ${error && error.message ? error.message : error}`, 'bad');
+    return null;
+  }
+}
+
+async function cashoutStart() {
+  if (!CASHOUT.anchorToken && !(await cashoutAuthenticate())) return;
+  const amount = ($('cashoutAmount').value || '').trim();
+  if (!/^\d+(\.\d{1,7})?$/.test(amount)) return log('Amount must be a positive decimal with at most 7 places.', 'bad');
+  const result = await cashoutApi('?action=start', {
+    method: 'POST',
+    anchorToken: CASHOUT.anchorToken,
+    body: { amount, account: state.wallet },
+  });
+  if (!result.ok) {
+    if (result.status === 401 && CASHOUT.anchorToken) {
+      CASHOUT.anchorToken = null;
+      $('cashoutAuthChip').textContent = 'session expired';
+    }
+    return log(`The anchor did not open a withdrawal: ${failureText(result.payload)}`, 'bad');
+  }
+  CASHOUT.instructions = result.payload;
+  CASHOUT.transactionId = result.payload.transaction_id;
+  cashoutPaintInstructions(result.payload);
+  log(`Withdrawal ${result.payload.transaction_id} is open: pay ${result.payload.amount} ${result.payload.asset_code} to ${short(result.payload.treasury, 8)} with memo ${result.payload.memo}.`, 'ok');
+}
+
+async function cashoutPay() {
+  if (!CASHOUT.instructions) return log('Open the withdrawal first.', 'warn');
+  if (!state.wallet) {
+    const address = await connectWallet();
+    if (!address) return;
+  }
+  try {
+    const module = await import('./soroban.ts');
+    const prepared = await module.buildAnchorPaymentTx(
+      CASHOUT.instructions.treasury,
+      CASHOUT.instructions.amount,
+      CASHOUT.instructions.asset_issuer,
+      CASHOUT.instructions.memo,
+      state.wallet
+    );
+    const freighter = window.freighterApi || window.freighter;
+    const signed = await freighter.signTransaction(prepared.toXDR(), { networkPassphrase: NETWORK_PASSPHRASE, address: state.wallet });
+    const xdr = typeof signed === 'string' ? signed : signed.signedTxXdr;
+    if (!xdr) throw new Error('Freighter returned no signed transaction');
+    const submitted = await module.submitClassic(xdr);
+    log(`Paid the anchor: ${submitted}. The anchor identifies the deposit by the memo, so it will now match this withdrawal.`, 'ok');
+    await refreshWallet();
+  } catch (error) {
+    log(`Payment failed: ${error && error.message ? error.message : error}`, 'bad');
+  }
+}
+
+async function cashoutStatus() {
+  if (!CASHOUT.transactionId) return;
+  const result = await cashoutApi(`?action=status&id=${encodeURIComponent(CASHOUT.transactionId)}`, {
+    anchorToken: CASHOUT.anchorToken,
+  });
+  if (!result.ok) return log(`Status check failed: ${failureText(result.payload)}`, 'bad');
+  const payload = result.payload;
+  log(`Anchor reports ${payload.status}${payload.amount_out ? `, paid out ${payload.amount_out}` : ''}${payload.external_transaction_id ? `, reference ${payload.external_transaction_id}` : ''}.`, payload.status === 'completed' ? 'ok' : '');
 }
 
 function wire() {
@@ -807,6 +990,12 @@ function wire() {
   });
   $('tabInbound').addEventListener('click', () => showTab('inbound'));
   $('tabOutbound').addEventListener('click', () => showTab('outbound'));
+  $('tabCashout').addEventListener('click', () => showTab('cashout'));
+  $('cashoutQuoteBtn').addEventListener('click', () => cashoutReadAnchor().catch((error) => log(String(error), 'bad')));
+  $('cashoutAuthBtn').addEventListener('click', () => cashoutAuthenticate().catch((error) => log(String(error), 'bad')));
+  $('cashoutStartBtn').addEventListener('click', () => cashoutStart().catch((error) => log(String(error), 'bad')));
+  $('cashoutPayBtn').addEventListener('click', () => cashoutPay().catch((error) => log(String(error), 'bad')));
+  $('cashoutStatusBtn').addEventListener('click', () => cashoutStatus().catch((error) => log(String(error), 'bad')));
   $('operatorBtn').addEventListener('click', operatorDialog);
   $('opSave').addEventListener('click', () => {
     state.operatorToken = $('opToken').value.trim();
