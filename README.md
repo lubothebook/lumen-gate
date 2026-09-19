@@ -118,7 +118,7 @@ The Groth16 proof was generated from a circuit compiled in this repository, agai
 
 ### Test status
 
-`cargo test --workspace --lib` → **20 passed, 0 failed** (9 in `finality_registry`, 11 in `settlement_gateway`). Run it yourself; the count in this file is not aspirational.
+`cargo test --workspace --lib` → **23 passed, 0 failed** (12 in `finality_registry`, 11 in `settlement_gateway`). Run it yourself; the count in this file is not aspirational. Three of the registry tests replay the exact 256-byte proof and 768-byte key that a testnet transaction accepted, so a regression in the verifier or in the byte encoding fails the suite instead of only failing in production. `-- --nocapture` prints the measured CPU cost of the pairing check.
 
 ### What is not claimed yet
 
@@ -130,6 +130,14 @@ The Groth16 proof was generated from a circuit compiled in this repository, agai
 - **No bond, fee or slashing economics.** A validator that signs a wrong root loses nothing.
 
 The source side is intentionally local. The Stellar side is not mocked: the acceptance bar was real deployments, real transaction hashes, real events, and negative probes against the live contracts — and that bar is now met for both directions.
+
+### Is this a zkVM?
+
+**No, and the word zkVM should not be attached to this system.** A zkVM proves the execution of a program on a virtual machine: it needs an instruction set with defined semantics, a memory model, a commitment to the guest program, and a witness that replays the execution. None of those four things exists here.
+
+What exists is narrower and fully verifiable: one **fixed-statement Groth16 proof over BN254**, compiled ahead of time from [`circuits/finality_statement.circom`](circuits/finality_statement.circom) into **628 constraints**, verified on-chain by the registry's own verifier through Stellar's native BN254 host functions. The statement is "a quorum of approval bits is set and the three roots participate in one Poseidon relation", and it is frozen at compile time: changing it means new keys and a new deployment.
+
+The full write-up — statement, byte layout, measured cost, what a real zkVM would require, and the research direction — is in [`docs/PROVING_SYSTEM.md`](docs/PROVING_SYSTEM.md). The one-line version for a reviewer: **a statement proof, not a VM proof; a quorum proof, not a signature proof.**
 
 ## Product thesis
 
@@ -247,7 +255,7 @@ The full pairing path, not an on-curve-only shortcut, is the security claim show
 
 ### Groth16 / BN254
 
-The ZK path uses a small purpose-built circuit rather than porting a large source-chain VM. Soroban's native BN254 pairing check is the on-chain verifier, and it now verifies real proofs: [`circuits/finality_statement.circom`](circuits/finality_statement.circom) compiled with circom 2.2.3, proved with snarkjs 0.7.6 against a Powers-of-Tau ceremony generated locally, serialised by [`circuits/convert_to_soroban.py`](circuits/convert_to_soroban.py), and accepted five times on testnet.
+The ZK path uses a small purpose-built circuit rather than porting a large source-chain VM — this is a **statement proof, not a zkVM** ([why, in one section](#is-this-a-zkvm), and in full in [`docs/PROVING_SYSTEM.md`](docs/PROVING_SYSTEM.md)). Soroban's native BN254 pairing check is the on-chain verifier, and it verifies real proofs: [`circuits/finality_statement.circom`](circuits/finality_statement.circom) compiled with circom 2.2.3 into 628 constraints, proved with snarkjs 0.7.6 against a Powers-of-Tau ceremony generated locally, serialised by [`circuits/convert_to_soroban.py`](circuits/convert_to_soroban.py), and accepted by the live registry on testnet (receipts above). On-chain, that verification costs about **29.1M cpu instructions** in the Soroban host model and was charged **158,961 stroops** on testnet — both measured, both re-runnable with `cargo test -p finality_registry --lib -- --nocapture`.
 
 The public signal order is fixed by the deployed verifier, which requires the last public input to equal the evidence's declared state root:
 
@@ -262,7 +270,7 @@ Getter/setter shape: a 768-byte verification key (α, β, γ, δ and five IC poi
 
 **What the circuit does and does not do.** It proves a quorum exists over an approval bitmap, and that the three roots participate in one Poseidon relation, so none of them is free metadata. It does **not** verify signatures. A production lane replaces the bitmap with a signature gadget. That is why the settlement anchor comes from the BLS lane, whose signature does cover the event root, and why the registry refuses to persist an event root from the ZK lane.
 
-The older checked-in fixture under `circuits/DEVELOPMENT_FIXTURE.md` is quarantined and is never submitted unless `ALLOW_DEVELOPMENT_ZK_FIXTURE=1` is set for a development demonstration.
+The older checked-in fixture — now named [`circuits/settlement_statement_fixture.circom`](circuits/settlement_statement_fixture.circom) so the filename stops implying a VM — is quarantined and is never submitted unless `ALLOW_DEVELOPMENT_ZK_FIXTURE=1` is set for a development demonstration. It exists so a developer can see the wire format without a ceremony; it is not part of any claim.
 
 ## Anchor integration
 

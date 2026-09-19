@@ -521,10 +521,11 @@ impl SettlementGateway {
         })
     }
 
-    // Gasless innovation: user with no XLM on Stellar can still get wSRC
-    // Relayer pays XLM fee on Stellar, fee is extracted from source chain lock (amount includes fee)
-    // Flow: user locks on source with amount = user_wants + fee, relayer calls this with fee, relayer gets fee, user gets amount-fee even without XLM
-    // This is the biggest innovation: bridge secured by machine (zkVM) not human, and fee abstraction from other network
+    // Gasless claim: the recipient needs no XLM because the relayer pays the
+    // Stellar fee, and the relayer is repaid out of the locked amount rather
+    // than out of the recipient's balance. Fee abstraction is the actual idea
+    // here; the settlement security comes from the registry's finalised event
+    // root and the nonce high-water mark, not from anything in this function.
     pub fn finalize_inbound_gasless(
         env: Env,
         relayer: Address,

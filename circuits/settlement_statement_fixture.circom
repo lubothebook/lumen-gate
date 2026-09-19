@@ -3,7 +3,16 @@ include "circomlib/poseidon.circom";
 include "circomlib/comparators.circom";
 
 /*
-  Compact settlement proof workbench for Lumen Gate.
+  QUARANTINED development fixture. Not the circuit that is deployed.
+
+  The live circuit is finality_statement.circom. This file is kept only so
+  the checked-in range_proof_* fixtures have a matching source; the relayer
+  refuses to submit anything built from it unless
+  ALLOW_DEVELOPMENT_ZK_FIXTURE=1 is set for a development demonstration.
+
+  It is named a statement, not a VM, because that is what it is: a fixed
+  relation over a handful of field elements. Renaming the template was part
+  of removing the inaccurate "zkVM" label from this repository.
 
   Public inputs: previous root, new root, event root and threshold.
   Private inputs: enabled validator bitmap.
@@ -32,7 +41,7 @@ template CountEnabled(n) {
     }
 }
 
-template SettlementZkVM(n, m) {
+template SettlementStatementFixture(n, m) {
     signal input prev_state_root;
     signal input new_state_root;
     signal input event_root;
@@ -67,4 +76,4 @@ template SettlementZkVM(n, m) {
     valid === 1;
 }
 
-component main {public [prev_state_root, new_state_root, event_root, threshold]} = SettlementZkVM(5, 3);
+component main {public [prev_state_root, new_state_root, event_root, threshold]} = SettlementStatementFixture(5, 3);

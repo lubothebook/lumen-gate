@@ -835,21 +835,29 @@ impl FinalityRegistry {
             .unwrap_or(Vec::new(&env))
     }
 
-    // zkVM innovation: machine approval instead of human multisig
-    // This is the biggest innovation from reference pattern: bridge secured by machine (zkVM) not human
-    // verify_via_zkvm is alias for ZK path but with explicit zkVM semantics: state transition proof verified by BN254 pairing
+    // Alias for the Groth16 path. The name is legacy and it is kept only
+    // because this entrypoint is live in a registry whose admin has been
+    // renounced, so the ABI cannot be renamed in place.
+    //
+    // It is NOT a zkVM. Nothing here proves the execution of a program on a
+    // virtual machine: there is no instruction set, no memory model and no
+    // program commitment, and the statement is baked into the constraint
+    // system at compile time. The circuit proves that a quorum of a bitmap is
+    // set and that the submitted roots participate in one Poseidon relation.
+    // See docs/PROVING_SYSTEM.md, and note that the settlement path does not
+    // use this lane's event root precisely because no signature covers it.
     pub fn verify_via_zkvm(
         env: Env,
         evidence: RawEvidence,
         proof: Bytes,
         public_inputs: Vec<BytesN<32>>,
     ) -> Result<FinalityAttestation, RegistryError> {
-        // zkVM: state transition (prev_root -> new_root) proven via Groth16, verified by machine
-        // No human validator approval needed, only cryptographic proof
         Self::submit_finality_evidence_zk(env, evidence, proof, public_inputs)
     }
 
-    // Machine approval check: returns true if domain's last finality was via zkVM (machine) not human multisig
+    // True when the domain's most recent finality came from the Groth16 lane
+    // rather than from a BLS signature set. "Machine approved" here means
+    // "the last accepted evidence was a pairing check", nothing more.
     pub fn is_machine_approved(env: Env, domain: BytesN<32>) -> bool {
         if let Some(record) = env.storage().persistent().get::<DataKey, DomainRecord>(&DataKey::Domain(domain.clone())) {
             // Only a recorded ZK attestation is reported as ZK machine approval.
@@ -863,8 +871,13 @@ impl FinalityRegistry {
 }
 
 #[cfg(test)]
+mod test_vectors;
+
+#[cfg(test)]
 mod test {
     use super::*;
+    use crate::test_vectors as v;
+    extern crate std;
     use soroban_sdk::{testutils::Address as _, Env};
 
     #[test]
@@ -888,7 +901,11 @@ mod test {
 
         let adapter = BytesN::from_array(&env, &[2u8; 32]);
         let network = String::from_str(&env, "source-testnet");
-        let _domain = client.register_domain(&admin, &adapter, &network, &10, &1, &Vec::from_array(&env, [1u32]));
+        let domain = client.register_domain(&admin, &adapter, &network, &10, &1, &Vec::from_array(&env, [1u32]));
+        // Without this the call below would fail with NotAdmitted instead of
+        // testing the signature check, i.e. the test would pass for the wrong
+        // reason.
+        client.admit_domain(&admin, &domain);
 
         let mut payload = Bytes::new(&env);
         payload.append(&Bytes::from_array(&env, &1u64.to_le_bytes()));
@@ -909,7 +926,13 @@ mod test {
             submitter: Address::generate(&env),
         };
         let res = client.try_submit_finality_evidence_bls(&evidence);
-        assert!(res.is_err());
+        // The domain is admitted here, so this must be the signature check
+        // failing and not an earlier guard.
+        assert!(
+            matches!(res, Err(Ok(RegistryError::InvalidSignature))),
+            "expected InvalidSignature, got {:?}",
+            res
+        );
     }
 
     #[test]
@@ -1044,7 +1067,10 @@ mod test {
         client.initialize(&admin);
         let adapter = BytesN::from_array(&env, &[7u8; 32]);
         let network = String::from_str(&env, "source-testnet");
-        client.register_domain(&admin, &adapter, &network, &2, &1, &Vec::from_array(&env, [1u32]));
+        let domain = client.register_domain(&admin, &adapter, &network, &2, &1, &Vec::from_array(&env, [1u32]));
+        // Admit, otherwise this test would short-circuit on NotAdmitted and
+        // never look at the verification key.
+        client.admit_domain(&admin, &domain);
         // Set wrong VK (all zeros 768 bytes -> invalid)
         let wrong_vk = soroban_sdk::Bytes::from_array(&env, &[0u8; 768]);
         client.set_vk(&admin, &wrong_vk);
@@ -1064,6 +1090,201 @@ mod test {
         let fake_proof = soroban_sdk::Bytes::from_array(&env, &[0u8; 256]);
         let public_inputs = Vec::from_array(&env, [BytesN::from_array(&env, &[1u8; 32])]);
         let res = client.try_submit_finality_evidence_zk(&evidence, &fake_proof, &public_inputs);
-        assert!(res.is_err());
+        assert!(
+            matches!(res, Err(Ok(RegistryError::InvalidProof))),
+            "expected InvalidProof, got {:?}",
+            res
+        );
+    }
+
+    // ---------------------------------------------------------------------
+    // Live vectors from the Groth16 lane. See src/test_vectors.rs.
+    // ---------------------------------------------------------------------
+
+    /// Decode a lowercase hex string into `N` bytes without pulling in `alloc`.
+    fn decode_hex<const N: usize>(hex: &str) -> [u8; N] {
+        let b = hex.as_bytes();
+        assert_eq!(b.len(), 2 * N, "vector has the wrong length");
+        let mut out = [0u8; N];
+        let mut i = 0usize;
+        while i < N {
+            out[i] = (nibble(b[2 * i]) << 4) | nibble(b[2 * i + 1]);
+            i += 1;
+        }
+        out
+    }
+
+    const fn nibble(c: u8) -> u8 {
+        match c {
+            b'0'..=b'9' => c - b'0',
+            b'a'..=b'f' => c - b'a' + 10,
+            b'A'..=b'F' => c - b'A' + 10,
+            _ => 0,
+        }
+    }
+
+    fn adapter(env: &Env) -> BytesN<32> {
+        BytesN::from_array(env, &decode_hex::<32>(v::ADAPTER_HEX))
+    }
+
+    fn live_vk(env: &Env) -> Bytes {
+        Bytes::from_slice(env, &decode_hex::<768>(v::VK_HEX))
+    }
+
+    fn live_proof(env: &Env) -> Bytes {
+        Bytes::from_slice(env, &decode_hex::<256>(v::PROOF_HEX))
+    }
+
+    fn live_public_inputs(env: &Env) -> Vec<BytesN<32>> {
+        Vec::from_array(
+            env,
+            [
+                BytesN::from_array(env, &decode_hex::<32>(v::PUBLIC_INPUTS_HEX[0])),
+                BytesN::from_array(env, &decode_hex::<32>(v::PUBLIC_INPUTS_HEX[1])),
+                BytesN::from_array(env, &decode_hex::<32>(v::PUBLIC_INPUTS_HEX[2])),
+                BytesN::from_array(env, &decode_hex::<32>(v::PUBLIC_INPUTS_HEX[3])),
+            ],
+        )
+    }
+
+    fn evidence_for(env: &Env, height: u64, root: &BytesN<32>) -> RawEvidence {
+        let mut payload = Bytes::new(env);
+        payload.append(&Bytes::from_array(env, &height.to_le_bytes()));
+        payload.append(&Bytes::from_array(env, &root.to_array()));
+        RawEvidence {
+            adapter_id: adapter(env),
+            evidence_version: 1,
+            network: String::from_str(env, v::NETWORK),
+            payload,
+            declared_height: height,
+            declared_root: root.clone(),
+            submitter: Address::generate(env),
+        }
+    }
+
+    /// Fresh registry wired exactly like the live one: a real admin, the real
+    /// 768-byte verification key, and the source domain admitted for the same
+    /// evidence version. Only the on-chain admin renunciation is missing, and
+    /// that is covered by its own test.
+    fn live_registry(env: &Env) -> (FinalityRegistryClient<'_>, BytesN<32>) {
+        env.mock_all_auths();
+        let contract_id = env.register(FinalityRegistry, ());
+        let client = FinalityRegistryClient::new(env, &contract_id);
+        let admin = Address::generate(env);
+        client.initialize(&admin);
+        client.set_vk(&admin, &live_vk(env));
+        let network = String::from_str(env, v::NETWORK);
+        let key = client.register_domain(
+            &admin,
+            &adapter(env),
+            &network,
+            &10,
+            &1,
+            &Vec::from_array(env, [1u32]),
+        );
+        // register_domain leaves the domain in state 0 (pending). Submitting
+        // evidence before admit_domain returns NotAdmitted and never reaches
+        // the verifier, so the tests below must admit first.
+        client.admit_domain(&admin, &key);
+        (client, key)
+    }
+
+    #[test]
+    fn test_live_groth16_proof_verifies_in_host() {
+        let env = Env::default();
+        let (client, key) = live_registry(&env);
+        let root = BytesN::from_array(&env, &decode_hex::<32>(v::STATE_ROOT_HEX));
+        let evidence = evidence_for(&env, v::HEIGHT, &root);
+        let proof = live_proof(&env);
+        let public_inputs = live_public_inputs(&env);
+
+        let cpu_before = env.budget().cpu_instruction_cost();
+        let att = client.submit_finality_evidence_zk(&evidence, &proof, &public_inputs);
+        let cpu_after = env.budget().cpu_instruction_cost();
+        std::println!(
+            "[proving-system] bn254 pairing check over a 256-byte proof and a 768-byte vk: \
+             {} cpu instructions (host model, Rust target)",
+            cpu_after.saturating_sub(cpu_before)
+        );
+
+        // Cost of the pure pairing check, measured separately from storage and
+        // event costs. Reported as a range in docs/PROVING_SYSTEM.md.
+        let pairing_only = env.as_contract(&client.address, || {
+            let t0 = env.budget().cpu_instruction_cost();
+            let ok = groth16::verify(&env, &live_vk(&env), &proof, &public_inputs);
+            assert!(ok, "the same verifier must accept the same bytes");
+            env.budget().cpu_instruction_cost().saturating_sub(t0)
+        });
+        std::println!(
+            "[proving-system] pairing + scalars only: {} cpu instructions (host model)",
+            pairing_only
+        );
+
+        assert_eq!(att.height, v::HEIGHT);
+        assert_eq!(att.state_root, root);
+        assert_eq!(att.security, SecurityBacking::ZkProof);
+        assert_eq!(att.adapter, adapter(&env));
+        assert!(client.is_machine_approved(&key));
+
+        // Honest limit of this lane: the circuit has no signature over an event
+        // root, so the registry stores zeroes there and the settlement path has
+        // to take its event root from the BLS lane instead.
+        let full = client
+            .get_finalized_full(&key, &v::HEIGHT)
+            .expect("finalized record");
+        assert_eq!(full.state_root, root);
+        assert_eq!(full.event_root, BytesN::from_array(&env, &[0u8; 32]));
+    }
+
+    #[test]
+    fn test_live_groth16_proof_is_rejected_when_the_proof_is_not_the_one() {
+        let env = Env::default();
+        let (client, _key) = live_registry(&env);
+        let root = BytesN::from_array(&env, &decode_hex::<32>(v::STATE_ROOT_HEX));
+        let evidence = evidence_for(&env, v::HEIGHT, &root);
+        let public_inputs = live_public_inputs(&env);
+
+        // Swap the A and C group elements. Both halves stay valid G1 points in
+        // the required encoding, so this is not caught by a length or format
+        // check: only the pairing equation can tell it apart. If the pairing
+        // check were a stub, this call would succeed.
+        let proof = live_proof(&env);
+        let mut swapped = Bytes::new(&env);
+        swapped.append(&proof.slice(192..256));
+        swapped.append(&proof.slice(64..192));
+        swapped.append(&proof.slice(0..64));
+        let res = client.try_submit_finality_evidence_zk(&evidence, &swapped, &public_inputs);
+        // Not just "some error": the pairing equation is what rejected this,
+        // so the reported variant has to be InvalidProof.
+        assert!(
+            matches!(res, Err(Ok(RegistryError::InvalidProof))),
+            "expected InvalidProof from the pairing check, got {:?}",
+            res
+        );
+    }
+
+    #[test]
+    fn test_live_groth16_proof_does_not_cover_another_state_root() {
+        let env = Env::default();
+        let (client, _key) = live_registry(&env);
+        // Same valid proof and the same valid public signals, but the evidence
+        // claims a different source root. The verifier anchors the last public
+        // signal to the declared root, so this has to fail even though the
+        // proof itself is genuine: a real proof for block X is not evidence
+        // about block Y.
+        let other = BytesN::from_array(&env, &decode_hex::<32>(v::OTHER_ROOT_HEX));
+        let evidence = evidence_for(&env, v::HEIGHT, &other);
+        let res = client.try_submit_finality_evidence_zk(
+            &evidence,
+            &live_proof(&env),
+            &live_public_inputs(&env),
+        );
+        // DeclaredMismatch means the contract detected the binding between the
+        // declared root and the last public signal before spending a pairing.
+        assert!(
+            matches!(res, Err(Ok(RegistryError::DeclaredMismatch))),
+            "expected DeclaredMismatch, got {:?}",
+            res
+        );
     }
 }
