@@ -91,6 +91,29 @@ function log(message, level = '') {
   box.scrollTop = box.scrollHeight;
 }
 
+/**
+ * One place that turns a failure payload into something an operator can read.
+ *
+ * The API layer answers with {error: {code, message, details}} everywhere now,
+ * so the console reads the code and the message from the envelope instead of
+ * printing an object. A failure that reaches a human as "[object Object]" is a
+ * failure an operator cannot act on.
+ */
+function failureCode(payload) {
+  if (!payload) return null;
+  if (payload.error && typeof payload.error === 'object') return payload.error.code || null;
+  return payload.error || null;
+}
+
+function failureText(payload) {
+  if (!payload) return 'no answer';
+  if (payload.error && typeof payload.error === 'object') {
+    const { code, message } = payload.error;
+    return message ? `${code}: ${message}` : String(code);
+  }
+  return payload.error || payload.raw || JSON.stringify(payload).slice(0, 160);
+}
+
 async function api(path, { method = 'GET', body, auth = false } = {}) {
   const headers = { 'Content-Type': 'application/json' };
   if (auth && state.operatorToken) headers.Authorization = `Bearer ${state.operatorToken}`;
@@ -321,7 +344,7 @@ async function loadStatus() {
     // which is written from the same deployment manifest, and the page says
     // out loud that it is offline instead of showing empty panels.
     $('netPill').innerHTML = '<span class="dot bad"></span> API unavailable - static addresses only';
-    log(`Live status request failed (${payload.error || payload.raw || 'network error'}). Addresses below come from the generated deployment module.`, 'warn');
+    log(`Live status request failed (${failureText(payload)}). Addresses below come from the generated deployment module.`, 'warn');
     try {
       const { deployment } = await import('./deployment.js');
       renderDeployment({
@@ -388,7 +411,7 @@ async function queryFinality(height) {
   const { ok, payload } = await api(`/api/finality${height ? `?height=${encodeURIComponent(height)}` : ''}`);
   kv.textContent = '';
   if (!ok) {
-    kv.append(el('dt', { text: 'Error' }), el('dd', { text: payload.error || JSON.stringify(payload).slice(0, 140) }));
+    kv.append(el('dt', { text: 'Error' }), el('dd', { text: failureText(payload) }));
     return null;
   }
   const record = payload.record || {};
@@ -545,11 +568,11 @@ async function lock() {
   const { ok, payload } = await api('/api/source?path=/lock', { method: 'POST', auth: true, body: { amount, recipient, count } });
   if (!ok) {
     step('lock', 'idle');
-    log(`Lock refused: ${payload.error || payload.raw || JSON.stringify(payload).slice(0, 160)}`, 'bad');
-    if (payload.error === 'writes_disabled' || payload.error === 'unauthorized') {
+    log(`Lock refused: ${failureText(payload)}`, 'bad');
+    if (failureCode(payload) === 'writes_disabled' || failureCode(payload) === 'unauthorized') {
       log('Open Operator in the header and set the token, then try again.', 'warn');
     }
-    if (payload.error === 'source_unreachable') {
+    if (failureCode(payload) === 'source_unreachable') {
       log('The source adapter is not reachable from this deployment. That is a configuration state, not a chain failure.', 'warn');
     }
     return;
@@ -568,7 +591,7 @@ async function showProof(height) {
   const { ok, payload } = await api(`/api/source?path=${encodeURIComponent(`/proof?height=${height}&kind=bls`)}`);
   if (!ok) {
     step('finality', 'idle');
-    log(`Finality evidence unavailable: ${payload.error || JSON.stringify(payload).slice(0, 160)}`, 'bad');
+    log(`Finality evidence unavailable: ${failureText(payload)}`, 'bad');
     return null;
   }
   const b = payload.payload || {};
@@ -590,12 +613,12 @@ async function settle() {
   const { ok, payload } = await api(`/api/relay?height=${height}`, { method: 'POST', auth: true });
   $('settleBtn').textContent = 'Ask the relayer to settle';
   if (!ok) {
-    log(`Relay refused (${payload.error || 'error'}): ${payload.why || payload.detail || JSON.stringify(payload).slice(0, 200)}`, 'warn');
+    log(`Relay refused (${failureCode(payload) || 'error'}): ${failureText(payload)}`, 'warn');
     step('finality', 'idle', 'the relayer pass did not complete; finality was not anchored');
     $('settleBtn').disabled = false;
     return;
   }
-  if (payload.error) log(`The relayer did not run: ${payload.error}`, 'bad');
+  if (payload.error) log(`The relayer did not run: ${failureText(payload)}`, 'bad');
   const receipts = payload.receipts || [];
   for (const hash of receipts) log(`confirmed transaction ${hash}`, 'ok');
   if (receipts.length === 0) log(payload.note || 'no transaction was confirmed', 'warn');

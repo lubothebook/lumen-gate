@@ -47,6 +47,21 @@ function loadAuditRecord() {
   return null;
 }
 
+/**
+ * The one failure shape every function in this layer answers with.
+ *
+ * It is the same envelope the anchor facade uses:
+ * {"error": {"code": ..., "message": ..., "details": ...}}. A console that has
+ * to parse two different error shapes is a console that will one day show
+ * "[object Object]" to an operator who needs to know what went wrong.
+ */
+function sendError(res, status, code, message, details, options = {}) {
+  const body = { error: { code } };
+  if (message) body.error.message = message;
+  if (details && Object.keys(details).length > 0) body.error.details = details;
+  send(res, status, body, options);
+}
+
 function send(res, status, body, { cacheSeconds = 0 } = {}) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -73,7 +88,11 @@ async function fetchJson(url, { timeoutMs = 8000 } = {}) {
     }
     return { ok: response.ok, status: response.status, body };
   } catch (error) {
-    return { ok: false, status: 0, body: { error: String(error && error.message ? error.message : error) } };
+    return {
+      ok: false,
+      status: 0,
+      body: { error: { code: 'upstream_unreachable', message: String(error && error.message ? error.message : error) } },
+    };
   } finally {
     clearTimeout(timer);
   }
@@ -112,6 +131,7 @@ module.exports = {
   loadAuditRecord,
   contractId,
   send,
+  sendError,
   fetchJson,
   operatorAuthorized,
   capabilities,

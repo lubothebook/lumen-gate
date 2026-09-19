@@ -9,16 +9,14 @@
 // whether a source adapter exists at all instead of failing with a network
 // error in front of a judge.
 
-const { send, operatorAuthorized, capabilities } = require('./_shared');
+const { send, sendError, operatorAuthorized, capabilities } = require('./_shared');
 
 const SOURCE_URL = (process.env.SOURCE_URL || '').trim().replace(/\/+$/, '');
 const READ_PATHS = [/^\/info$/, /^\/blocks(\/[\w-]+)?$/, /^\/events(\?.*)?$/, /^\/proof(\?.*)?$/];
 
 module.exports = async function handler(req, res) {
   if (!SOURCE_URL) {
-    send(res, 503, {
-      error: 'no_source_adapter',
-      why: 'this deployment has no SOURCE_URL configured, so there is no source chain to talk to',
+    sendError(res, 503, 'no_source_adapter', 'this deployment has no SOURCE_URL configured, so there is no source chain to talk to', {
       capabilities: capabilities(),
     });
     return;
@@ -30,7 +28,9 @@ module.exports = async function handler(req, res) {
   const isLock = path === '/lock';
 
   if (!isRead && !isLock) {
-    send(res, 403, { error: 'path_not_allowed', allowed: ['/info', '/blocks/latest', '/blocks/:height', '/events', '/proof', '/lock (POST)'] });
+    sendError(res, 403, 'path_not_allowed', 'that path is not one this proxy forwards', {
+      allowed: ['/info', '/blocks/latest', '/blocks/:height', '/events', '/proof', '/lock (POST)'],
+    });
     return;
   }
 
@@ -39,16 +39,16 @@ module.exports = async function handler(req, res) {
   // will then pay to settle.
   if (isLock) {
     if (req.method !== 'POST') {
-      send(res, 405, { error: 'method_not_allowed', why: 'POST /api/source?path=/lock' });
+      sendError(res, 405, 'method_not_allowed', 'creating a lock is POST /api/source?path=/lock');
       return;
     }
     const auth = operatorAuthorized(req);
     if (!auth.ok) {
-      send(res, auth.reason === 'writes_disabled' ? 503 : 401, { error: auth.reason });
+      sendError(res, auth.reason === 'writes_disabled' ? 503 : 401, auth.reason);
       return;
     }
   } else if (req.method !== 'GET') {
-    send(res, 405, { error: 'method_not_allowed', why: 'source reads are GET' });
+    sendError(res, 405, 'method_not_allowed', 'source reads are GET');
     return;
   }
 
@@ -70,7 +70,9 @@ module.exports = async function handler(req, res) {
     }
     send(res, response.status, body);
   } catch (error) {
-    send(res, 504, { error: 'source_unreachable', detail: String(error && error.message ? error.message : error) });
+    sendError(res, 504, 'source_unreachable', 'the source adapter did not answer', {
+      upstream: String(error && error.message ? error.message : error),
+    });
   } finally {
     clearTimeout(timer);
   }

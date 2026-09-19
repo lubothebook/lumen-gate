@@ -8,7 +8,7 @@
 // putting the settlement rule in a contract instead of in a server.
 
 const StellarSdk = require('@stellar/stellar-sdk');
-const { loadManifest, contractId, send } = require('./_shared');
+const { loadManifest, contractId, send, sendError} = require('./_shared');
 
 const RPC_URL = process.env.RPC_URL || 'https://soroban-testnet.stellar.org';
 const PLACEHOLDER_SOURCE = 'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF';
@@ -41,20 +41,20 @@ function decodeRecord(native) {
 module.exports = async function handler(req, res) {
   const manifest = loadManifest();
   if (!manifest) {
-    send(res, 500, { error: 'manifest_unavailable' });
+    sendError(res, 500, 'manifest_unavailable', 'deployments/testnet.json could not be read');
     return;
   }
   const registryId = contractId(manifest, 'finality_registry');
   const domainKey = manifest.domain?.domain_key;
   if (!registryId || !domainKey) {
-    send(res, 500, { error: 'deployment_incomplete', why: 'registry id or domain key missing from the manifest' });
+    sendError(res, 500, 'deployment_incomplete', 'registry id or domain key missing from the manifest');
     return;
   }
 
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const heightParam = url.searchParams.get('height');
   if (heightParam !== null && !/^\d{1,9}$/.test(heightParam)) {
-    send(res, 400, { error: 'invalid_height', why: 'height must be a positive integer' });
+    sendError(res, 400, 'invalid_height', 'height must be a positive integer');
     return;
   }
 
@@ -80,7 +80,7 @@ module.exports = async function handler(req, res) {
 
     const simulation = await server.simulateTransaction(tx);
     if (StellarSdk.SorobanRpc.Api.isSimulationError(simulation)) {
-      send(res, 502, { error: 'simulation_failed', detail: simulation.error });
+      sendError(res, 502, 'simulation_failed', 'the registry simulation did not answer', { upstream: simulation.error });
       return;
     }
     const retval = simulation.result && simulation.result.retval;
@@ -102,6 +102,8 @@ module.exports = async function handler(req, res) {
       0
     );
   } catch (error) {
-    send(res, 500, { error: 'finality_read_failed', detail: String(error && error.message ? error.message : error) });
+    sendError(res, 500, 'finality_read_failed', 'the finality read failed', {
+      upstream: String(error && error.message ? error.message : error),
+    });
   }
 };

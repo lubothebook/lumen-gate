@@ -5,7 +5,7 @@
 // The single call the console makes on load: what is deployed, what is live
 // right now, and what this particular deployment is allowed to do.
 
-const { loadManifest, loadAuditRecord, contractId, send, fetchJson, capabilities } = require('./_shared');
+const { loadManifest, loadAuditRecord, contractId, send, fetchJson, capabilities, sendError} = require('./_shared');
 
 const RPC_URL = process.env.RPC_URL || 'https://soroban-testnet.stellar.org';
 const HORIZON_URL = process.env.HORIZON_URL || 'https://horizon-testnet.stellar.org';
@@ -13,7 +13,7 @@ const HORIZON_URL = process.env.HORIZON_URL || 'https://horizon-testnet.stellar.
 module.exports = async function handler(req, res) {
   const manifest = loadManifest();
   if (!manifest) {
-    send(res, 500, { error: 'manifest_unavailable', why: 'deployments/testnet.json could not be read' });
+    sendError(res, 500, 'manifest_unavailable', 'deployments/testnet.json could not be read');
     return;
   }
 

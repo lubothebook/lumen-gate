@@ -82,8 +82,13 @@ A test suite proves the contract behaved correctly at the moment someone ran it.
 2. submits an honest proof and requires it to be **accepted**,
 3. resubmits the identical evidence and requires `#9 EvidenceAlreadyProcessed`,
 4. submits a proof with one byte of the signature tampered and requires `#7 InvalidSignature`,
-5. asks whether the admin capability has actually been given up,
-6. resolves every element the console looks up against the markup, because a typo in a selector produces an interface that loads, looks finished and silently does nothing.
+5. asks whether the registry's admin capability has actually been given up,
+6. asks the same of the gateway,
+7. simulates `set_vk` with a well-formed 768-byte key after the renounce and requires the host to refuse it — if that simulation ever succeeds, the verifying key is replaceable and this project's central claim is no longer true,
+8. reads the gasless recipient's account from Horizon and re-derives the reserve arithmetic itself, because the strongest claim in this file is about an account balance,
+9. confirms the recorded gasless mint receipt is really on a ledger,
+10. resolves every element the console looks up against the markup, because a typo in a selector produces an interface that loads, looks finished and silently does nothing,
+11. runs the SEP conformance probe against a running anchor facade and takes its verdict.
 
 Results are timestamped and appended to [`deployments/self-audit.json`](deployments/self-audit.json), and served read-only at `/self-audit` on the anchor facade. Run it with:
 
@@ -94,7 +99,7 @@ REGISTRY_ID=CCXJDQMTJUGXKNFOQPC25IYVOAVWDMLJBNQYX75MAREHV7MZMU5OSEN4 \
 
 **It holds no mint authority.** It cannot approve anything, it cannot change the verifying key, and it is not a new trusted party in the settlement path — it only asks the contract questions and writes down the answers. If it stops running, nothing about settlement changes; you just stop getting fresh evidence.
 
-The latest recorded round is **7/7** (`deployments/self-audit.json`, round 7): source chain reachable, honest evidence accepted, replay rejected, tampered signature rejected, registry admin renounced, **gateway admin renounced**, console wiring consistent. Both admin checks work by simulating the admin action and requiring the host to trap — a probe with no verdict is recorded as a failure, because a check that reports success on an empty output is worse than no check at all. The registry's admin capability was given up permanently with `renounce_admin`, which is the last setup step — after that nobody, including the deployer, can change the verifying key or add a domain.
+The latest recorded round is **11/11** (`deployments/self-audit.json`, round 8), and the three newest checks are the ones that do not need anybody's cooperation: the gasless recipient's live balance (`1.5000000 XLM` held, `1.5000000 XLM` reserve, **`0.0000000 XLM` spendable**), the recorded gasless mint sitting on ledger `4,763,378` with a fee of 137,293 stroops, and a post-renounce `set_vk` simulation being refused by the host. The facade probe reported **20/20**. Both admin checks work by simulating the admin action and requiring the host to trap — a probe with no verdict is recorded as a failure, because a check that reports success on an empty output is worse than no check at all. The registry's admin capability was given up permanently with `renounce_admin`, which is the last setup step — after that nobody, including the deployer, can change the verifying key or add a domain.
 
 ### What this round of work broke, and what that found
 
@@ -152,7 +157,7 @@ The Groth16 proof was generated from a circuit compiled in this repository, agai
 
 ### Test status
 
-`cargo test --workspace --lib` → **26 passed, 0 failed** (12 in `finality_registry`, 11 in `settlement_gateway`, 3 in `source_simulator`). Run it yourself; the count in this file is not aspirational. Three of the registry tests replay the exact 256-byte proof and 768-byte key that a testnet transaction accepted, so a regression in the verifier or in the byte encoding fails the suite instead of only failing in production. `-- --nocapture` prints the measured CPU cost of the pairing check.
+`cargo test --workspace` → **46 passed, 0 failed** (12 in `finality_registry`, 11 in `settlement_gateway`, 3 in `source_simulator`, 20 in `domain_adapter`). Run it yourself; the count in this file is not aspirational. Three of the registry tests replay the exact 256-byte proof and 768-byte key that a testnet transaction accepted, so a regression in the verifier or in the byte encoding fails the suite instead of only failing in production. `-- --nocapture` prints the measured CPU cost of the pairing check.
 
 ### What is not claimed yet
 
@@ -171,7 +176,7 @@ The source side is intentionally local. The Stellar side is not mocked: the acce
 
 What exists is narrower and fully verifiable: one **fixed-statement Groth16 proof over BN254**, compiled ahead of time from [`circuits/finality_statement.circom`](circuits/finality_statement.circom) into **628 constraints**, verified on-chain by the registry's own verifier through Stellar's native BN254 host functions. The statement is "a quorum of approval bits is set and the three roots participate in one Poseidon relation", and it is frozen at compile time: changing it means new keys and a new deployment.
 
-The full write-up — statement, byte layout, measured cost, what a real zkVM would require, and the research direction — is in [`docs/PROVING_SYSTEM.md`](docs/PROVING_SYSTEM.md). The one-line version for a reviewer: **a statement proof, not a VM proof; a quorum proof, not a signature proof.**
+**What a real zkVM would take, and why this is a deliberate smaller thing.** Proving the execution of a program rather than a statement means committing to the guest program, running it against a witness, and constraining every step: a multi-column execution trace, per-step transition constraints that tie row *n* to row *n+1*, and a memory argument that commits the whole address space so the trace cannot read what it never wrote — a permutation argument or a Merkle-based commitment over memory cells. None of that exists here, and building it was not the point of this project: the settlement question is not "was this program executed correctly" but "did finality evidence exist for this exact event", which is answerable with a much smaller relation. The label stays off the system, and the intended direction — a chained state transition over consecutive headers, which is the first honest step toward a machine-shaped proof — is written down in [`docs/PROVING_SYSTEM.md`](docs/PROVING_SYSTEM.md) along with the measured cost of the circuit that exists today. The one-line version for a reviewer: **a statement proof, not a VM proof; a quorum proof, not a signature proof.**
 
 ## Product thesis
 
@@ -242,7 +247,8 @@ The live demonstration must show:
 | Source simulator | Deterministic blocks, lock events, Merkle roots and proof fixtures | `crates/source_simulator` |
 | Relayer | Source event polling and real Soroban transaction submission | `crates/relayer` |
 | Frontend | Freighter-facing demo and fault probes | `frontend` |
-| Anchor facade | SEP-1 metadata, health/info endpoints and integration surface | `anchor` |
+| Anchor facade | SEP-1 discovery, SEP-10 authentication, a real SEP-6 surface, the audit view and the operator controls | `anchor` |
+| Domain adapter | Raw-evidence-in, attestation-out boundary, message envelope and the nonce high-water mark | `crates/domain_adapter` |
 | Circuits and fixtures | Small source-finality circuit workbench and Groth16 artifacts | `circuits` |
 
 ### Anchor positioning
@@ -307,11 +313,16 @@ What it does:
 | Surface | Why it exists |
 | --- | --- |
 | `GET /.well-known/stellar.toml` | SEP-1 discovery. Other people's software reads this, so every value in it has to be a fact: the real issuer, the real asset, and an explicit note that this is a testnet demonstration asset |
-| `GET /deployment` | serves `deployments/testnet.json`, the manifest the receipts were written against. The console and the next developer both read addresses from here instead of from a hard-coded list |
+| `GET /v1/deployment` | serves `deployments/testnet.json`, the manifest the receipts were written against. The console and the next developer both read addresses from here instead of from a hard-coded list |
 | `GET /capabilities` | says out loud what this instance may do: reads, relay, source adapter. The UI gates its controls on this, so a button that would fail is never shown as if it worked |
-| `GET /self-audit`, `GET /self-audit/history` | read-only view of the record the audit loop writes. It reports; it does not approve |
-| `POST /relay?height=H` | one relayer pass, so an operator can settle a specific source height without a terminal |
-| `GET /deposit`, `GET /withdraw`, `GET /transactions`, `GET /sep6/info` | machine-readable explanations of the two settlement directions, with SEP-6 explicitly disabled until a real authenticated anchor backend exists |
+| `GET /v1/self-audit`, `GET /v1/self-audit/history` | read-only view of the record the audit loop writes. It reports; it does not approve |
+| `POST /v1/relay?height=H`, `POST /v1/reconcile` | one relayer pass, and a reconciliation pass that advances SEP-6 records against live ledgers. Operator token only |
+| `GET /v1/sep10/auth`, `POST /v1/sep10/auth` | SEP-10 authentication: the anchor signs a challenge transaction, the client proves key control by signing it back, and the anchor issues a short-lived JWT. Unfunded accounts are the normal case, not an error |
+| `GET /v1/sep6/info`, `GET /v1/deposit`, `GET /v1/withdraw`, `GET /v1/transactions` | a real SEP-6 surface: official field names, records that advance only on evidence read from a ledger, and an explicit list of what is not implemented |
+| `GET /v1/sep12/customer` | answers `501 not_implemented`. No KYC is collected and the file says so instead of implying otherwise |
+
+Full detail, including which ledger event advances which record and what is
+deliberately absent, is in [`docs/SEP_SURFACE.md`](docs/SEP_SURFACE.md).
 
 What it does **not** do, and this is the important half: it holds no custody, no mint authority and no verification keys. If the facade disappeared, settlement would keep working — you would lose the window, not the rule. The mint authority is the gateway contract, and the verification key lives in a registry whose admin has been renounced.
 
@@ -451,19 +462,18 @@ An anchor must not be described as operating source-chain validators. It only co
 - Anchor facade with Stellar metadata, health, info, transaction and withdrawal integration surfaces;
 - fixture quarantine and an evidence-first deployment directive in [`DIRECTIVE.md`](DIRECTIVE.md).
 
-### Still required for the submission-grade evidence pack
+### What is still genuinely missing
 
-- deploy the Registry, Gateway and SAC to Stellar Testnet and replace placeholders in `deployments/testnet.json`;
-- record contract IDs, explorer links, setup transaction hashes, event IDs and `getTransaction` receipts;
-- execute `register_domain`, BLS policy setup and domain admission, then permanently constrain or renounce Registry and Gateway admin authority;
-- prove the exact BLS hash-to-curve/signature scheme against the deployed Soroban host functions;
-- regenerate a source-root-bound Groth16 circuit, VK and proof, then show positive and negative receipts against the deployed Registry;
-- run source lock → proof → Registry verification → Gateway mint, followed by Gateway burn → RPC event → source `/burn-unlock`;
-- prove HWM rejection keyed by `(source_domain, target_domain, sender)` and retain the receipt for the negative probe;
-- test a fresh unfunded Testnet account before using any gasless onboarding language;
-- run the full Rust format/test/build matrix and archive the live evidence under the documented manifest format.
+The list this section used to carry was written before the deployment happened and had gone stale: it asked for the deployment, the receipts, the renounces, the gasless test and the two-way round trip, all of which are done and recorded in [`deployments/testnet.json`](deployments/testnet.json). What is actually outstanding is shorter, and none of it is a claim this file makes:
 
-Until these steps are complete, words such as “live,” “trustless,” “machine-only” and “gasless” refer to an intended design path—not a collected Testnet fact.
+- **A production validator set.** The BLS lane runs a 3-key demo set with a threshold of 2, and the keys are deterministic test values. Production needs a real distributed key generation ceremony and a set that can be slashed. Until then the honest-majority assumption is over three unbonded parties, and the adapter descriptor says so.
+- **A source-root-bound ZK circuit.** The Groth16 lane proves a quorum of approval bits and a binding across the three roots. It is not a signature proof, so no event root is persisted from that lane and settlement never anchors on it. A circuit that binds a real signature set is the next step, not a relabeling of this one.
+- **Market-priced fees.** The relayer fee is a fixed 0.1 wSRC per message chosen at submission time rather than derived from the live XLM fee and a rate. The mechanism is proven; the pricing is not built.
+- **Bonds, slashing and validator rotation.** Absent, and stated as absent.
+- **A hosted SEP-24 flow and SEP-12 KYC.** Not implemented; `/v1/sep12/customer` answers 501.
+- **A production relayer.** One operator runs it. It is not a trusted party in the mint decision — the registry decides that — but it is a liveness dependency.
+
+Everything else in this file is backed by a receipt in `deployments/testnet.json`, a file in this repository, or a command that can be re-run.
 
 ## Local development
 

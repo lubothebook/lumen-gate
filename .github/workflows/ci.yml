@@ -1,0 +1,99 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: writing rules
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: repository gate
+        run: ./scripts/repo-gate.sh
+
+  tests:
+    name: rust tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: '1.98.1'
+          target: wasm32v1-none
+          cache: true
+      - name: cargo test
+        run: cargo test --workspace
+      - name: cargo fmt
+        run: cargo fmt --all -- --check
+
+  contracts:
+    name: contracts build to wasm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: '1.98.1'
+          target: wasm32v1-none
+          cache: true
+      - name: build both contracts
+        run: |
+          cargo build --release --target wasm32v1-none -p finality_registry -p settlement_gateway
+          ls -l target/wasm32v1-none/release/*.wasm
+
+  surface:
+    name: anchor surface and console
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: install the SDK the SEP-10 checks need
+        run: npm install --no-audit --no-fund
+      - name: syntax check every JavaScript entrypoint
+        run: |
+          for file in api/*.js anchor/*.js anchor/lib/*.js tools/*.js frontend/src/*.js scripts/*.js; do
+            node --check "$file"
+          done
+      - name: console wiring
+        run: node tools/check-console.js
+      - name: serverless handlers answer in the documented shape
+        run: node tools/test-api.js
+      - name: build the console
+        run: cd frontend && npm install --no-audit --no-fund && npm run build
+      - name: start the facade with a throwaway SEP-10 key
+        run: |
+          # The key is generated inside the job and never funded: SEP-10 only
+          # needs a signer for the challenge, and the challenge transaction is
+          # never submitted to any network.
+          KEY=$(node -e "const {Keypair}=require('@stellar/stellar-sdk');process.stdout.write(Keypair.random().secret())")
+          echo "SEP10_SIGNING_SECRET=$KEY" >> "$GITHUB_ENV"
+          node anchor/server.js > /tmp/facade.log 2>&1 &
+          for _ in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8081/v1/health > /dev/null && break
+            sleep 1
+          done
+          curl -sS http://127.0.0.1:8081/v1/health
+      - name: SEP conformance probe
+        env:
+          FACADE_URL: http://127.0.0.1:8081
+          SEP10_HOME_DOMAIN: 127.0.0.1:8081
+          PUBLIC_FACADE_URL: http://127.0.0.1:8081
+        run: node tools/sep-conformance.js
+      - name: facade log
+        if: always()
+        run: cat /tmp/facade.log
