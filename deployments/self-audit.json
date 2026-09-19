@@ -1,10 +1,10 @@
 {
   "note": "Written by the Lumen Gate self-audit loop. Each entry is one round of probes against the live deployed registry.",
-  "updated_at": "2026-09-19T19:27:07.083Z",
+  "updated_at": "2026-09-19T19:31:21.514Z",
   "latest": {
-    "round": 8,
-    "started_at": "2026-09-19T19:26:59.347Z",
-    "finished_at": "2026-09-19T19:27:07.083Z",
+    "round": 9,
+    "started_at": "2026-09-19T19:31:14.572Z",
+    "finished_at": "2026-09-19T19:31:21.514Z",
     "checks_passed": 11,
     "checks_total": 11,
     "all_passed": true,
@@ -377,6 +377,73 @@
       "round": 8,
       "started_at": "2026-09-19T19:26:59.347Z",
       "finished_at": "2026-09-19T19:27:07.083Z",
+      "checks_passed": 11,
+      "checks_total": 11,
+      "all_passed": true,
+      "registry": "CCXJDQMTJUGXKNFOQPC25IYVOAVWDMLJBNQYX75MAREHV7MZMU5OSEN4",
+      "network": "testnet",
+      "checks": [
+        {
+          "check": "source_chain_reachable",
+          "passed": true,
+          "detail": "simulator produced height 1"
+        },
+        {
+          "check": "honest_evidence_accepted",
+          "passed": true,
+          "detail": "contract returned an attestation"
+        },
+        {
+          "check": "replay_rejected",
+          "passed": true,
+          "detail": "#9 EvidenceAlreadyProcessed"
+        },
+        {
+          "check": "tampered_signature_rejected",
+          "passed": true,
+          "detail": "#7 InvalidSignature"
+        },
+        {
+          "check": "admin_capability_renounced",
+          "passed": true,
+          "detail": "admin capability has been permanently given up"
+        },
+        {
+          "check": "gateway_admin_renounced",
+          "passed": true,
+          "detail": "gateway admin capability is gone: a second renounce traps in the host"
+        },
+        {
+          "check": "console_wiring_consistent",
+          "passed": true,
+          "detail": "console wiring: every selector resolves, every nav target exists, embedded assets match frontend/public"
+        },
+        {
+          "check": "gasless_recipient_zero_spendable_xlm",
+          "passed": true,
+          "detail": "balance 1.5000000 XLM, reserve 1.5000000 XLM, spendable 0.0000000 XLM (read live from Horizon)"
+        },
+        {
+          "check": "recorded_gasless_mint_on_chain",
+          "passed": true,
+          "detail": "receipt 8b4e9bd59f405b8d... is on ledger 4763378, successful, fee 137293 stroops"
+        },
+        {
+          "check": "post_renounce_set_vk_impossible",
+          "passed": true,
+          "detail": "the host refused set_vk after the renounce: Event log (newest first): | 0: [Diagnostic Event] contract:CCXJDQMTJUGXKNFOQPC25IYVOAVWDMLJBNQYX75MAREHV7MZMU5"
+        },
+        {
+          "check": "facade_sep_conformance",
+          "passed": true,
+          "detail": "20/20 facade checks passed against http://127.0.0.1:8081"
+        }
+      ]
+    },
+    {
+      "round": 9,
+      "started_at": "2026-09-19T19:31:14.572Z",
+      "finished_at": "2026-09-19T19:31:21.514Z",
       "checks_passed": 11,
       "checks_total": 11,
       "all_passed": true,
