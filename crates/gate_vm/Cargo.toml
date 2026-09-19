@@ -1,0 +1,13 @@
+[package]
+name = "gate_vm"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "The Lumen Gate zkVM: ISA, interpreter, execution trace, and the witness emitter for circuits/gate_vm.circom"
+
+[dependencies]
+hex = "0.4"
+num-bigint = "0.4"
+num-traits = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

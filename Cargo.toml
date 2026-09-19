@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "crates/gate_vm",
   "contracts/finality_registry",
   "contracts/settlement_gateway",
   "crates/source_simulator",
