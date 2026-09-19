@@ -541,13 +541,13 @@ impl FinalityRegistry {
         root_buf.append(&Bytes::from_array(&env, &height.to_le_bytes()));
         root_buf.append(&state_root.clone().into());
         root_buf.append(&event_root.clone().into());
-        let hashed = bls.hash_to_g1(&root_buf, &Bytes::from_array(&env, b"migrate-to-stellar-v1"));
+        let hashed = bls.hash_to_g1(&root_buf, &Bytes::from_array(&env, b"lumen-gate-finality-v1"));
 
         // HARDENED: full pairing check (optional, for prod)
         // For hackathon we keep simplified check as primary, but we also do pairing check if sig is not generator
         // If pairing fails, we still allow if on-curve (documented as simplified), but we emit event about it
         // In hardened mode, uncomment below to enforce:
-        // let g2_gen = bls.hash_to_g2(&Bytes::from_array(&env, b"migrate-to-stellar-g2-gen"), &Bytes::from_array(&env, b"migrate-to-stellar"));
+        // let g2_gen = bls.hash_to_g2(&Bytes::from_array(&env, b"lumen-gate-g2-generator"), &Bytes::from_array(&env, b"lumen-gate-finality-v1"));
         // let neg_hashed = -hashed.clone();
         // let pairing_ok = bls.pairing_check(
         //     Vec::from_array(&env, [g1_point.clone(), neg_hashed]),
@@ -654,10 +654,10 @@ impl FinalityRegistry {
         root_buf.append(&Bytes::from_array(&env, &height.to_le_bytes()));
         root_buf.append(&state_root.clone().into());
         root_buf.append(&event_root.clone().into());
-        let hashed = bls.hash_to_g1(&root_buf, &Bytes::from_array(&env, b"migrate-to-stellar-v1"));
+        let hashed = bls.hash_to_g1(&root_buf, &Bytes::from_array(&env, b"lumen-gate-finality-v1"));
         let g2_gen = bls.hash_to_g2(
-            &Bytes::from_array(&env, b"migrate-to-stellar-g2-gen"),
-            &Bytes::from_array(&env, b"migrate-to-stellar"),
+            &Bytes::from_array(&env, b"lumen-gate-g2-generator"),
+            &Bytes::from_array(&env, b"lumen-gate-finality-v1"),
         );
         let neg_hashed = -hashed;
         let pairing_ok = bls.pairing_check(

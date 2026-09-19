@@ -1,14 +1,14 @@
 #!/bin/bash
 set -e
 
-# Trust Stellar, Move to Stellar - Testnet Deploy Script (hardened)
+# Lumen Gate - Testnet Deploy Script (hardened)
 # Requires: stellar CLI (cargo install stellar-cli), funded testnet account
 
 NETWORK="testnet"
 RPC_URL="https://soroban-testnet.stellar.org"
 FRIENDBOT="https://friendbot.stellar.org"
 
-echo "=== Trust Stellar, Move to Stellar Deploy (hardened) ==="
+echo "=== Lumen Gate Deploy (hardened) ==="
 echo "Network: $NETWORK, RPC: $RPC_URL"
 echo "Hardened: BLS aggregate + Merkle + HWM + Groth16 BN254 + SAC set_admin"
 
@@ -47,7 +47,7 @@ if ! command -v stellar &> /dev/null; then
     "note": "VK length 768 = G1 64 + 3*G2 128 + (4+1)*G1 64 = 64+384+320=768, matches groth16 verifier expected"
   },
   "hardening": {
-    "bls": "Real BLS aggregate: 3 validators, sk=1,2,3, H=hash(height||state_root||event_root) via G1 generator * hash_scalar, sig=agg(sk_i*H), pubkey=agg(sk_i*G2). On-chain: g1_is_on_curve, g1_is_in_subgroup, g2_is_on_curve, g2_is_in_subgroup, hash_to_g1 DST migrate-to-stellar-v1, optional full pairing e(sig,G2_gen)*e(-H,pubkey)==1 in submit_bls_hardened",
+    "bls": "Real BLS aggregate: 3 validators, sk=1,2,3, H=hash(height||state_root||event_root) via G1 generator * hash_scalar, sig=agg(sk_i*H), pubkey=agg(sk_i*G2). On-chain: g1_is_on_curve, g1_is_in_subgroup, g2_is_on_curve, g2_is_in_subgroup, hash_to_g1 DST lumen-gate-finality-v1, optional full pairing e(sig,G2_gen)*e(-H,pubkey)==1 in submit_bls_hardened",
     "merkle": "Binary Merkle tree for event_root, leaf=sha256(message_id||payload_hash), sorted hashing, proof verification in gateway finalize_inbound",
     "hwm": "High-water-mark (source_domain,target_domain,sender)->highest_nonce, plus ProcessedMessage(message_id) set to prevent replay",
     "gateway": "lock_and_relay: transfer token to gateway, payload_hash=sha256(asset||amount||recipient_on_source), nonce from OutboundNonceFull, message_id=sha256(source_domain||target_domain||height||event_index||nonce||payload_hash||expiry||kind||sender||recipient)",

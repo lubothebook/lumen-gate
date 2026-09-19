@@ -1,212 +1,218 @@
-# Trust Stellar, Move to Stellar
+# Lumen Gate
 
-**Anchor'a takılan yerleşim katmanı — başka zincirlere köprü kurmak istemeyen anchor için nötr finality-proof altyapısı**
+**Anchor'ın arkasına takılan nötr yerleşim katmanı: kaynak zincir finality kanıtlarını Soroban'da doğrular ve mint/burn kararını makineye bağlar.**
 
-> Rise In x Stellar Pro Hackathon — Genesis Track, 36 saat, Grand Pera, İstanbul, 19-20 Eylül 2026
+Bu proje [Rise In x Stellar Pro Hackathon](https://www.risein.com/programs/stellar-pro-hackathon) Genesis parkuru için hazırlanıyor. Kaynak zincir tarafı 36 saatlik demo gerçeği nedeniyle simüle edilebilir; Stellar tarafı ise gerçek Soroban Testnet kontratları, RPC/Horizon çağrıları ve explorer'da görülebilen transaction'larla çalışmalıdır.
 
----
+> **Durum notu:** Bu checkout bir uygulama snapshot'ı ve uygulama planıdır. `deployments/testnet.json` içinde henüz placeholder ID'ler vardır. Gerçek contract ID, transaction hash ve uçtan uca negatif probe eklenmeden proje tamamlanmış production bridge olarak sunulmayacaktır.
 
-## Nedir
+## Fikir
 
-Normal Stellar anchor'ları fiat <-> USDC işini kendi custody'leriyle yapar. Her yeni zincir yeni bir köprü, yeni validator, yeni audit demektir.
+Bir Stellar anchor'ı her kaynak zincir için ayrı validator ağı, multisig köprüsü ve operasyon kurmak istemeyebilir. Lumen Gate bu anchor'ın arkasında nötr bir settlement katmanı olur:
 
-Trust Stellar, Move to Stellar, anchor'lara **nötr bir yerleşim katmanı** veriyor:
+- Anchor issuer, rezerv ve müşteri ilişkisinin sahibidir.
+- Lumen Gate domain registry ve finality proof doğrulamasını yapar.
+- Relayer kanıtı taşır ve Stellar transaction ücretini öder; mint kararının güven kökü relayer değildir.
+- Soroban gateway, doğrulama başarılı olduktan sonra anchor'ın SAC varlığını mint/burn eder.
+- Anchor kaynak zincir validator'ı işletmek zorunda kalmaz.
 
-1. **Kaynak zincir (simüle)** `state_root` + `event_root` ile blok üretir ve finality kanıtları üretir.
-2. **Finality Registry (Soroban, Rust)** bu kanıtları **native host fonksiyonlarıyla** doğrular:
-   - `SignatureSet`: BLS12-381 toplu imza, `env.crypto().bls12_381().g1_is_on_curve`, `g2_is_on_curve`, `hash_to_g1` ile — Protocol 22'den beri 11 host fonksiyonu var.
-   - `ZkProof`: BN254 üzerinde Groth16, `env.crypto().bn254().pairing_check` ile — Protocol 25 X-Ray (CAP-0074/0075) ile canlı. `stellar-zkstream`'deki Apache-2.0 verifier kalıbı kullanıldı (gerçek pairing check, mock değil).
-3. **Settlement Gateway (Soroban)** high-water-mark replay koruması `(source, target, sender) -> highest_nonce` tutar ve klasik Stellar varlığını **SAC `set_admin(gateway)`** ile mint/burn eder. Anchor sadece issuer'dır; mint yetkisi sadece kriptografik finality sonrası mint eden kontrattadır.
-4. **Kaynak Simülatör (Rust, Axum)** + **Relayer (Rust)** + **Frontend (TS, Freighter)** döngüyü kapatır: kaynakta kilitle -> kanıt -> Stellar'da mint (Freighter'da görünür) -> burn -> kaynakta unlock. Bozuk kanıtlar reddedilir.
+Demo varlığı `wSRC` olarak adlandırılabilir. Bu, ürün adı veya belirli bir dış zincirin adı değildir.
 
-`assume valid` yok. Her ret yolu `Err` döner. `declared_height`/`declared_root` payload'dan yeniden türetilir.
+## Jürinin göreceği akış
 
----
+```text
+Kaynakta lock + ücret
+        ↓
+Blok, state_root, event_root, message ve Merkle proof
+        ↓
+BLS veya Groth16 kanıtı
+        ↓
+Soroban Finality Registry: native curve/pairing doğrulaması
+        ↓
+Settlement Gateway: message id + payload + expiry + HWM
+        ↓
+SAC mint: kullanıcı miktarı + relayer ödülü
+        ↓
+Burn → kaynak tarafta tek-seferlik unlock
+```
+
+Aynı mesaj zarfı içinde iki güvenlik yolu gösterilir:
+
+1. BLS12-381 aggregate signature ve full native pairing;
+2. Groth16/BN254 proof ve native multi-pairing.
+
+Aynı nonce veya daha düşük nonce tekrar gönderildiğinde HWM replay koruması işlemi reddeder. Mutlu yol kadar bu red sonucu da demoda görünür olmalıdır.
 
 ## Mimari
 
+| Parça | Görevi | Dizin |
+| --- | --- | --- |
+| `finality_registry` | Domain kaydı, evidence parser, BLS/ZK doğrulama ve finalized root | `contracts/finality_registry` |
+| `settlement_gateway` | Lock, mint, burn, Merkle, fee abstraction ve HWM | `contracts/settlement_gateway` |
+| `source_simulator` | Blok, lock event, Merkle root ve proof fixture üretimi | `crates/source_simulator` |
+| `relayer` | Kaynak event'lerini izleme ve gerçek Soroban transaction gönderimi | `crates/relayer` |
+| frontend | Freighter ve görünür demo panelleri | `frontend` |
+| anchor facade | SEP-1, `/info`, `/health` ve entegrasyon metadata'sı | `anchor` |
+
+### Domain ve evidence
+
+Domain anahtarı:
+
+```text
+domain_key = sha256(adapter_id || network)
 ```
-Kaynak zincir simülatörü (Rust)              Stellar Testnet
- ├─ bloklar + Merkle event ağacı              ┌─ finality_registry
- ├─ 3-of-5 BLS12-381 finality (test anahtarı)─►│   register_domain / submit_evidence
- ├─ Groth16 prover (Circom range proof)       │   BLS host | BN254 pairing -> attestation
- └─ /lock, /proof, /events API                │   is_finalized(domain, h) -> root
-                    ▲                         └─ settlement_gateway
-     relayer (Rust) │ getEvents / RPC            finalize_inbound(msg, proof)
-                    ▼                            → HWM nonce → SAC.mint(recipient)
- Anchor fasadı: stellar.toml + /info            burn_and_relay -> outbound event
-   issuer = anchor, admin = gateway
+
+Evidence `adapter_id`, version, network, opak payload, declared height, declared root ve submitter taşır. Kontrat height ve root'u payload'dan yeniden çıkarmalıdır. Kısa payload, unknown version, root mismatch, duplicate evidence, geçersiz eğri noktası veya geçersiz proof hiçbir zaman kabul edilmez.
+
+### Mesaj ve replay
+
+Message ID; source/target domain, source height, event index, nonce, sender, recipient, payload hash, kind ve expiry alanlarından deterministik üretilir.
+
+Replay koruması mesaj başına set yerine şu HWM ile tutulur:
+
+```text
+(source_domain, target_domain, sender) -> highest_processed_nonce
 ```
 
-**Anchor konumlandırması:** Anchor issuer hesabı oluşturur, `wSRC:ISSUER` için SAC deploy eder, `set_admin(gateway)` çağırır. Artık doğrudan mint edemez. Sadece off-chain rezervleri yönetir. On-chain mint trust-minimized'dır. Tek bir anchor, kendi validator'larını çalıştırmadan birçok kaynak domain'i listeleyebilir.
+`nonce <= highest` reddedilir; yalnızca daha yüksek nonce mark'ı ilerletir. Message ID kaydı ek idempotency korumasıdır.
 
----
+## Anchor konumlandırması
 
-## Kontratlar (Soroban, Rust, SDK 28)
+Anchor:
 
-### finality_registry
+- issuer ve rezerv tarafıdır;
+- `stellar.toml` ile asset metadata yayınlar;
+- kullanıcı, uyum ve müşteri süreçlerini yürütür;
+- gateway'e SAC mint yetkisini verir;
+- kaynak zincir validator'ı veya bridge multisig'i işletmez.
 
-- `initialize(admin)`
-- `register_domain(adapter_id, network, required_depth, adapter_version, accepted_versions) -> domain_key`
-- `submit_finality_evidence_bls(evidence: RawEvidence) -> Attestation`
-  - Payload (368 byte): `height LE(8) || state_root(32) || event_root(32) || signer_count LE(4) || required LE(4) || sig G1 96 || pubkey G2 192`
-  - Kontroller: version penceresi, digest replay, declared alanların yeniden türetilmesi, eşik, sig/pubkey sıfır değil, `g1_is_on_curve`, `g2_is_on_curve`, `hash_to_g1`
-- `submit_finality_evidence_zk(evidence, proof, public_inputs) -> Attestation`
-  - `groth16::verify` ile native `bn254().pairing_check`
-  - VK `set_vk(admin, vk)` ile saklanır
-- `is_finalized(domain, height) -> Option<root>`
-- `get_domain`, `list_domains`
+Lumen Gate:
 
-Security backing: `SignatureSet(signers, required, slashable)` veya `ZkProof`.
+- domain ve proof politikasını kaydeder;
+- BLS/ZK kanıtını Soroban native fonksiyonlarıyla doğrular;
+- finalized root ve event'i saklar;
+- proof sonrası gateway mint/burn akışını çalıştırır.
 
-### settlement_gateway
+Çalışmayan SEP deposit/withdraw endpoint'leri çalışıyormuş gibi ilan edilmez. `/info` yalnızca gerçek deployment ve profile bilgisini döndürür.
 
-- `initialize(admin, registry, token)`
-- `lock_and_relay(from, amount, recipient_on_source, target_domain, expiry) -> CrossDomainMessage`
-  - Token'ı kullanıcıdan gateway'e transfer eder (kilit), `payload_hash = sha256(asset || amount || recipient)` hesaplar, HWM `next_nonce`, `lock` event'i
-- `finalize_inbound(message, merkle_proof, asset, amount, recipient)`
-  - `message_id` yeniden hesaplanır, expiry, HWM kontrolü, `registry.is_finalized`, payload_hash yeniden türetme, HWM ileri, `SAC.mint(recipient, amount)`
-- `burn_and_relay` (ters yön)
-- `get_high_water`
+## Kriptografik kararlar
 
-Replay koruması: `(source, target, sender)` başına high-water-mark — gönderen başına tek satır, eviction yok, sadece ileri gider.
+### BLS12-381
 
----
+Yeni deployment için canonical domain separation string:
 
-## Off-chain
+```text
+lumen-gate-finality-v1
+```
 
-### source_simulator (Rust, Axum)
+BLS public key payload'dan seçilip güvenilir kabul edilmemelidir; domain kaydındaki beklenen aggregate public key ile eşleşmelidir. Test validator kümesi 3-of-5 olabilir, fakat production key yönetimi değildir. Güvenlik iddiası yalnızca curve/subgroup kontrolüne değil, full native pairing'e dayanır.
 
-- Bellek içi bloklar, event'ler, Merkle ağacı (sha256)
-- BLS finality: 3-of-5 test seti, sig = G1 generator, pubkey = G2 generator (geçerli eğri noktaları, host kontrollerinden geçer)
-- ZK finality: `stellar-zkstream` range proof devresinden alınmış gerçek Groth16 kanıtı (VK 768 byte, proof 256 byte, 4 public input) — on-chain gerçek pairing check
-- API: `GET /blocks/latest`, `GET /blocks/:h`, `POST /lock`, `GET /events?height=`, `GET /proof?height=&kind=bls|zk`, `GET /info`
+### Groth16 / BN254
 
-### relayer (Rust)
+Büyük bir kaynak zincir VM'si Soroban'a taşınmayacaktır. Küçük bir Circom devresi; height, state root ve message commitment'ı public input olarak bağlayacak şekilde kullanılacaktır. Native `bn254_multi_pairing_check` doğrulamanın on-chain noktasıdır.
 
-- Simülatör `/events`'i poll eder, `RawEvidence` oluşturur, Soroban RPC ile `submit_finality_evidence_*` çağırır
-- Stellar event'lerini Soroban RPC `getEvents` ile dinler, kaynak unlock'u tetikler
-- Demo için frontend de Freighter + stellar-sdk ile relay yapar (görünürlük için)
+Mevcut statik fixture, dynamic source-root finality kanıtı sayılmaz. Submission'dan önce wrong VK, modified proof ve root mismatch red testleriyle birlikte yeniden doğrulanmalıdır. Trusted setup kısa/test amaçlıysa README'de açıkça belirtilir.
 
-### circuits
+## Mevcut snapshot ve yapılacaklar
 
-- `m_of_n.circom` — M-of-N EdDSA-Poseidon kontrolü (şablon, hackathon'da çalışan örnek olarak range proof kullanıyoruz)
-- `range_proof_vk.hex`, `range_proof_proof.hex`, `range_proof_public_inputs.json` — stellar-zkstream'den gerçek artefaktlar (Apache-2.0)
-- Derleme: `circom m_of_n.circom --r1cs --wasm`, `snarkjs groth16 setup`, `zkey contribute`, `export verificationkey`, `gen proof`, `convert_to_soroban.mjs`
+### Repo'da bulunanlar
 
-### frontend (TS, Vite)
+- iki Soroban kontrat iskeleti;
+- Raw evidence, attestation, domain profile ve message envelope tipleri;
+- HWM, Merkle ve SAC mint/burn yardımcıları;
+- BLS ve BN254 host-call verifier kalıpları;
+- Rust simülatör, relayer, frontend ve anchor facade;
+- admin renounce ve fault-probe test fixture'ları;
+- tek kalıcı plan: [`DIRECTIVE.md`](DIRECTIVE.md).
 
-- Paneller: simülatör durumu, lock formu, Stellar bakiye (Freighter), burn, bozuk kanıt butonu, domain profili
-- `@stellar/stellar-sdk`, Freighter API, Soroban RPC kullanır
-- Explorer linkleri gösterir
+### Submission'dan önce zorunlu işler
 
-### anchor
+- registry, gateway ve SAC'ı Testnet'e deploy etmek;
+- gerçek ID, explorer linki, setup tx ve admin-renounce tx hash'lerini yazmak;
+- register/admit/VK authorization boşluklarını kapatmak;
+- BLS key binding ve hash-to-curve fixture'larını eşleştirmek;
+- root-bound Groth16 proof üretmek;
+- relayer'ın gerçekten sign, submit ve confirm yapmasını sağlamak;
+- burn sonrası kaynak unlock endpoint'ini ve event tüketimini tamamlamak;
+- taze, hiç XLM fonlanmamış keypair ile gasless akışı kanıtlamak; kanıtlanamazsa
+  bu iddiayı kaldırmak;
+- tüm test, build, frontend preview ve fault-probe komutlarını çalıştırmak.
 
-- `stellar.toml` (SEP-1) içinde `wSRC` para birimi
-- Minimal sunucu `server.ts`: `GET /info` (domain'ler, profiller, son finalized), `GET /transactions?id=`
-- Issuer kurulumu: `stellar keys generate anchor-issuer`, `stellar contract deploy --asset wSRC:ISSUER`, `set_admin(gateway)`
-
----
-
-## Hızlı başlangıç
+## Çalıştırma
 
 ### Gereksinimler
 
-- Rust 1.98+, `soroban-sdk 28`, Node 22+, `circom`, `snarkjs`
-- Stellar CLI: `cargo install stellar-cli --locked`
+Rust/Cargo, Soroban CLI, Node.js, Circom, snarkjs ve Freighter gerekir. Gerçek Testnet submit için ayrıca fonlanmış bir relayer hesabı gerekir.
 
-### 1. Kontrat derleme & test
+### Test ve kontrat build
 
 ```bash
+cargo fmt --check
+cargo test --workspace
+
 cd contracts/finality_registry
-cargo test
+stellar contract build
 cd ../settlement_gateway
-cargo test
-# wasm derle
 stellar contract build
 ```
 
-### 2. Testnet'e deploy
+### Kaynak simülatörü
 
 ```bash
-./scripts/deploy.sh
-# deploy.sh:
-# - admin, issuer oluştur ve fonla
-# - finality_registry, settlement_gateway deploy
-# - wSRC:ISSUER için SAC deploy
-# - set_admin(gateway)
-# - set_vk (range_proof vk)
-# - register_domain
-# çıktı: deployments/testnet.json içinde contract ID'ler
+cargo run -p source_simulator -- --port 3001
 ```
 
-### 3. Simülatör & relayer çalıştır
+Endpoint'ler:
+
+```text
+GET  /info
+GET  /blocks/latest
+POST /lock
+GET  /events?height=<height>
+GET  /proof?height=<height>&kind=bls
+GET  /proof?height=<height>&kind=zk
+```
+
+### Relayer ve UI
 
 ```bash
-cd crates/source_simulator
-cargo run -- --port 3001
-# başka terminal
-cd ../relayer
-cargo run -- --sim-url http://localhost:3001 --rpc https://soroban-testnet.stellar.org
+RPC_URL=https://soroban-testnet.stellar.org \
+REGISTRY_ID=<real-contract-id> \
+GATEWAY_ID=<real-contract-id> \
+cargo run -p relayer -- --sim-url http://localhost:3001 --rpc "$RPC_URL"
+
+cd frontend && npm install && npm run dev
+cd ../anchor && npm install && PORT=8081 SIM_URL=http://localhost:3001 npm start
 ```
 
-### 4. Frontend
+Browser tarafı sandbox'ın localhost'una güvenmemelidir. Preview için relative URL/Vite proxy veya public simulator URL kullanılacaktır.
 
-```bash
-cd frontend
-pnpm install
-pnpm dev
-# http://localhost:5173 aç, Freighter bağla (testnet), wSRC için trustline, lock yap, mint'i gör
-```
+## Güvenlik ve kapsam sınırları
 
-### 5. Demo akışı
+Bu hackathon sürümü audit-grade değildir:
 
-- Kaynakta kilitle: `curl -X POST http://localhost:3001/lock -d '{"amount":100,"recipient":"G..."}'`
-- BLS kanıtı doğrulandı: `finality_registry` event'lerine bak
-- Stellar'da mint: Freighter'da bakiye, Explorer linki
-- Bozuk kanıt: `curl http://localhost:3001/proof?height=1&tamper=sig` -> submit -> `InvalidSignature` bekleniyor
-- Burn: frontend burn butonu -> kaynakta unlock
+- kaynak zincir ve consensus simüledir;
+- validator secret'ları demo fixture'ıdır;
+- Groth16 trusted setup kısa olabilir;
+- PQ imzaları, slashing, bond, validator rotation ve fraud proof yoktur;
+- anchor rezervleri ve uyum süreçleri off-chain'dir;
+- relayer operasyonel olarak tekil olabilir, ancak cryptographic mint authority
+  olmamalıdır;
+- Testnet varlıklarının production değeri yoktur.
 
----
+Bootstrap admin, renounce öncesinde kritik tehdittir. Admin VK veya domain
+politikasını değiştirebilir; bu yüzden setup'tan sonra renounce event'i ve tx
+hash'i gösterilir. Renounce sonrası policy değişikliği yeni kontrat ve açık
+migration ister.
 
-## Güvenlik notları (hackathon için bilerek basitleştirildi)
+## Genesis çerçevesi
 
-- BLS eşiği 3-of-5 test anahtarı, prod validator seti değil. Host kontrolleri `on_curve` + `in_subgroup` + eşik, tam aggregate pairing değil (dokümante edildi, prod'da tam `pairing_check` olur).
-- Groth16 trusted setup tek katılımcılı test seremonisi (stellar-zkstream'den). Prod çok partili değil.
-- Gateway'de Merkle proof doğrulaması basitleştirildi (finalized height + payload hash yeniden türetme, tam sibling yolu değil) — prod'da tam MPT olur.
-- Bond/fee/slashing yok, PQ (ML-DSA) yok — `SecurityBacking` enum'unda yeri ayrıldı, gelecek iş olarak not edildi (CAP-0087).
-- Replay koruması gerçek HWM, set değil.
-
-Bunlar hackathon kuralına uygun olarak "çalışıyor olmak > güvenli olmak" şeklinde dokümante edildi.
-
----
-
-## Teslim kontrol listesi
-
-- [x] Kontratlar derleniyor, testler geçiyor (2 + 1)
-- [x] BLS yolu: mutlu yol + bozuk sig reddi
-- [x] ZK yolu: gerçek BN254 pairing_check, mutlu yol + bozuk proof reddi
-- [x] Lock -> proof -> mint + tersi
-- [x] HWM nonce replay koruması testli
-- [x] SAC set_admin anchor akışı
-- [x] Frontend/CLI demo
-- [x] README çalıştırma talimatları + basitleştirmeler
-- [x] Repo'da yasaklı kelime yok (`grep -R` temiz)
-
----
-
-## Çerçeveleme notu (Genesis)
-
-Genesis parkuru "sıfırdan başla" diyor. Bu proje daha önce bilinen bir tasarım kalıbını (external domain adapter, finality attestation, HWM replay) Stellar'a özgü olarak, sıfırdan kod yazarak uyguluyor. Tüm kontrat kodu hackathon sırasında yazıldı, kopya yok. Bunu "bilinen bir kalıbı Stellar'a özgü şekilde uyguladık" diye dürüstçe çerçeveliyoruz.
-
----
+Burada bilinen domain-adapter ve finality-attestation kalıbı Stellar/Soroban'a
+özgü olarak uygulanmaktadır. Sunumun odağı, bu kalıbın gerçek Testnet proof,
+mint, replay rejection ve reverse-flow receipt'leriyle çalıştığını göstermektir;
+doğrulanmamış güvenlik veya ekosistem istatistikleri kullanılmayacaktır.
 
 ## Lisans
 
-MIT — `circuits/range_proof_*` artefaktları hariç, onlar stellar-zkstream'den Apache-2.0 (kredilendirildi).
-
-## Krediler
-
-- Groth16 verifier kalıbı: `stellar-zklab/stellar-zkstream` (Apache-2.0)
-- BLS12-381 generator noktaları: `bls12_381` crate
-- Soroban SDK 28, CAP-0074/0075
+Kod MIT'tir; dosya bazında farklı lisans belirten devre/proof artifact'leri
+kendi lisans ve attribution bilgileriyle korunur.

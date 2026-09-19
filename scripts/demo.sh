@@ -1,6 +1,6 @@
 #!/bin/bash
 set -e
-echo "=== Trust Stellar, Move to Stellar Demo ==="
+echo "=== Lumen Gate Demo ==="
 echo "This script demos the full flow without needing Freighter"
 
 SIM_URL=${SIM_URL:-http://localhost:3001}

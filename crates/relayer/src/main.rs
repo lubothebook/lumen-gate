@@ -126,7 +126,7 @@ async fn simulate_submit_bls(
 
     println!("    [real tx] Would simulateTransaction for BLS evidence height {}", declared_height);
     println!("      Registry: {}", registry_id);
-    println!("      Payload: {} bytes, sig valid on-curve check + hash_to_g1 DST migrate-to-stellar-v1", payload_hex.len()/2);
+    println!("      Payload: {} bytes, sig valid on-curve check + hash_to_g1 DST lumen-gate-finality-v1", payload_hex.len()/2);
     // Try RPC (will fail if registry placeholder, but we try)
     if !registry_id.contains("PLACEHOLDER") {
         match client.post(rpc_url).json(&sim_req).send().await {
@@ -156,7 +156,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::env::var("RPC_URL").unwrap_or_else(|_| "https://soroban-testnet.stellar.org".to_string())
     };
 
-    println!("Trust Stellar, Move to Stellar - Relayer (hardened)");
+    println!("Lumen Gate - Relayer (hardened)");
     println!("  Simulator: {}", sim_url);
     println!("  Soroban RPC: {}", rpc_url);
     println!("  Hardened: real BLS aggregate verification (G1/G2 on-curve + hash_to_g1), Merkle proof, HWM replay protection, anchor SAC flow");

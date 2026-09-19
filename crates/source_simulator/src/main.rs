@@ -236,7 +236,7 @@ impl SimulatorState {
 
         // message to sign = height || state_root || event_root
         // For hardening we use simplified hash-to-curve: hash(msg) -> scalar -> G1 generator * scalar
-        // In prod we would use real hash_to_curve with DST "migrate-to-stellar-v1" via bls12_381 experimental feature
+        // In prod we would use real hash_to_curve with DST "lumen-gate-finality-v1" via bls12_381 experimental feature
         let mut msg = Vec::new();
         msg.extend_from_slice(&height.to_le_bytes());
         msg.extend_from_slice(&state_root_bytes);
@@ -554,7 +554,7 @@ async fn get_info(State(state): State<SharedState>) -> Json<serde_json::Value> {
         "zk_vk_len": ZK_VK_HEX.trim().len() / 2,
         "zk_proof_len": ZK_PROOF_HEX.trim().len() / 2,
         "domains": ["source-testnet"],
-        "note": "Hardened simulator with real BLS aggregate (3 validators, hash_to_curve DST migrate-to-stellar-v1) and binary Merkle tree for event_root. BLS sig = agg(sk_i * H(height||state_root||event_root))."
+        "note": "Hardened simulator with real BLS aggregate (3 validators, hash_to_curve DST lumen-gate-finality-v1) and binary Merkle tree for event_root. BLS sig = agg(sk_i * H(height||state_root||event_root))."
     }))
 }
 
