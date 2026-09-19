@@ -13,6 +13,8 @@
 #   gate_vm32.circom                       the same core at 32 lines / 32 rows
 #   signature_gadget_probe.circom          measured cost of a verify-signature
 #                                          gadget (feasibility only; not a lane)
+#   sha256_block_probe.circom              measured cost of one SHA-256
+#                                          compression block (feasibility only)
 #   poseidon_probe.circom                Poseidon calibration circuit; see
 #                                        gen_poseidon_probe.py — not a proof lane
 #
@@ -62,7 +64,7 @@ fi
 
 targets=("$@")
 if [ ${#targets[@]} -eq 0 ]; then
-  targets=(settlement_statement_fixture finality_statement step_chain_statement execution_trace gate_vm gate_vm32 poseidon_probe signature_gadget_probe)
+  targets=(settlement_statement_fixture finality_statement step_chain_statement execution_trace gate_vm gate_vm32 poseidon_probe signature_gadget_probe sha256_block_probe)
 fi
 
 for name in "${targets[@]}"; do

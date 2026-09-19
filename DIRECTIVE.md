@@ -659,6 +659,33 @@ functionality belongs in the off-chain surface, the facade and the docs.
       and the panel's stale wording ("one bounded machine") died with it.
       `tools/check-console.js` passes on the changed page.
 
+### 4.0b The relayer question and the one-signer proposal (operator's round, answered)
+
+Six answers were given and are being executed on: permissionless submission
+is demonstrated to the fullest scope ("gerekli olan her şey" — the stranger's
+live acceptance on the five-slot showcase, docs/BRIDGE_TRUST_MODEL.md §1;
+the user-side `finalize_inbound` leg is wallet-direct in the code today),
+gasless stays as a named fee-service and nothing more, the outbound
+Stellar-history direction gets the feasibility treatment (measured floors:
+SHA-256 block 59,313+3,215 via `circuits/sha256_block_probe.circom`; full
+EdDSA verifier 8,086 via the §5e probe; ed25519/BLS rows estimated and
+flagged as such), the light-client goal is the declared path (§4.0c phases),
+the showcase registry is v2 with all five slots, and every new claim in the
+README carries its bound in the same sentence.
+
+The operator's faster-settlement idea — the zkVM approving before validators,
+"one validator is enough" — is recorded where it belongs: TRUE about
+on-chain verification cost (pairing check is constant-ish, measured
+~29.1M instructions), FALSE about canonicity until some circuit verifies a
+signature (the quorum is the input of trust, not a redundancy), and
+convertible between the two exactly along the phase table in
+docs/BRIDGE_TRUST_MODEL.md §2-3. No wording anywhere in the repository may
+skip the middle row of that sentence; Phase 2's stop-sign clause is pre-
+authorized: if no bigint/pairing gadget set can be vendored or written to
+measured satisfaction, the one-signer claim does not enter the README,
+permanently, and this directive entry is where that decision will have been
+made in advance rather than in the moment of temptation.
+
 ### 4.1 Admin and verifying-key trust gap (implemented, keep probing)
 
 `admin` was a bootstrap role only: it set the verifying key, the BLS policy and
