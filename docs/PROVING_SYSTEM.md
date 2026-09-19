@@ -8,7 +8,7 @@ The short answer is at the top, the definitions are below it, and every number i
 
 ## 1. Short answer
 
-Lumen Gate runs **four Groth16 lanes over BN254**, and **two of them are bounded VM-execution proofs** on two deliberately different machines. The execution lane — section 5c, live record [`deployments/execution-lane.json`](../deployments/execution-lane.json) — is a word processor: eleven opcodes, eight registers, sixteen memory words, a twenty-row step budget, and the guest program published as public inputs. The gate-vm lane — section 5d, live record [`deployments/gate-vm-lane.json`](../deployments/gate-vm-lane.json) — is a field-native register machine whose instructions can *hash* (Poseidon is an opcode), whose eight-line program enters the proof as a fold commitment rather than as words, and whose row window is its gas. Neither is a general-purpose zkVM: step budgets are constants in the circuits, there are no syscalls, and the guests are assembled from short listings rather than compiled from high-level languages. Section 7 lists exactly what is still missing, in the same terms as before.
+Lumen Gate runs **five Groth16 lanes over BN254 — four statements, one of them proved at two scales** — and **two of the statements are bounded VM-execution proofs** on two deliberately different machines. The execution lane — section 5c, live record [`deployments/execution-lane.json`](../deployments/execution-lane.json) — is a word processor: eleven opcodes, eight registers, sixteen memory words, a twenty-row step budget, and the guest program published as public inputs. The gate-vm lane — section 5d, live record [`deployments/gate-vm-lane.json`](../deployments/gate-vm-lane.json) — is a field-native register machine whose instructions can *hash* (Poseidon is an opcode), whose eight-line program enters the proof as a fold commitment rather than as words, and whose row window is its gas. Neither is a general-purpose zkVM: step budgets are constants in the circuits, there are no syscalls, and the guests are assembled from short listings rather than compiled from high-level languages. Section 7 lists exactly what is still missing, in the same terms as before.
 
 The first lane is a **fixed-statement Groth16 SNARK over BN254**, compiled ahead of time from [`circuits/finality_statement.circom`](../circuits/finality_statement.circom), verified on-chain by a ~180-line verifier inside the registry contract using Stellar's native BN254 host functions (CAP-0074, Protocol 25+). The statement is fixed at compile time, so it cannot be changed without new keys and a new deployment.
 
@@ -354,11 +354,13 @@ python3 circuits/convert_to_soroban.py build/gate_vm32_vk.json \
 #   way into a verified Groth16 proof (snarkjs prints OK). The 32-line key is
 #   its own ceremony's output: same length as the 8-line key, different bytes,
 #   which is the two-896 slot design taking its first real exercise. The five
-#   artifacts are committed under deployments/vectors/gate_vm32/; a registry
-#   slot for this lane is deliberately NOT yet installed — installing one
-#   means a new registry (the frozen ones cannot take a fifth setter without
-#   redeployment), and the merged showcase takes the slot when it can be
-#   probed against the ceilings below.
+#   artifacts are committed under deployments/vectors/gate_vm32/.
+# The slot now exists: installed on the five-slot showcase registry
+# (CB7ZKFLT..., deployments/registry-v2.json), where a 32-step payload claim
+# is refused as a format error, the 8-line key at legal length is refused by
+# the pairing equation, and the honest acceptance came from an account
+# generated at run time — docs/BRIDGE_TRUST_MODEL.md §1 for what that proves
+# about the submit path, and §2 for what it pointedly does not.
 python3 circuits/convert_to_soroban.py build/gate_vm_vk.json \
     build/gate_vm_proof.json build/gate_vm_public.json build/gate_vm \
     --public-names program_root,start_root,event_root,end_root,hash_steps,domain_tag \
