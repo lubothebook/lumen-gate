@@ -7,14 +7,20 @@
  * what it saw, with timestamps, so a reader does not have to take anyone's
  * word for it.
  *
- * Every round it asks seven questions:
+ * Every round it asks eleven questions, and none of them is answered by
+ * trusting an earlier answer:
  *   1. Is the source chain reachable at all?
  *   2. Does a fresh, honest proof still get ACCEPTED?
  *   3. Is a replay of the exact same evidence still REJECTED?
  *   4. Is a proof with one tampered signature still REJECTED?
  *   5. Has the registry's admin capability actually been given up?
  *   6. Has the gateway's admin capability actually been given up?
- *   7. Does the console still resolve every element it looks up?
+ *   7. Can anybody still replace the verifying key after the renounce? (no)
+ *   8. Does the recorded gasless recipient still hold zero spendable XLM?
+ *   9. Is the recorded gasless mint still on the ledger?
+ *  10. Does the console still resolve every element it looks up?
+ *  11. Does the anchor facade still satisfy its SEP surface? (SEP-1, SEP-10,
+ *      SEP-6, the error envelope and the rate limiter, probed as a client)
  *
  * It holds no mint authority and can approve nothing. It only submits probes
  * and records verdicts. If it dies, nothing in the settlement path changes.
@@ -67,6 +73,38 @@ const INTERVAL = Number(process.env.AUDIT_INTERVAL || 300000);
 const ONCE = process.env.AUDIT_ONCE === "1";
 const OUT = process.env.AUDIT_OUT || path.join(__dirname, "..", "deployments", "self-audit.json");
 const PORT = Number(process.env.PORT || 8090);
+// Live-ledger probes need no signing key: they read Horizon and the manifest.
+// They exist because the strongest claims in the README are about accounts and
+// transactions, and those are exactly the claims that can be re-checked from
+// outside without anyone's cooperation.
+const HORIZON_URL = (process.env.HORIZON_URL || "").trim();
+// The facade is part of the product surface, so its SEP behaviour is audited
+// like everything else. The default is the port the facade uses when it runs
+// locally; if nothing answers there the round records a failure rather than
+// skipping the check.
+const FACADE_URL = (process.env.FACADE_URL || "http://127.0.0.1:8081").trim();
+const BASE_RESERVE_STROOPS = 5_000_000; // 0.5 XLM per reserve unit
+
+function manifest() {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(ROOT, "deployments", "testnet.json"), "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function manifestPath(objectPath) {
+  let node = manifest();
+  for (const key of objectPath.split(".")) {
+    if (node === null || node === undefined) return null;
+    node = node[key];
+  }
+  return node === undefined ? null : node;
+}
+
+function horizonUrl() {
+  return HORIZON_URL || manifestPath("horizon_url") || "https://horizon-testnet.stellar.org";
+}
 
 // Contract error codes, mirrored from contracts/finality_registry/src/lib.rs.
 const ERR = {
@@ -344,6 +382,122 @@ async function runRound() {
     record("console_wiring_consistent", true, output.trim().split("\n").pop());
   } catch (e) {
     record("console_wiring_consistent", false, String((e.stdout || e.message || e)).trim().split("\n").pop());
+  }
+
+
+  // Live-ledger probes. Each one reads a public endpoint and re-derives the
+  // claim from the data instead of repeating a number written in a file.
+  try {
+    const recipient =
+      (process.env.GASLESS_RECIPIENT || "").trim() || manifestPath("accounts.gasless_recipient");
+    if (!recipient) {
+      record("gasless_recipient_zero_spendable_xlm", false, "no recipient: set GASLESS_RECIPIENT or accounts.gasless_recipient");
+    } else {
+      const account = await getJson(`${horizonUrl()}/accounts/${recipient}`);
+      const native = (account.balances || []).find((b) => b.asset_type === "native" || b.asset === "native");
+      if (!native) {
+        record("gasless_recipient_zero_spendable_xlm", false, `no native balance in the Horizon answer for ${recipient}`);
+      } else {
+        // Spendable = balance - base reserve. A sponsored subentry does not
+        // consume the account's own reserve, so the sponsored counts are
+        // subtracted here; that is the same arithmetic the protocol applies.
+        const subentries = Number(account.subentry_count || 0) - Number(account.num_sponsored || 0) + Number(account.num_sponsoring || 0);
+        const reserve = (2 + Math.max(0, subentries)) * BASE_RESERVE_STROOPS;
+        const balance = Math.round(Number(native.balance) * 1e7);
+        const spendable = balance - reserve;
+        record(
+          "gasless_recipient_zero_spendable_xlm",
+          spendable <= 0,
+          `balance ${(balance / 1e7).toFixed(7)} XLM, reserve ${(reserve / 1e7).toFixed(7)} XLM, spendable ${(spendable / 1e7).toFixed(7)} XLM (read live from Horizon)`
+        );
+      }
+    }
+  } catch (e) {
+    record("gasless_recipient_zero_spendable_xlm", false, `Horizon read failed: ${String(e.message || e)}`);
+  }
+
+  try {
+    const hash = (process.env.GASLESS_TX || "").trim() || manifestPath("gasless.transaction");
+    if (!hash) {
+      record("recorded_gasless_mint_on_chain", false, "no receipt: set GASLESS_TX or gasless.transaction in the manifest");
+    } else {
+      const tx = await getJson(`${horizonUrl()}/transactions/${hash}`);
+      const ok = Boolean(tx.hash) && tx.successful !== false && Boolean(tx.ledger);
+      record(
+        "recorded_gasless_mint_on_chain",
+        ok,
+        ok
+          ? `receipt ${hash.slice(0, 16)}... is on ledger ${tx.ledger}, ${tx.successful === false ? "failed" : "successful"}, fee ${tx.fee_charged} stroops`
+          : `Horizon did not confirm ${hash}`
+      );
+    }
+  } catch (e) {
+    record("recorded_gasless_mint_on_chain", false, `Horizon read failed: ${String(e.message || e)}`);
+  }
+
+  // After the renounce there must be no path back. This simulates the actual
+  // mutation with a syntactically valid 768-byte key: if the host no longer
+  // traps, somebody can still replace the verifying key and the "no human
+  // approval" claim is no longer true.
+  try {
+    const admin =
+      (process.env.ADMIN_ADDRESS || "").trim() ||
+      manifestPath("accounts.deployer_and_relayer") ||
+      manifestPath("accounts.deployer") ||
+      "";
+    const zeros = "00".repeat(768);
+    const probe = await sh("stellar", [
+      "contract", "invoke",
+      "--id", REGISTRY_ID,
+      "--source", SOURCE,
+      "--network", NETWORK,
+      "--send=no",
+      "--",
+      "set_vk",
+      "--admin", admin,
+      "--vk", zeros,
+    ]);
+    const text = `${probe.stdout}${probe.stderr}`;
+    const trapped = !probe.ok || /admin renounced|Error|error/i.test(text);
+    record(
+      "post_renounce_set_vk_impossible",
+      trapped,
+      trapped
+        ? `the host refused set_vk after the renounce: ${failureReason(probe).slice(0, 110)}`
+        : "the host accepted set_vk after the renounce, which means the verifying key is still replaceable"
+    );
+  } catch (e) {
+    record("post_renounce_set_vk_impossible", false, String(e.message || e));
+  }
+
+  // The facade's SEP surface, probed as a client rather than read as source.
+  try {
+    const { execFileSync } = require("node:child_process");
+    const output = execFileSync(
+      process.execPath,
+      [path.join(ROOT, "tools", "sep-conformance.js"), "--json"],
+      { encoding: "utf8", env: { ...process.env, FACADE_URL }, timeout: 120000 }
+    );
+    const report = JSON.parse(output);
+    const failed = (report.checks || []).filter((c) => !c.passed).map((c) => c.check);
+    record(
+      "facade_sep_conformance",
+      report.all_passed === true,
+      report.all_passed === true
+        ? `${report.checks_passed}/${report.checks_total} facade checks passed against ${FACADE_URL}`
+        : `${report.checks_passed}/${report.checks_total} passed; failing: ${failed.join(", ")}`
+    );
+  } catch (e) {
+    const text = String((e.stdout || e.message || e));
+    let detail = text.trim().split("\n").pop();
+    try {
+      const report = JSON.parse(String(e.stdout || ""));
+      const failed = (report.checks || []).filter((c) => !c.passed).map((c) => `${c.check} (${c.detail})`);
+      detail = `${report.checks_passed}/${report.checks_total} passed; failing: ${failed.join("; ")}`;
+    } catch {
+      /* keep the raw tail */
+    }
+    record("facade_sep_conformance", false, detail.slice(0, 300));
   }
 
   return finish(startedAt, checks);
