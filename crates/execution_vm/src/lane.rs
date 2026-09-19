@@ -242,7 +242,7 @@ pub fn check_lane_trace(trace: &Trace, statement: &LaneStatement) -> Result<(), 
         let decoded = decode(trace.program[trace.steps[row].pc as usize])
             .map_err(|error| refuse(format!("row {row} does not decode: {error}")))?;
         let is_halt = decoded.opcode == Opcode::Halt;
-        let expected = row == halt_row || row > halt_row;
+        let expected = row >= halt_row;
         if is_halt != expected {
             return Err(refuse(format!(
                 "row {row} halts = {is_halt}, but with steps_executed = {} the halt belongs at row {halt_row} and behind it",

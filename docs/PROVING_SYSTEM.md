@@ -8,7 +8,7 @@ The short answer is at the top, the definitions are below it, and every number i
 
 ## 1. Short answer
 
-Lumen Gate runs **three Groth16 lanes over BN254**, and one of them is a **bounded VM-execution proof**: a machine with eleven opcodes, eight registers, sixteen memory words and a twenty-row step budget, whose guest program is a public input and whose execution is proved step by step. It is described in section 5c, and its live record is [`deployments/execution-lane.json`](../deployments/execution-lane.json). What it is *not* is a general-purpose zkVM: the step budget is a constant in the circuit, there are no syscalls, and the guest is assembled from a short listing rather than compiled from a high-level language. Section 7 lists exactly what is still missing, in the same terms as before.
+Lumen Gate runs **four Groth16 lanes over BN254**, and **two of them are bounded VM-execution proofs** on two deliberately different machines. The execution lane — section 5c, live record [`deployments/execution-lane.json`](../deployments/execution-lane.json) — is a word processor: eleven opcodes, eight registers, sixteen memory words, a twenty-row step budget, and the guest program published as public inputs. The gate-vm lane — section 5d, live record [`deployments/gate-vm-lane.json`](../deployments/gate-vm-lane.json) — is a field-native register machine whose instructions can *hash* (Poseidon is an opcode), whose eight-line program enters the proof as a fold commitment rather than as words, and whose row window is its gas. Neither is a general-purpose zkVM: step budgets are constants in the circuits, there are no syscalls, and the guests are assembled from short listings rather than compiled from high-level languages. Section 7 lists exactly what is still missing, in the same terms as before.
 
 The first lane is a **fixed-statement Groth16 SNARK over BN254**, compiled ahead of time from [`circuits/finality_statement.circom`](../circuits/finality_statement.circom), verified on-chain by a ~180-line verifier inside the registry contract using Stellar's native BN254 host functions (CAP-0074, Protocol 25+). The statement is fixed at compile time, so it cannot be changed without new keys and a new deployment.
 
@@ -23,9 +23,11 @@ The first lane is a **fixed-statement Groth16 SNARK over BN254**, compiled ahead
 | On-chain artifact sizes | verification key **768 bytes**, proof **256 bytes**, public inputs **4 × 32 bytes** |
 | Statement (one sentence) | "At least `threshold` approval bits are set, the threshold equals the registered policy, and `prev_state_root`, `state_root` and `event_root` participate in one Poseidon relation." |
 
-A second lane sits beside it: [`circuits/step_chain_statement.circom`](../circuits/step_chain_statement.circom) proves an **N-step chained state transition** rather than one fixed statement. It is described in section 5b, and it is what the "first honest step toward a machine-shaped proof" in earlier revisions of this document turned into. A chain of state transitions is still not a VM — it has no instruction set — and section 5c describes the third lane, which does.
+A second lane sits beside it: [`circuits/step_chain_statement.circom`](../circuits/step_chain_statement.circom) proves an **N-step chained state transition** rather than one fixed statement. It is described in section 5b, and it is what the "first honest step toward a machine-shaped proof" in earlier revisions of this document turned into. A chain of state transitions is still not a VM — it has no instruction set — and section 5c describes the third lane, which does. Section 5d describes a fourth, beside it: the same machine-shaped claim on a different machine, the one whose machine can hash.
 
 The third lane is [`circuits/execution_trace.circom`](../circuits/execution_trace.circom) with its interpreter [`crates/execution_vm`](../crates/execution_vm): a **bounded machine**, proved step by step, live on testnet. Four things in section 7's list were missing before it and are present in it: an instruction set with semantics, a commitment to the guest program, a memory model, and a witness generator that replays an execution.
+
+The fourth lane is [`circuits/gate_vm.circom`](../circuits/gate_vm.circom) with its interpreter [`crates/gate_vm`](../crates/gate_vm): also a bounded machine, also live on testnet, and the place where two alternative answers to the same design question are kept side by side for comparison — public program words versus a folded commitment, arithmetic over wrapped 64-bit words versus native field arithmetic with a hash instruction inside the machine.
 
 The full Groth16 rule set — what a proof binds, what it hides, and how public inputs work — is the standard one. Lumen Gate reimplements only the verifier and the byte encoding; it does not invent a proving system.
 
@@ -187,6 +189,29 @@ with the row's program counter pinned by a one-hot selection over the sixteen sl
 
 ---
 
+## 5d. The gate-vm lane: the machine that hashes, and the commitment that hides the program
+
+The execution lane proves a word processor ran. The gate-vm lane proves a different machine ran, built to answer a question the first machine structurally cannot: *can the program compute hashes as data?* On `execution_trace`, a hash chain is something the circuit wraps around the machine; on `gate_vm`, `POSEIDON r2, r2, r1` is a line of the program, and a proof that the chain ran four steps is a proof about four executed instructions, not about four built-in permutations.
+
+| | |
+| --- | --- |
+| Circuit | [`circuits/gate_vm.circom`](../circuits/gate_vm.circom): 5109 non-linear and 5075 linear constraints, powers-of-tau 2^14 |
+| Machine | [`crates/gate_vm`](../crates/gate_vm): 8 registers of BN254 field elements, 8 program lines of 12 packed bits, 8 opcodes (move, add, sub, mul, poseidon, assert_eq, jnz, halt), 8-row window, halt required by row eight |
+| Program commitment | `program_root = fold(Poseidon)` over the eight private cells, computed *in* the circuit and published as a public input; the cells themselves never appear in the statement. Changing the program changes the root, not the verification key — and unlike the public-words form, the statement size does not scale with the program |
+| Public inputs | 6: `program_root, start_root, event_root, end_root, hash_steps, domain_tag` — the same domain-tag rule as the other lanes, `sha256("lumen-gate-vm-v1")[0..31]` |
+| Gas | the window. A program that has not halted by row seven (of eight) has no witness; `hash_steps` is *counted by the circuit* from executed rows, never declared by the prover, which is what makes it bindable |
+| Verification key | 896 bytes — the same length as the step-chain lane's, and that coincidence is tested: the slots keep the keys apart, and the pairing equation catches what a length check cannot |
+| Live run | registry `CDWJWDJV…`, transaction `6d67f5f4…`, ledger **4,765,859**, **177,143 stroops**; 14/14 probes in [`deployments/gate-vm-lane.json`](../deployments/gate-vm-lane.json) |
+| Ceremony | the same local one (single contribution), documented as not-production in [`circuits/DEVELOPMENT_FIXTURE.md`](DEVELOPMENT_FIXTURE.md) — this lane buys nothing on the trust front, and does not claim to |
+
+**Why the program cells are private.** On the execution lane, publishing the sixteen words lets the contract check the encoding of every instruction *before* verifying anything — a real feature, and its payload carries the words. On this lane the program is witness data and the statement carries its 32-byte fold, so a payload cannot even claim "a longer program" without claiming a different root: the binding is one number instead of sixteen, at the cost of the contract's ability to pre-check instruction encodings. Both forms exist now, in one repository, under one ceremony standard, which is worth more than either argued alone.
+
+**The Poseidon calibration chain, because hand-ported hashes fail silently.** The lane's hash instruction means three implementations of one permutation must agree bit-for-bit: the Rust port (`crates/gate_vm`), the generated round constants (`src/poseidon_consts.rs`, from `gen_poseidon3.py`), and the pinned `circomlib` template the circuit includes. They are welded together by a *probe circuit*: [`circuits/poseidon_probe.circom`](../circuits/poseidon_probe.circom) is a bare `Poseidon(2)` main, `gen_poseidon_probe.py` runs snarkjs over six probe pairs (including near-field-boundary values and the published `(0,0)` test vector), extracts `main.out` through the `.sym` map, and commits the results as `crates/gate_vm/tests/poseidon_golden.json`. The Rust test asserts the port reproduces all six. A wrong round constant is not an error message — it is a different hash, quietly, on both sides of every future proof; this is the mechanism that makes that state unreachable by construction.
+
+**What this lane does not do.** It is register-only: there is no arbitrary-address memory bus and no consistency argument, because there is nothing to be consistent about — a claim the docs make explicitly so nobody has to discover the absence by reading the constraint list. The window bounds the run. It does not move the settlement anchor (`settlement_anchored: false` in its record, a test pinning that it stays false), and the guest's correctness remains its author's problem, exactly as section 7 item 4 says.
+
+---
+
 ## 6. How the tests keep this honest
 
 Three tests in `contracts/finality_registry/src/lib.rs` replay the **exact byte strings** captured from the live lane (see [`src/test_vectors.rs`](../contracts/finality_registry/src/test_vectors.rs)):
@@ -196,6 +221,8 @@ Three tests in `contracts/finality_registry/src/lib.rs` replay the **exact byte 
 | `test_live_groth16_proof_verifies_in_host` | the 256-byte proof and 768-byte key that a testnet transaction accepted also verify in the Soroban host, and the call reports the measured instruction cost |
 | `test_live_groth16_proof_is_rejected_when_the_proof_is_not_the_one` | swapping `A` and `C` — both still valid G1 points in valid encodings, so no length or format check can catch it — is rejected with `InvalidProof`. If the pairing check were a stub, this test would pass the swap |
 | `test_live_groth16_proof_does_not_cover_another_state_root` | a genuine proof is not evidence about another block: a mismatched declared root is rejected with `DeclaredMismatch` before a pairing is even attempted |
+
+The gate-vm lane brings twelve more host tests (`test_gate_vm_*`), replaying the vectors this repository generated end to end: honest accept with the recorded roots read back field-for-field, a rewritten program-root commitment refused at the binding, an inflated hash count refused as a format error before any pairing, swapped `start`/`event` publics refused by position, the *step-chain lane's* tag refused even though every other number agrees, short proof and short payload refused by the length rules, replay refused by the consumed digest, the anchor untouched, and — the mix-up length checks cannot catch — the step-chain's key, which is also exactly 896 bytes, accepted into the gate-vm slot and refused by the pairing equation itself. Fifteen crate tests and three calibration tests cover the emitter and the Poseidon chain; the full set runs under `cargo test --workspace`.
 
 The execution lane has its own three host tests in the same file: the 256-byte proof and 1920-byte key accepted by the live registry reproduce in the Soroban host (with the measured cost printed under `--nocapture`), a proof whose group elements are moved is rejected with `InvalidProof`, and a payload whose program word differs from the one the proof committed is rejected with `DeclaredMismatch` before a pairing is attempted. Twelve more cover the lane's own payload parser: the instruction words, the halt-padded slots, the step ceiling, the gas ceiling, the tag, the key length, the replay rule and the renounced-admin rule.
 
@@ -259,6 +286,24 @@ python3 circuits/convert_to_soroban.py build/execution_trace_vk.json \
     circuits/execution_trace --rust-out contracts/finality_registry/src/execution_trace_vectors.rs
 cargo test -p finality_registry                            # replays the bytes in the Soroban host
 node tools/execution-lane-live.js                          # deploys a fresh registry and probes it live
+```
+
+```bash
+# the gate-vm lane, end to end. The window circuit needs 2^14 as well, and the
+# emitter — not a node tool — produces the witness input:
+cargo run -p gate_vm -- --emit-dir build --height 42    # gate_vm_input.json, payload, publics
+node_modules/.bin/snarkjs wtns calculate build/gate_vm_js/gate_vm.wasm \
+    build/gate_vm_input.json build/gate_vm.wtns
+node_modules/.bin/snarkjs wchk build/gate_vm.r1cs build/gate_vm.wtns   # the trace satisfies the circuit
+PTAU_POWER=14 ./circuits/setup.sh gate_vm                              # ceremony, prove, verify
+python3 circuits/convert_to_soroban.py build/gate_vm_vk.json \
+    build/gate_vm_proof.json build/gate_vm_public.json build/gate_vm \
+    --public-names program_root,start_root,event_root,end_root,hash_steps,domain_tag \
+    --rust-out contracts/finality_registry/src/gate_vm_vectors.rs --expect-inputs 6
+cargo test -p finality_registry                            # replays the bytes in the Soroban host
+node tools/gate-vm-lane-live.js                              # deploys a fresh registry and probes it live
+# Poseidon calibration, after touching the port, the constants or circomlib:
+python3 circuits/gen_poseidon_probe.py && cargo test -p gate_vm
 ```
 
 The input for the execution lane is generated by the machine itself, not by a fixture: `tools/execution-lane-input.mjs` runs `cargo run -p execution_vm --bin execution-lane`, which assembles the program, executes it, pads the trace to twenty rows, checks it with `check_trace`, and prints the trace; the tool then computes the two Poseidon register roots with circomlibjs and writes the circuit input. A mutation that the circuit should refuse is produced by the same tool with `--mutate <name>`, and the harness runs it through the pinned `--mutate` names rather than editing JSON by hand.

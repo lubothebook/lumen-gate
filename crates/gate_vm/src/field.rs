@@ -99,8 +99,7 @@ impl Fp {
         // The cap is checked up front — on the byte length, so no partial
         // write can land before the refusal — and the loop is a plain fold.
         assert!(bytes.len() <= 32, "value exceeds 256 bits");
-        let mut slot = 0usize;
-        for chunk in bytes.chunks(8) {
+        for (slot, chunk) in bytes.chunks(8).enumerate() {
             let mut limb = 0u64;
             // Little-endian bytes in a little-endian limb: forward order, no
             // reversal. (A reversed read is invisible for values that fit in
@@ -110,7 +109,6 @@ impl Fp {
                 limb |= (*byte as u64) << (i * 8);
             }
             limbs[slot] = limb;
-            slot += 1;
         }
         Fp { limbs }
     }

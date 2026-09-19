@@ -250,7 +250,8 @@ pub fn assemble(source: &str) -> Result<Vec<u64>, AsmError> {
                 let relative = target - line.address as i64;
                 Instruction::new(
                     opcode,
-                    if opcode == Opcode::Jnz { 0 } else { 0 },
+                    // the a-slot is unused by both label forms; it encodes as zero
+                    0,
                     register_operand.unwrap_or(0),
                     0,
                     relative as i32,

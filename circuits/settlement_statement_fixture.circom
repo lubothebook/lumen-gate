@@ -23,7 +23,12 @@ include "circomlib/comparators.circom";
   verifier. Production deployment requires a circuit-specific ceremony and
   an actual validator-signature gadget.
 */
-template IsZero() {
+/// The local zero-test, named apart from circomlib's `IsZero` — the
+/// comparators include above is needed for GreaterEqThan/IsEqual, and two
+/// definitions of one template symbol abort the compiler (circom reports it
+/// as "Duplicated callable symbol", with no hint that the collision is a
+/// local name). The gate logic below is unchanged.
+template NonZeroGate() {
     signal input in;
     signal output out;
     signal inv;
@@ -69,10 +74,15 @@ template SettlementStatementFixture(n, m) {
 
     // A zero Poseidon result is rejected, so all three public roots are part of
     // the relation rather than metadata ignored by the proof.
-    component nonzero = IsZero();
+    component nonzero = NonZeroGate();
     nonzero.in <== transition_hash.out;
 
-    valid <== quorum.out * threshold_policy.out * (1 - nonzero.out);
+    // Two products cannot share one constraint (R1CS is degree two), so the
+    // conjunction is chained through a helper. Circom 2 rejected the earlier
+    // three-factor line outright: "Non quadratic constraints are not allowed".
+    signal quorum_and_policy;
+    quorum_and_policy <== quorum.out * threshold_policy.out;
+    valid <== quorum_and_policy * (1 - nonzero.out);
     valid === 1;
 }
 

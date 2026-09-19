@@ -445,14 +445,32 @@ functionality belongs in the off-chain surface, the facade and the docs.
       `circuits/setup.sh` now derives the powers-of-tau size from the circuit's
       own constraint count, with a floor of 2^13 so the three earlier lanes keep
       the keys their deployments were made with.
+- [x] **The gate-vm lane, live**: `crates/gate_vm` (field-native 8-register
+      machine, in-circuit Poseidon opcode, witness emitter),
+      `circuits/gate_vm.circom` (5109 non-linear / 5075 linear constraints,
+      fold-committed program, window-as-gas, circuit-counted hash steps), the
+      registry's fourth slot (`set_gate_vm_vk` / `submit_gate_vm_zk`, 896-byte
+      key, six bound publics) and `tools/gate-vm-lane-live.js` — 14/14 probes
+      on testnet, honest accept at ledger 4,765,859 for 177,143 stroops,
+      recorded in `deployments/gate-vm-lane.json`.
+- [x] **Poseidon calibrated four ways, not trusted**: the Rust port, the
+      generated constants, a probe circuit compiled against the same pinned
+      circomlib, and committed golden fixtures the test suite replays — the
+      mechanism that makes "a hand-ported hash that silently differs"
+      unreachable at build time rather than at audit time.
+- [x] `circuits/build.sh` all-targets mode compiles every listed circuit again:
+      the quarantined fixture's duplicated-`IsZero` and non-quadratic lines were
+      pre-existing breakage from the 2.2.3 transition, fixed semantically
+      intact, and the workspace now passes `cargo clippy --all-targets
+      -- -D warnings` with the two trivial sibling-crate lints swept.
 
 ### Still missing (stated, not hidden)
 
 - [ ] Production validator set: the BLS lane runs 3 demo keys with a threshold
       of 2, unbonded. Real DKG and a slashable set are roadmap, and the adapter
       descriptor says so in its own `not_claimed` list.
-- [ ] **Signatures inside the circuit.** Both Groth16 lanes prove a quorum of
-      approval *bits*; neither verifies a signature. The chained lane carries the
+- [ ] **Signatures inside the circuit.** The settlement and chained lanes prove a
+      quorum of approval *bits*; no lane verifies a signature. The chained lane carries the
       quorum step by step and binds each step's evidence into the state it
       produces, but a production chain puts a signature gadget inside the
       circuit — that is the next step, not a relabelling of this one.
@@ -726,8 +744,15 @@ assembled from a listing rather than compiled; and its end root is deliberately
 not wired into the settlement anchor. The README, `docs/PROVING_SYSTEM.md` §5c
 and §7, and the circuit header all state the bound in the same breath as the
 claim, because a judge who finds the bound mis-stated will discount the whole
-file. The two fixed-statement lanes keep their own labels: they are statement
-proofs, and nothing about them is described as a VM.
+file. A second bounded machine has since joined it — `circuits/gate_vm.circom`
+with `crates/gate_vm`, live on testnet with its own registry slot and its own
+14-probe record: an eight-line, eight-register machine whose program enters the
+statement only as a Poseidon-fold commitment and whose Poseidon instruction
+lets the *program itself* hash. It is described by the same sentence's rules:
+bounded (eight rows are the whole budget), assembled, anchored on nothing, and
+labelled an execution proof rather than a platform. The two fixed-statement
+lanes keep their own labels: they are statement proofs, and nothing about them
+is described as a VM.
 
 ---
 
