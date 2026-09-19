@@ -1,31 +1,38 @@
 'use strict';
 
-// Behavioural check for the lattice pointer frame.
+// Contract check for the coded lattice wall.
 //
-// The page background is the source chain: one cube per block, painted from
-// the project tile at the tile's own 60px, and moving the pointer snaps a
-// 60x60 frame onto the cube beneath it with a literal 4px inner border. That
-// behaviour is split between markup, CSS and the watchGrid() function in
-// frontend/src/app.js, and a regression in any one of them fails silently:
-// the page would still load, look finished and simply stop reacting. This
-// check therefore asserts both halves of the contract:
+// The page background is the source chain: one cube per block, and every
+// cube is its own element on a coded grid - not a png wallpaper. Each cube
+// carries the submitted tile at the tile's own 60px (never resampled), and
+// each cube answers the pointer itself: a 4px white inset frame while the
+// pointer is over that cube, gone when it leaves. The behaviour is split
+// between markup, CSS and buildLattice()/sizeLattice() in frontend/src/app.js,
+// and a regression in any one of them fails silently: the page would still
+// load, look finished and simply stop reacting, or worse, quietly turn the
+// artwork back into a flat background image. This check therefore asserts
+// both halves of the contract:
 //
 //   1. the static contract: the tile's own cell is 60px and the frame's own
 //      border is 4px, the tile in frontend/public really is 60x60 and is the
-//      file the manifest says it is, the frame is one cell with an inset white
-//      border drawn from the ring token, one asset pixel is one screen pixel
-//      (the cell and the ring are divided by the device pixel ratio, never
-//      multiplied), and the hiding rules (touch devices, reduced motion) exist;
-//   2. the behaviour: watchGrid() is extracted and driven with synthetic
-//      pointer events against a stub DOM, and must snap the frame to the
-//      right cube, account for the scrolled lattice, stay off interactive
-//      surfaces, and hide when the pointer leaves, scrolls or blurs. The same
-//      run asserts the density contract on the tokens it sets: at dpr 2 a 60px
-//      tile becomes a 30px cell with a 2px ring, at dpr 1 it stays 60/4.
+//      file the manifest says it is, every cube is painted from the embedded
+//      tile bytes at cell size with pixelated rendering, the hover frame is
+//      an inset white border drawn from the ring token, one asset pixel is
+//      one screen pixel (cell and ring divided by the device pixel ratio,
+//      never multiplied), the wall element is aria-hidden paint, and the
+//      guards (touch devices, reduced motion) exist. The body itself must
+//      NOT paint the tile - a wallpaper would be the exact regression this
+//      architecture replaced;
+//   2. the behaviour: sizeLattice()/buildLattice() are extracted and driven
+//      with synthetic viewports against a stub DOM, and must set 60/4 at
+//      dpr 1 and 30/2 at dpr 2, must emit exactly cols x rows cube elements,
+//      each an individual element with the cube class, and must not rebuild
+//      when the shape of the screen did not change.
 
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+const crypto = require('crypto');
 
 const root = path.join(__dirname, '..');
 const html = fs.readFileSync(path.join(root, 'frontend', 'index.html'), 'utf8');
@@ -38,9 +45,9 @@ function expect(condition, message) {
 
 // ---------------------------------------------------- 1. static contract
 const cellToken = /--cell:\s*(\d+)px/.exec(html);
-expect(cellToken && Number(cellToken[1]) === 60, 'the --cell token must default to the tile\'s own 60px');
+expect(cellToken && Number(cellToken[1]) === 60, "the --cell token must default to the tile's own 60px");
 const ringToken = /--ring:\s*(\d+)px/.exec(html);
-expect(ringToken && Number(ringToken[1]) === 4, 'the --ring token must default to 4px, the frame the pointer draws');
+expect(ringToken && Number(ringToken[1]) === 4, 'the --ring token must default to 4px, the frame a cube wears on hover');
 
 const tile = fs.readFileSync(path.join(root, 'frontend', 'public', 'grid-tile.png'));
 expect(tile.slice(1, 4).toString() === 'PNG', 'grid-tile.png is not a PNG');
@@ -50,7 +57,6 @@ expect(tile.readUInt32BE(16) === 60 && tile.readUInt32BE(20) === 60, 'grid-tile.
 // the hash the manifest records and the bytes on disk must not drift apart.
 // The page embeds those same bytes as a data URI (tools/check-console.js
 // compares the encoded copy), which is why a redrawn tile cannot ship quietly.
-const crypto = require('crypto');
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'deployments', 'testnet.json'), 'utf8'));
 const recorded = /sha256 ([0-9a-f]{64})/.exec(String((manifest.interface_state || {}).lattice || ''));
 expect(Boolean(recorded), 'interface_state.lattice must record the tile\'s sha256 so the artwork has a provenance');
@@ -65,140 +71,119 @@ expect(/const TILE_PX = 60;/.test(app) && /const FRAME_PX = 4;/.test(app), 'app.
 expect(/root\.style\.setProperty\('--cell'/.test(app), 'app.js must set --cell on the document element');
 expect(/TILE_PX \/ dpr/.test(app), 'the cell must be the tile divided by the device pixel ratio (one asset px per screen px)');
 expect(/FRAME_PX \/ dpr/.test(app), 'the frame must be the ring divided by the device pixel ratio');
-expect(/Math\.round\([^)]*dpr\)|\/ dpr\) \* dpr/.test(app), 'the frame transform must snap to whole device pixels, not fractional css pixels');
 
+// The wall is coded, not painted: the body must not carry the tile as a
+// background, and the grid-frame wallpaper-era element is gone for good.
 const bodyRule = /body\s*\{[^}]*\}/.exec(html);
-expect(bodyRule && bodyRule[0].includes('background-image: var(--grid-tile)'), 'the body must paint the lattice from --grid-tile');
-expect(bodyRule && bodyRule[0].includes('background-size: var(--cell) var(--cell)'), 'the lattice must be painted at cell size, never resampled');
-expect(bodyRule && bodyRule[0].includes('image-rendering: pixelated'), 'the lattice must not be smoothed (image-rendering: pixelated)');
+expect(bodyRule && !bodyRule[0].includes('background-image: var(--grid-tile)'), 'the body must NOT paint the tile: the lattice is coded cubes, not a wallpaper');
+expect(!/\.grid-frame/.test(html), 'the old .grid-frame element and rules are retired; cubes carry their own frames');
+expect(!html.includes('id="gridFrame"'), 'the old gridFrame element is retired');
+expect(html.includes('<div class="cube-lattice" id="cubeLattice" aria-hidden="true"></div>'), 'the cube wall element is missing or no longer aria-hidden paint');
 
-const frameRule = /\.grid-frame\s*\{[^}]*\}/.exec(html);
-expect(Boolean(frameRule), '.grid-frame rule missing');
-if (frameRule) {
-  expect(/box-shadow:\s*inset 0 0 0 var\(--ring\) rgba\(255,\s*255,\s*255/.test(frameRule[0]), 'the frame must be an inset white border drawn from the --ring token (4px on a 1x display)');
-  expect(/width:\s*var\(--cell\);\s*height:\s*var\(--cell\)/.test(frameRule[0]), 'the frame must cover exactly one cube');
-  expect(/pointer-events:\s*none/.test(frameRule[0]), 'the frame must stay paint, never a control');
-  expect(/z-index:\s*-\d+/.test(frameRule[0]), 'the frame must sit below the page surfaces so cards and the band hide it');
-  expect(/opacity:\s*0/.test(frameRule[0]), 'the frame must start hidden');
+const wallRule = /\.cube-lattice\s*\{[^}]*\}/.exec(html);
+expect(Boolean(wallRule), '.cube-lattice rule missing');
+if (wallRule) {
+  expect(/z-index:\s*-\d+/.test(wallRule[0]), 'the wall must sit below every page surface');
+  expect(/position:\s*fixed/.test(wallRule[0]), 'the wall is fixed: it is a backdrop, not document flow');
+  expect(/overflow:\s*hidden/.test(wallRule[0]), 'the wall must never create scrollbars');
 }
-expect(/\.grid-frame\.on\s*\{\s*opacity:\s*1\s*;?\s*\}/.test(html), '.grid-frame.on must reveal the frame');
-expect(html.includes('<div class="grid-frame" id="gridFrame" aria-hidden="true"></div>'), 'the frame element is missing or no longer aria-hidden paint');
-expect(/@media \(hover: none\), \(pointer: coarse\)[^}]*\.grid-frame[^}]*display:\s*none/.test(html), 'touch devices must not get the pointer frame');
-expect(/prefers-reduced-motion: reduce[^}]*\.grid-frame[^}]*transition:\s*none/.test(html.replace(/\{ /g, '{')), 'reduced motion must remove the frame transition');
+
+const cubeRule = /\.cube\s*\{[^}]*\}/.exec(html);
+expect(Boolean(cubeRule), '.cube rule missing');
+if (cubeRule) {
+  expect(cubeRule[0].includes('background-image: var(--grid-tile)'), 'every cube is painted from the embedded tile bytes');
+  expect(cubeRule[0].includes('background-size: var(--cell) var(--cell)'), 'every cube paints the tile at cell size, never resampled');
+  expect(cubeRule[0].includes('image-rendering: pixelated'), 'the tile must not be smoothed (image-rendering: pixelated)');
+  expect(/width:\s*var\(--cell\);\s*height:\s*var\(--cell\)/.test(cubeRule[0]), 'every cube is exactly one cell');
+  expect(/transition:\s*box-shadow/.test(cubeRule[0]), 'the frame on a cube fades in and out rather than popping');
+}
+const hoverRule = /\.cube:hover\s*\{[^}]*\}/.exec(html);
+expect(Boolean(hoverRule), '.cube:hover rule missing: the pointer frame is the whole point');
+if (hoverRule) {
+  expect(/box-shadow:\s*inset 0 0 0 var\(--ring\) rgba\(255,\s*255,\s*255/.test(hoverRule[0]), 'the hover frame must be an inset white border drawn from the --ring token (4px on a 1x display)');
+}
+expect(/@media \(hover: none\), \(pointer: coarse\)[^}]*\.cube:hover[^}]*box-shadow:\s*none/.test(html), 'touch devices must not get the pointer frame');
+expect(/prefers-reduced-motion: reduce[^}]*\.cube[^}]*transition:\s*none/.test(html.replace(/\{ /g, '{')), 'reduced motion must remove the frame transition');
 
 // ---------------------------------------------------- 2. the behaviour
-const fnMatch = app.match(/function watchGrid\(\) \{[\s\S]*?\n\}/);
-expect(Boolean(fnMatch), 'watchGrid() was not found in frontend/src/app.js');
+const buildMatch = app.match(/function buildLattice\(\) \{[\s\S]*?\n\}/);
+expect(Boolean(buildMatch), 'buildLattice() was not found in frontend/src/app.js');
 const sizeMatch = app.match(/function sizeLattice\(\) \{[\s\S]*?\n\}/);
 expect(Boolean(sizeMatch), 'sizeLattice() was not found in frontend/src/app.js');
-const constMatch = app.match(/const TILE_PX = \d+;\nconst FRAME_PX = \d+;\n\nconst LATTICE_MODES = \{[^}]*\};/);
-expect(Boolean(constMatch), 'the lattice constants could not be read out of frontend/src/app.js');
-expect(/^\s*watchGrid\(\)/m.test(app), 'watchGrid() is defined but never called, so the frame is dead code');
+expect(/const TILE_PX = 60;\nconst FRAME_PX = 4;/.test(app), 'the lattice constants could not be read out of frontend/src/app.js');
+expect(!/LATTICE_MODES/.test(app), 'density modes are retired: 1:1 is the only mode now');
+expect(!/scale60|scale30|latticeReadout/.test(app), 'the retired density switch ui must not be wired anymore');
+expect(/^\s*buildLattice\(\)/m.test(app), 'buildLattice() is defined but never called, so the wall is dead code');
 
-function drive({ elementFromPoint, scrollY = 0, dpr = 1, latticeScale = 'pixel' }) {
-  const calls = { on: [], transform: [], rafQueued: 0, tokens: {} };
-  const frameStub = {
-    classList: {
-      add: (name) => name === 'on' && calls.on.push(true),
-      remove: (name) => name === 'on' && calls.on.push(false),
-    },
-    style: {
-      set transform(value) { calls.transform.push(value); },
-    },
+function drive({ width, height, dpr }) {
+  const calls = { tokens: {}, cubes: [], clears: 0 };
+  const wall = {
+    children: [],
+    set textContent(value) { if (value === '') { calls.clears += 1; this.children = []; } },
+    append(frag) { this.children.push(...frag.children); },
   };
-  const listeners = { window: {}, document: {} };
-  let raf = null;
-  // Every element app.js touches while sizing the lattice, stubbed to the
-  // smallest thing that answers: attributes, the readout text and the root
-  // custom properties, which is where the density contract actually lands.
-  const elementStub = () => ({
-    attrs: {}, dataset: {}, style: {}, textContent: '',
-    setAttribute(name, value) { this.attrs[name] = value; },
-    classList: { add() {}, remove() {} },
-  });
+  const makeCube = (isFragment) => {
+    const el = { className: '', children: [], isFragment, append(...nodes) { this.children.push(...nodes); } };
+    return el;
+  };
   const rootStyle = {
     props: {},
     setProperty(name, value) { this.props[name] = value; calls.tokens[name] = value; },
   };
   const sandbox = {
-    $: (id) => (id === 'gridFrame' ? frameStub : (sandbox.__els[id] ||= elementStub())),
-    __els: {},
-    state: { latticeScale },
-    store: { get: () => null, set: () => true, clear: () => true },
+    $: (id) => (id === 'cubeLattice' ? wall : null),
     document: {
       documentElement: { style: rootStyle, dataset: {} },
-      elementFromPoint,
-      addEventListener: (type, fn) => { (listeners.document[type] ||= []).push(fn); },
+      createElement: () => makeCube(false),
+      createDocumentFragment: () => makeCube(true),
     },
-    window: {
-      scrollY,
-      devicePixelRatio: dpr,
-      addEventListener: (type, fn) => { (listeners.window[type] ||= []).push(fn); },
-    },
-    getComputedStyle: () => ({ getPropertyValue: (name) => (name === '--cell' ? ` ${60 / dpr}px` : ' 0px') }),
-    requestAnimationFrame: (fn) => { raf = fn; calls.rafQueued += 1; },
+    window: { innerWidth: width, innerHeight: height, devicePixelRatio: dpr },
   };
   vm.createContext(sandbox);
-  const prefix = `${constMatch ? constMatch[0] : ''}\n${sizeMatch ? sizeMatch[0] : ''}\n`;
-  vm.runInContext(`${prefix}${fnMatch ? fnMatch[0] : ''}\nwatchGrid();`, sandbox, { filename: 'app.js#watchGrid' });
-  const fire = (target, type, event) => { for (const fn of listeners[target][type] || []) fn(event || {}); };
-  const paint = () => { const fn = raf; raf = null; if (fn) fn(); };
-  return { calls, fire, paint, elements: sandbox.__els, elementStub };
+  const prefix = 'const TILE_PX = 60;\nconst FRAME_PX = 4;\n';
+  vm.runInContext(`${prefix}${sizeMatch ? sizeMatch[0] : ''}\n${buildMatch ? buildMatch[0] : ''}\nbuildLattice();`, sandbox, { filename: 'app.js#buildLattice' });
+  calls.cubes = wall.children.map((cube) => cube.className);
+  return { calls, wall, sandbox };
 }
 
-const bare = { closest: () => null };
-const overCard = { closest: (sel) => (sel.includes('.card') ? {} : null) };
-
-// a pointer over bare lattice frames the cube it is on
-let run = drive({ elementFromPoint: () => bare });
-run.fire('window', 'pointermove', { clientX: 125, clientY: 75 });
-run.paint();
-expect(run.calls.transform[0] === 'translate3d(120px, 60px, 0)', `pointer at (125,75) must frame cube (2,1): ${run.calls.transform[0]}`);
-expect(run.calls.on.length === 1 && run.calls.on[0] === true, 'the frame must switch on over bare lattice');
-
-// a second event before the paint must not queue a second paint
-run = drive({ elementFromPoint: () => bare });
-run.fire('window', 'pointermove', { clientX: 10, clientY: 10 });
-run.fire('window', 'pointermove', { clientX: 125, clientY: 75 });
-expect(run.calls.rafQueued === 1, `pointer input must be rAF-throttled, not one paint per event (queued ${run.calls.rafQueued})`);
-run.paint();
-expect(run.calls.transform[0] === 'translate3d(120px, 60px, 0)', 'the paint must consume the latest pointer position, not the first');
-
-// the lattice scrolls with the document, so the frame must compensate
-run = drive({ elementFromPoint: () => bare, scrollY: 96 });
-run.fire('window', 'pointermove', { clientX: 125, clientY: 75 });
-run.paint();
-expect(run.calls.transform[0] === 'translate3d(120px, 24px, 0)', `with scrollY=96 a pointer at y=75 is on cube row 2 (viewport y=24): ${run.calls.transform[0]}`);
-
-// over a card the frame must go and stay off
-run = drive({ elementFromPoint: () => overCard });
-run.fire('window', 'pointermove', { clientX: 125, clientY: 75 });
-run.paint();
-expect(run.calls.transform.length === 0, 'the frame must never paint over an interactive surface');
-expect(run.calls.on.length === 1 && run.calls.on[0] === false, 'the frame must switch off over an interactive surface');
-
-// leaving the window, scrolling or blurring hides it
-run = drive({ elementFromPoint: () => bare });
-run.fire('window', 'pointermove', { clientX: 125, clientY: 75 });
-run.paint();
-run.fire('window', 'pointerleave');
-run.fire('document', 'scroll');
-run.fire('window', 'blur');
-expect(run.calls.on.filter((v) => v === false).length >= 3, 'pointerleave, scroll and blur must each hide the frame');
-
 // the density contract, asserted on the tokens the run actually sets
-run = drive({ elementFromPoint: () => bare, dpr: 1 });
+let run = drive({ width: 1000, height: 700, dpr: 1 });
 expect(run.calls.tokens['--cell'] === '60px', `at dpr 1 the cell must be 60px, got ${run.calls.tokens['--cell']}`);
 expect(run.calls.tokens['--ring'] === '4px', `at dpr 1 the ring must be 4px, got ${run.calls.tokens['--ring']}`);
-run = drive({ elementFromPoint: () => bare, dpr: 2 });
+expect(run.calls.cubes.length === Math.ceil(1000 / 60) * Math.ceil(700 / 60), `1000x700 at dpr 1 needs exactly ${Math.ceil(1000 / 60) * Math.ceil(700 / 60)} cubes, got ${run.calls.cubes.length}`);
+expect(run.calls.cubes.every((name) => name === 'cube'), 'every element on the wall is an individually coded cube');
+
+run = drive({ width: 1000, height: 700, dpr: 2 });
 expect(run.calls.tokens['--cell'] === '30px', `at dpr 2 the cell must be 30px so one asset pixel stays one screen pixel, got ${run.calls.tokens['--cell']}`);
 expect(run.calls.tokens['--ring'] === '2px', `at dpr 2 the ring must be 2px, got ${run.calls.tokens['--ring']}`);
-run = drive({ elementFromPoint: () => bare, dpr: 2, latticeScale: '60' });
-expect(run.calls.tokens['--cell'] === '60px', `a reader who asks for 60px cells must get 60px cells at any density, got ${run.calls.tokens['--cell']}`);
+expect(run.calls.cubes.length === Math.ceil(1000 / 30) * Math.ceil(700 / 30), `1000x700 at dpr 2 needs exactly ${Math.ceil(1000 / 30) * Math.ceil(700 / 30)} cubes, got ${run.calls.cubes.length}`);
 
-console.log('lattice contract: 60px cube, 4px inset white frame, pixelated tile, one asset px per screen px (60/4 at dpr 1, 30/2 at dpr 2) | behaviour: snap, throttle, scroll compensation, suppression, hiding');
+// a re-run with an unchanged screen must not tear down and rebuild the wall
+{
+  const sandbox = {
+    $: null,
+    document: {
+      documentElement: { style: { setProperty() {} }, dataset: {} },
+      createElement: () => ({ className: '', children: [], append(...n) { this.children.push(...n); } }),
+      createDocumentFragment: () => ({ children: [], append(...n) { this.children.push(...n); } }),
+    },
+    window: { innerWidth: 1000, innerHeight: 700, devicePixelRatio: 1 },
+  };
+  let clears = 0;
+  const wall = {
+    children: [],
+    set textContent(value) { if (value === '') clears += 1; },
+    append(frag) { this.children.push(...frag.children); },
+  };
+  sandbox.$ = () => wall;
+  vm.createContext(sandbox);
+  vm.runInContext(`const TILE_PX = 60;\nconst FRAME_PX = 4;\n${sizeMatch[0]}\n${buildMatch[0]}\nbuildLattice();\nbuildLattice();`, sandbox, { filename: 'app.js#buildLattice' });
+  expect(clears === 1, `an unchanged screen must build the wall once, not on every pass (cleared ${clears} times)`);
+}
+
+console.log('lattice contract: coded wall, one element per 60px cube, per-cube 4px hover frame, pixelated tile, one asset px per screen px (60/4 at dpr 1, 30/2 at dpr 2) | behaviour: density tokens, exact coverage, no pointless rebuild');
 if (problems.length === 0) {
-  console.log('grid fx: the cube under the pointer is framed on its edges, and only there');
+  console.log('grid fx: every cube is coded onto the grid and frames itself under the pointer, and only itself');
   process.exit(0);
 }
 for (const problem of problems) console.error(`  - ${problem}`);

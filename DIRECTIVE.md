@@ -370,6 +370,27 @@ functionality belongs in the off-chain surface, the facade and the docs.
       capability buttons carry their reason in the note underneath and on the
       control's own title attribute.
 
+- [x] The lattice is a coded wall, not a wallpaper: every cube is its own
+      element painted from the submitted tile at the tile's own size, and the
+      4px white frame is each cube's own :hover state - it appears exactly
+      while the pointer is over that cube and closes when it leaves. Density
+      modes are retired: 1:1 (one asset pixel per screen pixel) is the only
+      mode, so the footer switch is gone. `tools/check-grid-fx.js` was
+      rewritten around the new contract: body must NOT paint the tile, the
+      per-cube hover frame is pinned byte-level, and buildLattice() is driven
+      under synthetic viewports (308 cubes at 1280x800 dpr 1, exact coverage
+      at dpr 2, no pointless rebuild).
+- [x] The section navigation is a fixed dock at the bottom of the screen
+      (backgroundless text buttons inside one frosted pill), and the text
+      sections are full-bleed black strips that hug their content with every
+      grid top-aligned.
+- [x] Wallet connection is proven, not asserted: `tools/check-wallet-connect.js`
+      boots the real app.js against a stub DOM built from the real markup,
+      clicks the real connect button with a Freighter-shaped stub and asserts
+      the whole connected state (green network pill, address on the chip,
+      rounded balances with exact titles, full renounce hashes, live audit
+      badge), plus the refusal and no-extension paths.
+
 ### Still missing (stated, not hidden)
 
 - [ ] Production validator set: the BLS lane runs 3 demo keys with a threshold

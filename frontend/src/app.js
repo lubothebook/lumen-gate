@@ -43,7 +43,6 @@ const state = {
   status: null,
   lock: null,
   operatorToken: store.get('lumen.operatorToken'),
-  latticeScale: store.get('lumen.latticeScale'),
   wallet: null,
 };
 
@@ -143,72 +142,50 @@ async function api(path, { method = 'GET', body, auth = false } = {}) {
 const TILE_PX = 60;
 const FRAME_PX = 4;
 
-const LATTICE_MODES = { pixel: null, '60': 60, '30': 30 };
-
+// One asset pixel per screen pixel, always. The cell and the ring are the
+// tile divided by the device pixel ratio, never multiplied - a 2x display
+// gets a 30px cell that still lands on 60 physical pixels.
 function sizeLattice() {
   const dpr = window.devicePixelRatio || 1;
-  const mode = state.latticeScale && LATTICE_MODES[state.latticeScale] !== undefined ? state.latticeScale : 'pixel';
-  const fixed = LATTICE_MODES[mode];
-  const cell = fixed === null ? TILE_PX / dpr : fixed;
   const root = document.documentElement;
-  root.style.setProperty('--cell', `${cell}px`);
+  root.style.setProperty('--cell', `${TILE_PX / dpr}px`);
   root.style.setProperty('--ring', `${FRAME_PX / dpr}px`);
-  root.dataset.lattice = mode;
-  for (const [id, value] of [['scalePixel', 'pixel'], ['scale60', '60'], ['scale30', '30']]) {
-    const button = $(id);
-    if (button) button.setAttribute('aria-pressed', String(value === mode));
-  }
-  const readout = $('latticeReadout');
-  if (readout) {
-    const shown = Number(cell.toFixed(2));
-    readout.textContent = mode === 'pixel'
-      ? `lattice: ${TILE_PX}\u00d7${TILE_PX} asset, 1 asset px = 1 screen px \u00b7 ${shown}px cell at dpr ${dpr} \u00b7 hover frame ${FRAME_PX} screen px`
-      : `lattice: ${TILE_PX}\u00d7${TILE_PX} asset drawn at ${shown}px per cell \u00b7 hover frame ${FRAME_PX} screen px`;
-  }
+  return TILE_PX / dpr;
 }
 
-function setLatticeScale(mode) {
-  state.latticeScale = mode;
-  store.set('lumen.latticeScale', mode);
-  sizeLattice();
+// The background is not a wallpaper: every cube is its own element on a
+// coded grid, one element per block of the source chain, each carrying the
+// submitted tile at the tile's own size. Each cube answers the pointer
+// itself - the 4px white frame is a plain :hover state of the cube, so it
+// appears exactly while the pointer is over that cube and closes when the
+// pointer leaves, with no bookkeeping that could fall out of step.
+function buildLattice() {
+  const wall = $('cubeLattice');
+  if (!wall) return;
+  const cell = sizeLattice();
+  const cols = Math.max(1, Math.ceil(window.innerWidth / cell));
+  const rows = Math.max(1, Math.ceil(window.innerHeight / cell));
+  const wanted = Math.min(cols * rows, 6000);
+  if (buildLattice.wanted === wanted) return;
+  buildLattice.wanted = wanted;
+  const frag = document.createDocumentFragment();
+  for (let i = 0; i < wanted; i += 1) {
+    const cube = document.createElement('div');
+    cube.className = 'cube';
+    frag.append(cube);
+  }
+  wall.textContent = '';
+  wall.append(frag);
 }
 
-function watchGrid() {
-  const frame = $('gridFrame');
-  sizeLattice();
-  let queued = null;
-  let ticking = false;
-
-  const paint = () => {
-    ticking = false;
-    if (!queued) return;
-    const { x, y } = queued;
-    const under = document.elementFromPoint(x, y);
-    if (!under || under.closest('.band-wrap, .card, header, footer, dialog, .steps, .stat')) {
-      frame.classList.remove('on');
-      return;
-    }
-    // snap to the same lattice the background is painted on, then land on a
-    // whole device pixel so the 4px ring stays crisp
-    const dpr = window.devicePixelRatio || 1;
-    const quantise = (value) => Math.round(value * dpr) / dpr;
-    const cell = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--cell')) || 60;
-    const left = quantise(Math.floor(x / cell) * cell);
-    const top = quantise(Math.floor((window.scrollY + y) / cell) * cell - window.scrollY);
-    frame.style.transform = `translate3d(${left}px, ${top}px, 0)`;
-    frame.classList.add('on');
-  };
-
-  window.addEventListener('pointermove', (event) => {
-    queued = { x: event.clientX, y: event.clientY };
-    if (!ticking) {
-      ticking = true;
-      requestAnimationFrame(paint);
-    }
-  }, { passive: true });
-  window.addEventListener('pointerleave', () => frame.classList.remove('on'));
-  window.addEventListener('blur', () => frame.classList.remove('on'));
-  document.addEventListener('scroll', () => frame.classList.remove('on'), { passive: true });
+let latticeQueued = false;
+function queueLattice() {
+  if (latticeQueued) return;
+  latticeQueued = true;
+  requestAnimationFrame(() => {
+    latticeQueued = false;
+    buildLattice();
+  });
 }
 
 // ------------------------------------------------------------------ nav
@@ -1091,10 +1068,7 @@ function wire() {
   $('copyCmdBtn').addEventListener('click', () => copyCommand());
   $('clearLogBtn').addEventListener('click', () => showLogPlaceholder());
   $('operatorHintBtn').addEventListener('click', operatorDialog);
-  $('scalePixel').addEventListener('click', () => setLatticeScale('pixel'));
-  $('scale60').addEventListener('click', () => setLatticeScale('60'));
-  $('scale30').addEventListener('click', () => setLatticeScale('30'));
-  window.addEventListener('resize', sizeLattice);
+  window.addEventListener('resize', queueLattice);
   wireAmounts();
   $('demoRecipientBtn').addEventListener('click', () => {
     const demo = state.status?.accounts?.gasless_recipient || state.status?.accounts?.end_user;
@@ -1151,7 +1125,7 @@ function wire() {
 
 wire();
 watchSections();
-watchGrid();
+buildLattice();
 resetSteps();
 showLogPlaceholder();
 loadTrustEvidence();
