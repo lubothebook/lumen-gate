@@ -119,6 +119,16 @@
       "id": "tests-passing-for-the-wrong-reason",
       "found": "two registry unit tests asserted only that a call failed. They registered a domain but never admitted it, so the call failed with NotAdmitted before any signature or pairing check ran",
       "fix": "both tests now admit the domain and assert the specific expected error variant (InvalidSignature, InvalidProof)"
+    },
+    {
+      "id": "self-audit-reported-the-wrong-thing",
+      "found": "a round failed 'honest_evidence_accepted' with the detail '#null unknown', and reported the replay and tamper probes as 'saw acceptance'. The honest call had failed before reaching the contract (no submitter address was set, so the CLI could not build the transaction), and the probes treated 'no contract error was parsed' as 'the contract accepted it'",
+      "fix": "the submitter now falls back to accounts.deployer_and_relayer in this manifest, and every check reports what actually happened: a contract error code, or the CLI's own refusal with its output tail. A call that never reached the contract can no longer be read as acceptance"
+    },
+    {
+      "id": "self-audit-overwrote-its-own-history",
+      "found": "the README said audit rounds are appended to deployments/self-audit.json, but the loop started from an empty in-memory array and wrote the whole file, so each run erased the previous rounds",
+      "fix": "prior rounds are loaded at start-up and the round counter continues from them. The file now holds rounds 1 and 2 from this session, both 5/5"
     }
   ],
   "negative_probes": {

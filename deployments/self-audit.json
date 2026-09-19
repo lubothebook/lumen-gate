@@ -1,10 +1,10 @@
 {
   "note": "Written by the Lumen Gate self-audit loop. Each entry is one round of probes against the live deployed registry.",
-  "updated_at": "2026-09-19T16:47:44.083Z",
+  "updated_at": "2026-09-19T18:04:09.333Z",
   "latest": {
-    "round": 1,
-    "started_at": "2026-09-19T16:47:37.849Z",
-    "finished_at": "2026-09-19T16:47:44.083Z",
+    "round": 2,
+    "started_at": "2026-09-19T18:04:04.074Z",
+    "finished_at": "2026-09-19T18:04:09.333Z",
     "checks_passed": 5,
     "checks_total": 5,
     "all_passed": true,
@@ -14,7 +14,7 @@
       {
         "check": "source_chain_reachable",
         "passed": true,
-        "detail": "simulator produced height 73"
+        "detail": "simulator produced height 306"
       },
       {
         "check": "honest_evidence_accepted",
@@ -41,8 +41,8 @@
   "history": [
     {
       "round": 1,
-      "started_at": "2026-09-19T16:47:37.849Z",
-      "finished_at": "2026-09-19T16:47:44.083Z",
+      "started_at": "2026-09-19T18:03:44.389Z",
+      "finished_at": "2026-09-19T18:03:53.520Z",
       "checks_passed": 5,
       "checks_total": 5,
       "all_passed": true,
@@ -52,7 +52,44 @@
         {
           "check": "source_chain_reachable",
           "passed": true,
-          "detail": "simulator produced height 73"
+          "detail": "simulator produced height 301"
+        },
+        {
+          "check": "honest_evidence_accepted",
+          "passed": true,
+          "detail": "contract returned an attestation"
+        },
+        {
+          "check": "replay_rejected",
+          "passed": true,
+          "detail": "#9 EvidenceAlreadyProcessed"
+        },
+        {
+          "check": "tampered_signature_rejected",
+          "passed": true,
+          "detail": "#7 InvalidSignature"
+        },
+        {
+          "check": "admin_capability_renounced",
+          "passed": true,
+          "detail": "admin capability has been permanently given up"
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "started_at": "2026-09-19T18:04:04.074Z",
+      "finished_at": "2026-09-19T18:04:09.333Z",
+      "checks_passed": 5,
+      "checks_total": 5,
+      "all_passed": true,
+      "registry": "CCXJDQMTJUGXKNFOQPC25IYVOAVWDMLJBNQYX75MAREHV7MZMU5OSEN4",
+      "network": "testnet",
+      "checks": [
+        {
+          "check": "source_chain_reachable",
+          "passed": true,
+          "detail": "simulator produced height 306"
         },
         {
           "check": "honest_evidence_accepted",

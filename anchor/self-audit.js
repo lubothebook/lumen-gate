@@ -52,8 +52,19 @@ const ERR = {
   13: "AdminRenounced",
 };
 
-const history = [];
-let round = 0;
+// The record has to accumulate across runs. An audit that overwrites its own
+// history every time it starts is a status display, not a record: the file
+// would only ever contain the rounds of whichever process wrote last. The
+// previous rounds are loaded here and the round counter continues from them.
+const history = (() => {
+  try {
+    const previous = JSON.parse(fs.readFileSync(OUT, "utf8"));
+    return Array.isArray(previous.history) ? [...previous.history] : [];
+  } catch {
+    return [];
+  }
+})();
+let round = history.length > 0 ? Number(history[history.length - 1].round || history.length) : 0;
 
 // ---------------------------------------------------------------------------
 // helpers
@@ -89,6 +100,28 @@ function contractError(text) {
   return m ? Number(m[1]) : null;
 }
 
+/**
+ * Why a call did not succeed, in words.
+ *
+ * A call that fails without a contract error code never reached the contract:
+ * the CLI could not build the transaction, the account was missing, the
+ * network was unreachable. Reporting that as "the contract rejected it" - or
+ * worse, as "acceptance" - is how an audit turns into a rubber stamp. The raw
+ * tail is kept so the reason is visible instead of guessed.
+ */
+function failureReason(result) {
+  const output = `${result.stdout}${result.stderr}`;
+  const lines = output.split("\n").map((line) => line.trim()).filter(Boolean);
+  return lines.slice(-3).join(" | ").slice(0, 400) || "no output from the CLI";
+}
+
+function outcome(result) {
+  const code = contractError(`${result.stdout}${result.stderr}`);
+  if (code !== null) return `contract error #${code} ${ERR[code] || "unknown"}`;
+  if (!result.ok) return `never reached the contract: ${failureReason(result)}`;
+  return "accepted";
+}
+
 function evidenceFrom(proof, submitter) {
   return JSON.stringify({
     adapter_id: proof.adapter_id,
@@ -99,6 +132,25 @@ function evidenceFrom(proof, submitter) {
     payload: proof.payload_hex,
     submitter,
   });
+}
+
+
+/**
+ * The evidence carries the address that submitted it. If it is missing the CLI
+ * refuses to build the transaction, which looks like a contract rejection to a
+ * careless check. Take it from the manifest when the environment is silent.
+ */
+function resolveSubmitter() {
+  const fromEnv = (process.env.STELLAR_RELAYER_ADDRESS || "").trim();
+  if (fromEnv) return fromEnv;
+  try {
+    const manifest = JSON.parse(
+      fs.readFileSync(path.join(__dirname, "..", "deployments", "testnet.json"), "utf8")
+    );
+    return (manifest.accounts?.deployer_and_relayer || "").trim();
+  } catch {
+    return "";
+  }
 }
 
 async function submit(evidence) {
@@ -155,21 +207,27 @@ async function runRound() {
   }
   record("source_chain_reachable", true, `simulator produced height ${proof.declared_height}`);
 
-  const submitterAddr = (process.env.STELLAR_RELAYER_ADDRESS || "").trim();
-  const honest = evidenceFrom(proof, submitterAddr || undefined);
+  const submitterAddr = resolveSubmitter();
+  if (!submitterAddr) {
+    record(
+      "honest_evidence_accepted",
+      false,
+      "no submitter address: set STELLAR_RELAYER_ADDRESS or record accounts.deployer_and_relayer in deployments/testnet.json"
+    );
+    return finish(startedAt, checks);
+  }
+  const honest = evidenceFrom(proof, submitterAddr);
 
   // Probe 1 -- honest evidence must be accepted by the live contract.
   const accepted = await submit(honest);
   const acceptErr = contractError(accepted.stdout + accepted.stderr);
   if (acceptErr === null && accepted.ok) {
     record("honest_evidence_accepted", true, "contract returned an attestation");
-  } else if (acceptErr === 0 || acceptErr === undefined) {
-    record("honest_evidence_accepted", false, `unexpected failure (${acceptErr})`);
   } else {
     record(
       "honest_evidence_accepted",
       false,
-      `rejected with #${acceptErr} ${ERR[acceptErr] || "unknown"} -- a valid proof must never be refused`
+      `a valid proof must never be refused, but this call ended as: ${outcome(accepted)}`
     );
   }
 
@@ -179,7 +237,7 @@ async function runRound() {
   record(
     "replay_rejected",
     replayErr === 9,
-    replayErr === 9 ? `#9 ${ERR[9]}` : `expected #9, saw ${replayErr ?? "acceptance"}`
+    replayErr === 9 ? `#9 ${ERR[9]}` : `expected #9, saw ${outcome(replayed)}`
   );
 
   // Probe 3 -- one tampered byte in the aggregate signature must be refused.
@@ -192,7 +250,7 @@ async function runRound() {
     record(
       "tampered_signature_rejected",
       tamperErr === 7,
-      tamperErr === 7 ? `#7 ${ERR[7]}` : `expected #7, saw ${tamperErr ?? "acceptance"}`
+      tamperErr === 7 ? `#7 ${ERR[7]}` : `expected #7, saw ${outcome(tampered)}`
     );
   } catch (e) {
     record("tampered_signature_rejected", false, String(e.message || e));
