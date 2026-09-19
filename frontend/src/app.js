@@ -1177,6 +1177,7 @@ async function renderLanes() {
     ['Step-chain lane', lanes.step_chain, false],
     ['Execution lane', lanes.execution, false],
     ['Gate-vm lane', lanes.gate_vm, false],
+    ['Gate-vm32 lane', { ...lanes.gate_vm32, registry: lanes.gate_vm32?.registry, checks: undefined }, false],
   ];
   for (const [label, facts, isSettlement] of laneRows) {
     if (!facts || (facts.recorded === false && !isSettlement)) continue;

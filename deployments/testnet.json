@@ -450,5 +450,12 @@
     "record": "deployments/merged-registry.json",
     "proven_at": "2026-09-19",
     "note": "37 per-lane checks (11 step-chain, 13 execution, 13 gate-vm) plus 12 merged-registry checks, live on testnet, all passing; the audit loop re-proves the union every round (check 14). The first attempt's registry CBVB2PCB55ZNXBMVQEUSU2ZNSMGI3H5XQUFM54DRQ3DJ6SLT6CZ4LBEZ is equally live, equally frozen and equally proven — only its receipt had an aggregator bug, which is why this one exists; neither is rewound, and the historical per-lane registries stay what they were: records, not the showcase."
+  },
+  "registry_v2": {
+    "contract_id": "CB7ZKFLTSNRKLFE25T4E4R6K3GNEMVLQ5J7UPNHLEPVH35UYHBSGUNXL",
+    "status": "renounced; five lane slots (settlement, step-chain, execution, gate-vm, gate-vm32) installed, proven pairwise-distinct and byte-exact, frozen by one renounce",
+    "record": "deployments/registry-v2.json",
+    "proven_at": "2026-09-19",
+    "note": "The showcase is now this one. 11 step-chain + 13 execution + 13 gate-vm checks ran against it unmodified; the sibling slot added its own format refusal (a 32-step claim against a 31 ceiling) and a pairing-grade confusion refusal (the 8-line key at legal length is the wrong key here). Its honest acceptance was submitted by an account generated at run time and configured nowhere in the repository (GBPUXZEW..., ledger 4766791, 181,707 stroops, paid by that account): the permissionless submit path, exercised. Audit check 14 re-reads all five slots against their sources every round. The first v2 attempt (CBGG4H..., equally frozen, equally proven on every lane check) is superseded by a reader bug in the receipt tool, recorded as such in deployments/registry-v2.json's run_note; the four-slot merged registry stands as the previous generation's history."
   }
 }

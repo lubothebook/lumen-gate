@@ -63,7 +63,10 @@ function readReceipt(name) {
 }
 
 const audit = readReceipt('self-audit.json');
-const merged = readReceipt('merged-registry.json');
+// the showcase is whatever record stands: v2 (five slots) when it exists,
+// the four-slot merged record until then — the card reads the receipts, it
+// does not pick favorites among them
+const merged = readReceipt('registry-v2.json') || readReceipt('merged-registry.json');
 const lastAudit = audit?.latest
   ? {
       round: audit.latest.round ?? null,
@@ -131,6 +134,24 @@ const lanes = {
   step_chain: laneReceipt('step-chain.json', 'honest_evidence_accepted'),
   execution: laneReceipt('execution-lane.json', 'execution_lane_still_verified'),
   gate_vm: laneReceipt('gate-vm-lane.json', 'gate_vm_lane_still_verified'),
+  // the sibling lane lives only on the showcase registry; its row is built
+  // from the showcase's own record and the audit tail, not from a lane file
+  gate_vm32: (() => {
+    if (!merged?.registry?.contract_id) return { recorded: false };
+    const checks = merged.v2_checks || merged.merged_checks || [];
+    const stranger = checks.find((c) => c.check === 'stranger_accepted_on_the_sibling_slot');
+    const mergedDetail = (audit?.latest?.checks || []).find((c) => c.check === 'merged_registry_still_frozen')?.detail || '';
+    const m = mergedDetail.match(/gate_vm32_by_stranger ledger ([\d,]+) \(([\d,]+) stroops\)/);
+    if (!stranger && !m) return { recorded: false };
+    return {
+      recorded: true,
+      registry: merged.registry.contract_id,
+      honest_transaction: stranger?.transaction || null,
+      ledger: m ? m[1] : null,
+      fee_stroops: m ? m[2] : null,
+      submitted_by: merged.stranger?.address ? 'an account generated at run time, configured nowhere' : null,
+    };
+  })(),
 };
 
 const contents = `// GENERATED FILE - do not edit by hand.

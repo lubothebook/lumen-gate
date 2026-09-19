@@ -1,0 +1,144 @@
+{
+  "note": "the five-slot showcase: four proven lane suites plus the 32-line sibling, whose honest acceptance was submitted by an account generated at runtime and configured nowhere — the relayer-free claim, demonstrated rather than declared. One renounce froze all five slots. deployments/merged-registry.json (four slots) remains as history.",
+  "passed": true,
+  "registry": {
+    "contract_id": "CB7ZKFLTSNRKLFE25T4E4R6K3GNEMVLQ5J7UPNHLEPVH35UYHBSGUNXL",
+    "network": "testnet",
+    "deployed_by_flow": true
+  },
+  "stranger": {
+    "address": "GBPUXZEWLJAXWQ76ZCJL3FRYMUU5R2LHZHMAXCCXWFH7B5BVRGWGL2PB",
+    "introduced": "this run only; no repository file names it"
+  },
+  "settlement_key_source": {
+    "registry": "CCXJDQMTJUGXKNFOQPC25IYVOAVWDMLJBNQYX75MAREHV7MZMU5OSEN4"
+  },
+  "lane_suites": {
+    "step-chain": {
+      "checks": 11,
+      "passed": 11,
+      "honest_transaction": "7a02309529039fb8da15bbb62b8673cd5832130c5b29190b2e511fb0e2d73c54"
+    },
+    "execution": {
+      "checks": 13,
+      "passed": 13,
+      "honest_transaction": "a6ad1bd41768efd8e17f0614322b8ea4f028145a7dbec6a6bcafb8e4a13b5e32"
+    },
+    "gate-vm": {
+      "checks": 13,
+      "passed": 13,
+      "honest_transaction": "d2e7c9a3d58ca61bcf39146b609ce8284ba1b89de715fe743b1952a65a30f0ae"
+    }
+  },
+  "v2_checks": [
+    {
+      "check": "step-chain_suite",
+      "passed": true,
+      "detail": "11/11 checks in the lane's own record",
+      "at": "2026-09-19T22:37:44.581Z"
+    },
+    {
+      "check": "execution-lane_suite",
+      "passed": true,
+      "detail": "13/13 checks in the lane's own record",
+      "at": "2026-09-19T22:38:11.121Z"
+    },
+    {
+      "check": "gate-vm-lane_suite",
+      "passed": true,
+      "detail": "13/13 checks in the lane's own record",
+      "at": "2026-09-19T22:38:33.033Z"
+    },
+    {
+      "check": "settlement_slot_installed",
+      "passed": true,
+      "detail": "set_vk accepted the live 768-byte key",
+      "at": "2026-09-19T22:38:37.473Z"
+    },
+    {
+      "check": "gate_vm32_key_installed_at_896",
+      "passed": true,
+      "detail": "the sibling ceremony key sits in its own slot",
+      "at": "2026-09-19T22:38:44.258Z",
+      "transaction": "0997d5da606d890e2ac41316db5bcbd29fd996d4657f8d2a57db285aacf79e54"
+    },
+    {
+      "check": "gate_vm32_short_key_refused_and_slot_unchanged",
+      "passed": true,
+      "detail": "an 895-byte key is refused and the stored bytes are untouched",
+      "at": "2026-09-19T22:38:45.052Z"
+    },
+    {
+      "check": "gate_vm32_refuses_hash_steps_above_its_window",
+      "passed": true,
+      "detail": "a 32-step claim against a 32-row window is refused as InvalidPayload before pairing",
+      "at": "2026-09-19T22:38:45.636Z"
+    },
+    {
+      "check": "stranger_exists_and_is_funded",
+      "passed": true,
+      "detail": "GBPUXZEW... was generated this run and appears in no configuration of this repository",
+      "at": "2026-09-19T22:38:56.594Z",
+      "address": "GBPUXZEWLJAXWQ76ZCJL3FRYMUU5R2LHZHMAXCCXWFH7B5BVRGWGL2PB",
+      "funded_by": "stellar keys fund"
+    },
+    {
+      "check": "stranger_accepted_on_the_sibling_slot",
+      "passed": true,
+      "detail": "a nobody-account settled the 32-line lane for its own fee — the relayer was never a trust boundary, and here it was not a boundary at all",
+      "at": "2026-09-19T22:39:03.298Z",
+      "transaction": "1a32641b8d9b8c08ed8276fc55d2c38ecfc395bea142b5d27e4fd8ef973e53b6"
+    },
+    {
+      "check": "stranger_acceptance_is_on_horizon",
+      "passed": true,
+      "detail": "ledger 4766791, 181707 stroops, paid by the stranger itself",
+      "at": "2026-09-19T22:39:03.637Z",
+      "horizon": {
+        "ledger": 4766791,
+        "fee_charged": "181707",
+        "successful": true
+      }
+    },
+    {
+      "check": "recorded_sibling_run_agrees_with_the_payload",
+      "passed": true,
+      "detail": "the registry stores 4 hash steps and program root 1330a484249bf302... — the fold the 32-row circuit recomputed is the one it bound",
+      "at": "2026-09-19T22:39:03.921Z"
+    },
+    {
+      "check": "sibling_digest_cannot_be_replayed_by_the_admin",
+      "passed": true,
+      "detail": "the digest is consumed; whose keys signed the replay attempt changes nothing",
+      "at": "2026-09-19T22:39:04.204Z"
+    },
+    {
+      "check": "five_slots_serve_their_lanes_bytes",
+      "passed": true,
+      "detail": "768 / 896 / 1920 / 896 / 896 — four read against the registries they came from, the sibling read against its committed vector",
+      "at": "2026-09-19T22:39:06.883Z"
+    },
+    {
+      "check": "the_three_896_byte_keys_are_pairwise_distinct",
+      "passed": true,
+      "detail": "one contract holds three keys of the same length, all different, each verifiable only by its own lane — length, tag and naming are proven non-defenses here",
+      "at": "2026-09-19T22:39:06.883Z"
+    },
+    {
+      "check": "admin_renounced_over_five_slots",
+      "passed": true,
+      "detail": "no admin remains",
+      "at": "2026-09-19T22:39:13.847Z",
+      "transaction": "cc62f89aeb06e4abbe0e8fe049acea7094672139cdf28f2fd94bb2f7d678018a"
+    },
+    {
+      "check": "all_five_setters_refused_all_keys_intact",
+      "passed": true,
+      "detail": "five setters trap, five getters unchanged, one renounce froze the union again",
+      "at": "2026-09-19T22:39:16.933Z"
+    }
+  ],
+  "started_at": "2026-09-19T22:37:13.326Z",
+  "finished_at": "2026-09-19T22:39:16.933Z",
+  "run_note": "second attempt. The first (CBGG4HOE...) proved every lane fact but died on this tool's own readback assertion — program_root was compared against the end root, a reader bug exposed by the detail line printing correct stored bytes; per the rule the merged-v1 receipt already established, the flow was re-run whole with a fixed reader rather than hand-correcting a receipt. Both registries are live and frozen; this record supersedes that one as the showcase."
+}

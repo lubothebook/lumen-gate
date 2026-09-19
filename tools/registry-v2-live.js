@@ -345,7 +345,7 @@ async function main() {
   const rootMatch = rec.stdout.match(/program_root[\"\\s:]+([0-9a-f]{64})/);
   record(
     'recorded_sibling_run_agrees_with_the_payload',
-    Boolean(stepsMatch) && Number(stepsMatch[1]) === 4 && Boolean(rootMatch) && rootMatch[1] === endRoot,
+    Boolean(stepsMatch) && Number(stepsMatch[1]) === 4 && Boolean(rootMatch) && rootMatch[1] === sibPublics[0],
     stepsMatch && rootMatch
       ? `the registry stores 4 hash steps and program root ${rootMatch[1].slice(0, 16)}... — the fold the 32-row circuit recomputed is the one it bound`
       : `record readback mismatch: ${rec.stdout.trim().slice(0, 240)}`,

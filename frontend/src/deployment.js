@@ -30,31 +30,31 @@ export const lanes = {
   ],
   "meaning_of_dash": "the receipts record nothing here — which is not the same as zero",
   "last_audit": {
-    "round": 20,
+    "round": 21,
     "passed": 14,
     "total": 14,
     "all_passed": true,
-    "finished_at": "2026-09-19T22:05:21.021Z",
+    "finished_at": "2026-09-19T22:41:40.157Z",
     "registry": "CCXJDQMTJUGXKNFOQPC25IYVOAVWDMLJBNQYX75MAREHV7MZMU5OSEN4"
   },
   "merged_registry": {
-    "contract_id": "CBND4C3EC2RTVF6H2JBL4FEB4BI6KT4JGZALBIMMNVAWCIMBZDNSRYKG",
+    "contract_id": "CB7ZKFLTSNRKLFE25T4E4R6K3GNEMVLQ5J7UPNHLEPVH35UYHBSGUNXL",
     "all_lanes_passed": true,
     "lane_suites": {
       "step-chain": {
         "checks": 11,
         "passed": 11,
-        "honest_transaction": "e59c1894ca15df7411f2226c4e5d2bc023c8983063487831aa34dd3e28953c2f"
+        "honest_transaction": "7a02309529039fb8da15bbb62b8673cd5832130c5b29190b2e511fb0e2d73c54"
       },
       "execution": {
         "checks": 13,
         "passed": 13,
-        "honest_transaction": "c5bc16f589d50d06e5e7414d0509b83db57a97e3b9f070aee9fc647850ce6ab8"
+        "honest_transaction": "a6ad1bd41768efd8e17f0614322b8ea4f028145a7dbec6a6bcafb8e4a13b5e32"
       },
       "gate-vm": {
         "checks": 13,
         "passed": 13,
-        "honest_transaction": "9ccd2ec6486a03fa4e27c291052afab27670990429b11311b921d76627675fbd"
+        "honest_transaction": "d2e7c9a3d58ca61bcf39146b609ce8284ba1b89de715fe743b1952a65a30f0ae"
       }
     },
     "record": "deployments/merged-registry.json"
@@ -69,16 +69,16 @@ export const lanes = {
     "registry": "CCR3NZD5ASZAC3RPHDJOVSHWZBIF46ELP3JGWFC37ZL65YZ443ULZLMM",
     "honest_transaction": "2269641ad8895d61004d550b6cb4d09ba2cc500236dcbcb23db341c959cc3649",
     "checks": "12/12",
-    "ledger": "4766305",
-    "fee_stroops": "175123"
+    "ledger": "4766775",
+    "fee_stroops": "176733"
   },
   "execution": {
     "recorded": true,
     "registry": "CAQ77OEKCHLLCE36MOHY6NO3YJU45FTRLY73REQW4DI5TQMFMZZ5G6LK",
     "honest_transaction": "70cb914ad86535ed9a9ba6eefd57f7bade0011f45fe3fa5f2b1b3a26aadc0601",
     "checks": "14/14",
-    "ledger": "4766309",
-    "fee_stroops": "210269"
+    "ledger": "4766780",
+    "fee_stroops": "212091"
   },
   "gate_vm": {
     "recorded": true,
@@ -87,6 +87,14 @@ export const lanes = {
     "checks": "14/14",
     "ledger": "4765859",
     "fee_stroops": "177143"
+  },
+  "gate_vm32": {
+    "recorded": true,
+    "registry": "CB7ZKFLTSNRKLFE25T4E4R6K3GNEMVLQ5J7UPNHLEPVH35UYHBSGUNXL",
+    "honest_transaction": "1a32641b8d9b8c08ed8276fc55d2c38ecfc395bea142b5d27e4fd8ef973e53b6",
+    "ledger": "4766791",
+    "fee_stroops": "181707",
+    "submitted_by": "an account generated at run time, configured nowhere"
   }
 };
 

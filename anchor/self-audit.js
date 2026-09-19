@@ -26,7 +26,8 @@
  *      library driven against a stubbed signer record, including the
  *      below-threshold signature that must be refused)
  *  13. Is the gate-vm lane's recorded acceptance still true on the network?
- *  14. Does the merged showcase registry still serve every lane's key byte
+ *  14. Does the showcase registry (v2: five slots; else the merged four) still
+ *      serve every lane's key byte
  *      for byte against the registries those keys came from — and is it
  *      frozen in the provable sense: the setter refused by the contract,
  *      not by the network?
@@ -562,9 +563,14 @@ async function runRound() {
   // unreachability-is-safety inversion this loop once had, fixed once, is
   // refused again here), and the key must read back intact after the attempt.
   try {
-    const mergedPath = path.join(ROOT, "deployments", "merged-registry.json");
+    // the v2 record, when it exists, is the showcase: same shape, one more
+    // slot, and the stranger's acceptance inside it. The four-slot record
+    // keeps working as the source for rounds that predate v2.
+    const v2Path = path.join(ROOT, "deployments", "registry-v2.json");
+    const isV2 = fs.existsSync(v2Path);
+    const mergedPath = isV2 ? v2Path : path.join(ROOT, "deployments", "merged-registry.json");
     if (!fs.existsSync(mergedPath)) {
-      record("merged_registry_still_frozen", false, "no deployments/merged-registry.json in the repository");
+      record("merged_registry_still_frozen", false, "neither deployments/registry-v2.json nor merged-registry.json exists in the repository");
     } else {
       const merged = JSON.parse(fs.readFileSync(mergedPath, "utf8"));
       const mergedId = merged?.registry?.contract_id;
@@ -577,6 +583,13 @@ async function runRound() {
           peer: () => JSON.parse(fs.readFileSync(path.join(ROOT, "deployments", "execution-lane.json"), "utf8")).registry_id },
         { slot: "gate_vm", getter: "get_gate_vm_vk", len: 896, setter: "set_gate_vm_vk",
           peer: () => JSON.parse(fs.readFileSync(path.join(ROOT, "deployments", "gate-vm-lane.json"), "utf8")).registry_id },
+        // the 32-line sibling has no historical registry to compare against:
+        // its peer is the committed vector file, the only byte-exact ancestor
+        // its key has
+        ...(isV2
+          ? [{ slot: "gate_vm32", getter: "get_gate_vm32_vk", len: 896, setter: "set_gate_vm32_vk",
+               committed: path.join(ROOT, "deployments", "vectors", "gate_vm32", "gate_vm32_vk.hex") }]
+          : []),
       ];
       if (!/^C[A-Z0-9]{55}$/.test(mergedId || "")) {
         record("merged_registry_still_frozen", false, "the merged record carries no well-formed contract id");
@@ -594,6 +607,13 @@ async function runRound() {
         };
         const mismatches = [];
         for (const lane of lanes) {
+          if (lane.committed) {
+            const committed = fs.readFileSync(lane.committed, "utf8").trim();
+            const mine = await readKey(mergedId, lane.getter, lane.len);
+            if (!mine.ok) mismatches.push(`${lane.slot}: unreadable on the showcase (${mine.tail.slice(0, 80)})`);
+            else if (mine.hex !== committed) mismatches.push(`${lane.slot}: the showcase and the committed sibling vector disagree`);
+            continue;
+          }
           const peerId = lane.peer();
           const [mine, theirs] = await Promise.all([readKey(mergedId, lane.getter, lane.len), readKey(peerId, lane.getter, lane.len)]);
           if (!mine.ok || !theirs.ok) {
@@ -604,14 +624,16 @@ async function runRound() {
         }
         // reachability first, refusal second, intactness third — same order as
         // the tightened per-lane renounce check, for the same reason
-        const reach = await sh("stellar", ["contract", "invoke", "--id", mergedId, "--source", SOURCE, "--network", NETWORK, "--", "get_gate_vm_vk"]);
+        const freezeGetter = isV2 ? "get_gate_vm32_vk" : "get_gate_vm_vk";
+        const freezeSetter = isV2 ? "set_gate_vm32_vk" : "set_gate_vm_vk";
+        const reach = await sh("stellar", ["contract", "invoke", "--id", mergedId, "--source", SOURCE, "--network", NETWORK, "--", freezeGetter]);
         const probe = await sh("stellar", [
           "contract", "invoke",
           "--id", mergedId,
           "--source", SOURCE,
           "--network", NETWORK,
           "--send=no",
-          "--", "set_gate_vm_vk",
+          "--", freezeSetter,
           "--admin", (await sh("stellar", ["keys", "address", SOURCE])).stdout.trim(),
           "--vk", "00".repeat(896),
         ]);
@@ -633,6 +655,19 @@ async function runRound() {
             laneTx.push(`${name.replace(/-/g, "_")} tx unreadable`);
           }
         }
+        // the stranger's acceptance is a lane fact now: it lives on the
+        // sibling slot's ledger, and the round re-reads it like any other
+        const strangerCheck = (merged.v2_checks || []).find((c) => c.check === "stranger_accepted_on_the_sibling_slot");
+        if (strangerCheck?.transaction) {
+          try {
+            const tx = await getJson(`${horizonUrl()}/transactions/${strangerCheck.transaction}`);
+            laneTx.push(
+              `gate_vm32_by_stranger ledger ${tx.ledger} (${tx.fee_charged} stroops)${tx.successful === false ? " FAILED ON LEDGER" : ""}`
+            );
+          } catch (e) {
+            laneTx.push("gate_vm32_by_stranger tx unreadable");
+          }
+        }
         const laneTail = laneTx.length ? `; lanes on one contract: ${laneTx.join("; ")}` : "";
         const reached = reach.ok && Boolean(reach.stdout.match(/[0-9a-f]{1792}/));
         const contractRefused = !probe.ok && /(Error|trap|HostError|Unexpected)/i.test(probeText);
@@ -643,7 +678,7 @@ async function runRound() {
           !reached
             ? `the merged registry ${mergedId.slice(0, 8)}... could not be read: a closed door is not proven locked by being dark (unmapped failure: ${reach.tail})`
             : intact && contractRefused
-              ? `${mergedId.slice(0, 8)}... serves all four slot keys byte-identical to the four registries they came from, and set_gate_vm_vk is refused by the contract itself after the renounce${laneTail}`
+              ? `${mergedId.slice(0, 8)}... serves all ${isV2 ? "five" : "four"} slot keys byte-identical to ${isV2 ? "four registries and the committed sibling vector" : "the registries they came from"}, and ${freezeSetter} is refused by the contract itself after the renounce${laneTail}`
               : `merged registry drift: ${mismatches.join("; ") || "setter probe accepted a key — the freeze is not real"}`
         );
       }
