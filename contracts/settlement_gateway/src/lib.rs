@@ -174,11 +174,7 @@ fn compute_payload_hash_lock(
     env.crypto().sha256(&buf).into()
 }
 
-fn compute_event_leaf(
-    env: &Env,
-    message_id: &BytesN<32>,
-    payload_hash: &BytesN<32>,
-) -> BytesN<32> {
+fn compute_event_leaf(env: &Env, message_id: &BytesN<32>, payload_hash: &BytesN<32>) -> BytesN<32> {
     let mut buf = Bytes::new(env);
     buf.append(&message_id.clone().into());
     buf.append(&payload_hash.clone().into());
@@ -209,7 +205,10 @@ fn encode_burn_event(
     encoded.append(&Bytes::from_array(env, &expiry_height.to_le_bytes()));
     encoded.append(&target_domain.clone().into());
     encoded.append(&payload_hash.clone().into());
-    encoded.append(&Bytes::from_array(env, &recipient_on_source.len().to_le_bytes()));
+    encoded.append(&Bytes::from_array(
+        env,
+        &recipient_on_source.len().to_le_bytes(),
+    ));
     encoded.append(recipient_on_source);
     encoded
 }
@@ -274,8 +273,12 @@ impl SettlementGateway {
             .crypto()
             .sha256(&Bytes::from_slice(&env, b"lumen-gate-stellar-testnet"))
             .into();
-        env.storage().instance().set(&DataKey::TargetDomain, &target_domain);
-        env.storage().instance().set(&DataKey::AdminRenounced, &false);
+        env.storage()
+            .instance()
+            .set(&DataKey::TargetDomain, &target_domain);
+        env.storage()
+            .instance()
+            .set(&DataKey::AdminRenounced, &false);
         env.storage().instance().set(&DataKey::Initialized, &true);
         // default fee config 1% min 1
         let fee = FeeConfig {
@@ -299,7 +302,10 @@ impl SettlementGateway {
     }
 
     fn admin_renounced(env: &Env) -> bool {
-        env.storage().instance().get(&DataKey::AdminRenounced).unwrap_or(false)
+        env.storage()
+            .instance()
+            .get(&DataKey::AdminRenounced)
+            .unwrap_or(false)
     }
 
     pub fn is_admin_renounced(env: Env) -> bool {
@@ -315,7 +321,9 @@ impl SettlementGateway {
         if stored_admin != admin {
             panic!("not admin");
         }
-        env.storage().instance().set(&DataKey::AdminRenounced, &true);
+        env.storage()
+            .instance()
+            .set(&DataKey::AdminRenounced, &true);
         let zero = Address::from_string(&String::from_str(
             &env,
             "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
@@ -331,8 +339,19 @@ impl SettlementGateway {
         env.storage().instance().get(&DataKey::FeeConfig)
     }
 
-    pub fn set_fee_config(env: Env, admin: Address, collector: Address, fee_bps: u32, min_fee: i128) {
-        if env.storage().instance().get::<DataKey, bool>(&DataKey::AdminRenounced).unwrap_or(false) {
+    pub fn set_fee_config(
+        env: Env,
+        admin: Address,
+        collector: Address,
+        fee_bps: u32,
+        min_fee: i128,
+    ) {
+        if env
+            .storage()
+            .instance()
+            .get::<DataKey, bool>(&DataKey::AdminRenounced)
+            .unwrap_or(false)
+        {
             panic!("admin renounced");
         }
         admin.require_auth();
@@ -358,7 +377,13 @@ impl SettlementGateway {
         current
     }
 
-    fn is_processed(env: &Env, source: &BytesN<32>, target: &BytesN<32>, sender: &Address, nonce: u64) -> bool {
+    fn is_processed(
+        env: &Env,
+        source: &BytesN<32>,
+        target: &BytesN<32>,
+        sender: &Address,
+        nonce: u64,
+    ) -> bool {
         let key = DataKey::HighWater(source.clone(), target.clone(), sender.clone());
         if let Some(high) = env.storage().persistent().get::<DataKey, u64>(&key) {
             nonce <= high
@@ -406,7 +431,8 @@ impl SettlementGateway {
         let token_client = token::Client::new(&env, &token_addr);
         token_client.transfer(&from, &env.current_contract_address(), &amount);
 
-        let payload_hash = compute_payload_hash_lock(&env, &token_addr, amount, &recipient_on_source);
+        let payload_hash =
+            compute_payload_hash_lock(&env, &token_addr, amount, &recipient_on_source);
         let nonce = Self::next_nonce(&env, &registry_domain, &target_domain, &from);
 
         let params = CrossDomainMessageParams {
@@ -451,7 +477,16 @@ impl SettlementGateway {
         payload_amount: i128,
         payload_recipient: Address,
     ) -> Result<(), GatewayError> {
-        Self::finalize_inbound_internal(&env, message, merkle_proof, payload_asset, payload_amount, payload_recipient, None, 0)
+        Self::finalize_inbound_internal(
+            &env,
+            message,
+            merkle_proof,
+            payload_asset,
+            payload_amount,
+            payload_recipient,
+            None,
+            0,
+        )
     }
 
     /// Enum-free twin of `finalize_inbound`, for command-line tooling and the
@@ -465,7 +500,16 @@ impl SettlementGateway {
         payload_recipient: Address,
     ) -> Result<(), GatewayError> {
         let message = Self::inbound_message_from_args(&args)?;
-        Self::finalize_inbound_internal(&env, message, merkle_proof, payload_asset, payload_amount, payload_recipient, None, 0)
+        Self::finalize_inbound_internal(
+            &env,
+            message,
+            merkle_proof,
+            payload_asset,
+            payload_amount,
+            payload_recipient,
+            None,
+            0,
+        )
     }
 
     /// Enum-free twin of `finalize_inbound_gasless`, for command-line tooling
@@ -500,7 +544,9 @@ impl SettlementGateway {
         )
     }
 
-    fn inbound_message_from_args(args: &InboundRelayArgs) -> Result<CrossDomainMessage, GatewayError> {
+    fn inbound_message_from_args(
+        args: &InboundRelayArgs,
+    ) -> Result<CrossDomainMessage, GatewayError> {
         let kind = match args.kind_code {
             1 => MessageKind::Lock,
             2 => MessageKind::Mint,
@@ -543,7 +589,16 @@ impl SettlementGateway {
         if payload_amount <= fee_amount {
             return Err(GatewayError::InsufficientAmountAfterFee);
         }
-        Self::finalize_inbound_internal(&env, message, merkle_proof, payload_asset, payload_amount, payload_recipient, Some(relayer), fee_amount)
+        Self::finalize_inbound_internal(
+            &env,
+            message,
+            merkle_proof,
+            payload_asset,
+            payload_amount,
+            payload_recipient,
+            Some(relayer),
+            fee_amount,
+        )
     }
 
     fn finalize_inbound_internal(
@@ -668,21 +723,29 @@ impl SettlementGateway {
                 sac_client.mint(&relayer, &fee_amount);
                 let reward_key = DataKey::RelayerReward(relayer.clone());
                 let current: i128 = env.storage().persistent().get(&reward_key).unwrap_or(0);
-                env.storage().persistent().set(&reward_key, &(current + fee_amount));
+                env.storage()
+                    .persistent()
+                    .set(&reward_key, &(current + fee_amount));
                 env.events().publish(
                     (Symbol::new(env, "relayer_reward"), relayer),
                     (fee_amount, message.message_id.clone()),
                 );
             } else {
                 // Standard path, fee to collector
-                let fee_config: FeeConfig = env.storage().instance().get(&DataKey::FeeConfig).unwrap();
+                let fee_config: FeeConfig =
+                    env.storage().instance().get(&DataKey::FeeConfig).unwrap();
                 sac_client.mint(&fee_config.collector, &fee_amount);
             }
         }
 
         env.events().publish(
             (Symbol::new(env, "mint"), message.message_id.clone()),
-            (payload_recipient, amount_to_recipient, message.source_domain, fee_amount),
+            (
+                payload_recipient,
+                amount_to_recipient,
+                message.source_domain,
+                fee_amount,
+            ),
         );
         Ok(())
     }
@@ -707,7 +770,8 @@ impl SettlementGateway {
         let token_client = token::Client::new(&env, &token_addr);
         token_client.burn(&from, &amount);
 
-        let payload_hash = compute_payload_hash_lock(&env, &token_addr, amount, &recipient_on_source);
+        let payload_hash =
+            compute_payload_hash_lock(&env, &token_addr, amount, &recipient_on_source);
         let registry_domain = BytesN::from_array(&env, &[0u8; 32]);
         let nonce = Self::next_nonce(&env, &registry_domain, &target_domain, &from);
 
@@ -884,7 +948,9 @@ mod test {
         let client = SettlementGatewayClient::new(&env, &contract_id);
         let admin = Address::generate(&env);
         let registry = Address::generate(&env);
-        let token = env.register_stellar_asset_contract_v2(admin.clone()).address();
+        let token = env
+            .register_stellar_asset_contract_v2(admin.clone())
+            .address();
         client.initialize(&admin, &registry, &token);
 
         let source = BytesN::from_array(&env, &[0u8; 32]);
@@ -902,7 +968,9 @@ mod test {
         let client = SettlementGatewayClient::new(&env, &contract_id);
         let admin = Address::generate(&env);
         let registry = Address::generate(&env);
-        let token = env.register_stellar_asset_contract_v2(admin.clone()).address();
+        let token = env
+            .register_stellar_asset_contract_v2(admin.clone())
+            .address();
         client.initialize(&admin, &registry, &token);
         let fee = client.get_fee_config();
         assert!(fee.is_some());
@@ -920,17 +988,27 @@ mod test {
         // accepted. Storage is only reachable from inside a contract frame.
         let gateway_id = env.register(SettlementGateway, ());
         env.as_contract(&gateway_id, || {
-            assert!(!SettlementGateway::is_processed(&env, &source, &target, &sender, 0));
+            assert!(!SettlementGateway::is_processed(
+                &env, &source, &target, &sender, 0
+            ));
             SettlementGateway::mark_processed(&env, &source, &target, &sender, 0).unwrap();
-            assert!(SettlementGateway::is_processed(&env, &source, &target, &sender, 0));
-            assert!(!SettlementGateway::is_processed(&env, &source, &target, &sender, 1));
+            assert!(SettlementGateway::is_processed(
+                &env, &source, &target, &sender, 0
+            ));
+            assert!(!SettlementGateway::is_processed(
+                &env, &source, &target, &sender, 1
+            ));
             // Replaying the same nonce must fail: the mark only moves forward.
             assert!(SettlementGateway::mark_processed(&env, &source, &target, &sender, 0).is_err());
             // And every nonce below the mark is covered without extra state.
             SettlementGateway::mark_processed(&env, &source, &target, &sender, 5).unwrap();
-            assert!(SettlementGateway::is_processed(&env, &source, &target, &sender, 3));
+            assert!(SettlementGateway::is_processed(
+                &env, &source, &target, &sender, 3
+            ));
             assert!(SettlementGateway::mark_processed(&env, &source, &target, &sender, 4).is_err());
-            assert!(!SettlementGateway::is_processed(&env, &source, &target, &sender, 6));
+            assert!(!SettlementGateway::is_processed(
+                &env, &source, &target, &sender, 6
+            ));
         });
     }
 

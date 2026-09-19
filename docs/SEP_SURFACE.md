@@ -18,9 +18,9 @@ that probe every round and records the verdict.
 | `GET /v1/sep10/auth?account=G...` | a challenge transaction signed by the anchor account, carrying `web_auth_domain`, a short validity window, and client attribution when `client_domain` is supplied (the client domain's `SIGNING_KEY` is read from its own stellar.toml) |
 | `POST /v1/sep10/auth` | verification of the client's signature over that exact transaction, using the SDK's own SEP-10 reader, then a short-lived HS256 JWT |
 | `GET /v1/sep6/info` | the deposit and withdraw capabilities that really exist, with the documented field names, plus an explicit list of what this deployment does not have |
-| `GET /v1/deposit` | official SEP-6 response fields (`how`, `id`, `eta`, `min_amount`, `max_amount`, `fee_fixed`, `extra_info`) and a real transaction record |
-| `GET /v1/withdraw` | the same, for the outbound direction, with the burn instructions the user signs themselves |
-| `GET /v1/transactions` | records in the SEP-6 transaction schema, with the statuses the specification defines |
+| `GET /v1/deposit` | official SEP-6 response fields (`how`, `id`, `eta`, `min_amount`, `max_amount`, `fee_fixed`, `extra_info`) and a real transaction record. Requires a SEP-10 session; the record's account is the token subject, so an anonymous caller cannot plant pending records against an arbitrary address |
+| `GET /v1/withdraw` | the same, for the outbound direction, with the burn instructions the user signs themselves, under the same session rule |
+| `GET /v1/transactions` | records in the SEP-6 transaction schema, with the statuses the specification defines. Session-authenticated and scoped to the token's own account: history is not a lookup-by-address of other people's records |
 | `POST /v1/transactions/{id}/burn` | reports a burn transaction hash. The facade verifies it against Horizon before the record moves, and requires a SEP-10 session belonging to the account on the record |
 | `GET /v1/sep12/customer` | answers `501 not_implemented` with a reason |
 | `POST /v1/relay`, `POST /v1/reconcile` | operator token only; these spend fees or write records |

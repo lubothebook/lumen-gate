@@ -59,7 +59,10 @@ fn main() {
                         index += 2;
                     }
                     "--min-height" => {
-                        min_height = args.get(index + 1).and_then(|v| v.parse().ok()).unwrap_or(0);
+                        min_height = args
+                            .get(index + 1)
+                            .and_then(|v| v.parse().ok())
+                            .unwrap_or(0);
                         index += 2;
                     }
                     "--max-age" => {
@@ -114,7 +117,10 @@ fn main() {
                         "profile_facts": attestation.profile_facts(),
                         "note": "an attestation is not a settlement decision: the pairing check runs inside the Soroban contract, which is where value moves",
                     });
-                    println!("{}", serde_json::to_string_pretty(&report).expect("report serialises"));
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&report).expect("report serialises")
+                    );
                 }
                 Err(refusal) => {
                     let report = serde_json::json!({
@@ -123,7 +129,10 @@ fn main() {
                         "refusal": refusal,
                         "note": "nothing was submitted and no fee was spent",
                     });
-                    println!("{}", serde_json::to_string_pretty(&report).expect("report serialises"));
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&report).expect("report serialises")
+                    );
                     std::process::exit(1);
                 }
             }
@@ -144,7 +153,9 @@ fn read_input(path: Option<&str>) -> Result<String, String> {
                 .read_to_string(&mut buffer)
                 .map_err(|error| error.to_string())?;
             if buffer.trim().is_empty() {
-                return Err("no proof document on stdin; pipe one in or pass --proof <file>".to_string());
+                return Err(
+                    "no proof document on stdin; pipe one in or pass --proof <file>".to_string(),
+                );
             }
             Ok(buffer)
         }
@@ -154,14 +165,20 @@ fn read_input(path: Option<&str>) -> Result<String, String> {
 fn to_evidence(document: &ProofDocument) -> Result<RawEvidence, String> {
     let adapter_bytes = hex::decode(&document.adapter_id).map_err(|error| error.to_string())?;
     if adapter_bytes.len() != 32 {
-        return Err(format!("adapter_id must be 32 bytes, found {}", adapter_bytes.len()));
+        return Err(format!(
+            "adapter_id must be 32 bytes, found {}",
+            adapter_bytes.len()
+        ));
     }
     let mut adapter_id = [0u8; 32];
     adapter_id.copy_from_slice(&adapter_bytes);
 
     let root_bytes = hex::decode(&document.declared_root).map_err(|error| error.to_string())?;
     if root_bytes.len() != 32 {
-        return Err(format!("declared_root must be 32 bytes, found {}", root_bytes.len()));
+        return Err(format!(
+            "declared_root must be 32 bytes, found {}",
+            root_bytes.len()
+        ));
     }
     let mut declared_root = [0u8; 32];
     declared_root.copy_from_slice(&root_bytes);
@@ -175,7 +192,10 @@ fn to_evidence(document: &ProofDocument) -> Result<RawEvidence, String> {
         payload,
         declared_height: document.declared_height,
         declared_root,
-        submitter: document.submitter.clone().unwrap_or_else(|| "unknown".to_string()),
+        submitter: document
+            .submitter
+            .clone()
+            .unwrap_or_else(|| "unknown".to_string()),
     })
 }
 

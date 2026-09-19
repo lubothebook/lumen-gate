@@ -174,7 +174,10 @@ impl CrossDomainMessage {
 pub enum ReplayRefusal {
     /// The id does not match the message content.
     IdDoesNotMatchContent { message_id: String },
-    Expired { expiry_height: u64, current_height: u64 },
+    Expired {
+        expiry_height: u64,
+        current_height: u64,
+    },
     /// The id was already processed at some point, whatever the nonce now says.
     IdAlreadyProcessed { message_id: String },
     /// The nonce does not move the mark forward.
@@ -187,14 +190,28 @@ impl std::fmt::Display for ReplayRefusal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::IdDoesNotMatchContent { message_id } => {
-                write!(f, "message id {message_id} does not match the message content")
+                write!(
+                    f,
+                    "message id {message_id} does not match the message content"
+                )
             }
-            Self::Expired { expiry_height, current_height } => {
-                write!(f, "message expired at height {expiry_height}, current height is {current_height}")
+            Self::Expired {
+                expiry_height,
+                current_height,
+            } => {
+                write!(
+                    f,
+                    "message expired at height {expiry_height}, current height is {current_height}"
+                )
             }
-            Self::IdAlreadyProcessed { message_id } => write!(f, "message {message_id} was already processed"),
+            Self::IdAlreadyProcessed { message_id } => {
+                write!(f, "message {message_id} was already processed")
+            }
             Self::NonceNotAdvanced { nonce, mark } => {
-                write!(f, "nonce {nonce} does not advance the high-water mark {mark}")
+                write!(
+                    f,
+                    "nonce {nonce} does not advance the high-water mark {mark}"
+                )
             }
             Self::UnknownDirection(direction) => write!(f, "unknown direction {direction}"),
         }
@@ -230,13 +247,21 @@ pub struct ReplayGuard {
 impl ReplayGuard {
     #[must_use]
     pub fn new(id_memory: usize) -> Self {
-        Self { marks: BTreeMap::new(), processed_ids: BTreeSet::new(), id_memory: id_memory.max(1) }
+        Self {
+            marks: BTreeMap::new(),
+            processed_ids: BTreeSet::new(),
+            id_memory: id_memory.max(1),
+        }
     }
 
     #[must_use]
     pub fn mark_for(&self, source_domain: &str, target_domain: &str, sender: &str) -> Option<u64> {
         self.marks
-            .get(&(source_domain.to_string(), target_domain.to_string(), sender.to_string()))
+            .get(&(
+                source_domain.to_string(),
+                target_domain.to_string(),
+                sender.to_string(),
+            ))
             .copied()
     }
 
@@ -274,7 +299,10 @@ impl ReplayGuard {
         let previous = self.marks.get(&key).copied();
         if let Some(mark) = previous {
             if message.nonce <= mark {
-                return Err(ReplayRefusal::NonceNotAdvanced { nonce: message.nonce, mark });
+                return Err(ReplayRefusal::NonceNotAdvanced {
+                    nonce: message.nonce,
+                    mark,
+                });
             }
         }
 
@@ -342,17 +370,26 @@ mod tests {
     fn the_guard_accepts_once_and_refuses_the_same_message_twice() {
         let mut guard = ReplayGuard::new(64);
         let message = CrossDomainMessage::new(params(0, "GSENDER"));
-        let admission = guard.admit(&message, 20).expect("first sight of a message must be admitted");
+        let admission = guard
+            .admit(&message, 20)
+            .expect("first sight of a message must be admitted");
         assert_eq!(admission.previous_mark, None);
-        let refusal = guard.admit(&message, 20).expect_err("the same message must not be admitted twice");
+        let refusal = guard
+            .admit(&message, 20)
+            .expect_err("the same message must not be admitted twice");
         assert!(matches!(refusal, ReplayRefusal::IdAlreadyProcessed { .. }));
     }
 
     #[test]
     fn a_higher_nonce_moves_the_mark_and_invalidates_everything_below_it() {
         let mut guard = ReplayGuard::new(64);
-        guard.admit(&CrossDomainMessage::new(params(5, "GSENDER")), 20).unwrap();
-        assert_eq!(guard.mark_for("source-testnet", "stellar-testnet", "GSENDER"), Some(5));
+        guard
+            .admit(&CrossDomainMessage::new(params(5, "GSENDER")), 20)
+            .unwrap();
+        assert_eq!(
+            guard.mark_for("source-testnet", "stellar-testnet", "GSENDER"),
+            Some(5)
+        );
 
         // A different message at a lower nonce is refused even though its id
         // was never seen: that is the point of a high-water mark.
@@ -361,7 +398,10 @@ mod tests {
         let refusal = guard
             .admit(&CrossDomainMessage::new(lower), 20)
             .expect_err("a lower nonce must be refused");
-        assert!(matches!(refusal, ReplayRefusal::NonceNotAdvanced { nonce: 3, mark: 5 }));
+        assert!(matches!(
+            refusal,
+            ReplayRefusal::NonceNotAdvanced { nonce: 3, mark: 5 }
+        ));
 
         let mut higher = params(9, "GSENDER");
         higher.event_index = 1;
@@ -374,7 +414,9 @@ mod tests {
     #[test]
     fn marks_are_kept_per_direction_and_sender_not_globally() {
         let mut guard = ReplayGuard::new(64);
-        guard.admit(&CrossDomainMessage::new(params(5, "GSENDER")), 20).unwrap();
+        guard
+            .admit(&CrossDomainMessage::new(params(5, "GSENDER")), 20)
+            .unwrap();
         // A different sender in the same direction has its own trail.
         let admission = guard
             .admit(&CrossDomainMessage::new(params(0, "GOTHER")), 20)
@@ -386,9 +428,20 @@ mod tests {
     fn an_expired_message_is_refused_before_anything_else_happens() {
         let mut guard = ReplayGuard::new(64);
         let message = CrossDomainMessage::new(params(1, "GSENDER"));
-        let refusal = guard.admit(&message, 101).expect_err("an expired message must be refused");
-        assert!(matches!(refusal, ReplayRefusal::Expired { expiry_height: 100, current_height: 101 }));
-        assert_eq!(guard.mark_for("source-testnet", "stellar-testnet", "GSENDER"), None);
+        let refusal = guard
+            .admit(&message, 101)
+            .expect_err("an expired message must be refused");
+        assert!(matches!(
+            refusal,
+            ReplayRefusal::Expired {
+                expiry_height: 100,
+                current_height: 101
+            }
+        ));
+        assert_eq!(
+            guard.mark_for("source-testnet", "stellar-testnet", "GSENDER"),
+            None
+        );
     }
 
     #[test]
@@ -401,7 +454,10 @@ mod tests {
         }
         // The mark survives; the id set is capped, because the mark is the
         // mechanism and the id set is only a backstop.
-        assert_eq!(guard.mark_for("source-testnet", "stellar-testnet", "GSENDER"), Some(9));
+        assert_eq!(
+            guard.mark_for("source-testnet", "stellar-testnet", "GSENDER"),
+            Some(9)
+        );
         assert_eq!(guard.processed_ids.len(), 2);
     }
 

@@ -128,6 +128,50 @@ else
   pass "no Stellar secret keys in tracked files"
 fi
 
+# ---------------------------------------------------------------------------
+# 7. The Rust workspace is formatted, when the formatter is installed.
+#    The check is conditional on the tool, never on the intent: a machine
+#    without rustfmt sees "skipped", and CI, which installs the pinned
+#    toolchain, sees a hard requirement. Formatting drift is how a 4am diff
+#    buries the three lines that actually matter.
+# ---------------------------------------------------------------------------
+if command -v cargo >/dev/null 2>&1 && cargo fmt --version >/dev/null 2>&1; then
+  if cargo fmt --all --check >/dev/null 2>&1; then
+    pass "cargo fmt --all --check is clean"
+  else
+    fail "cargo fmt --all --check reports drift; run cargo fmt --all and commit"
+  fi
+else
+  printf '  [skip] cargo fmt check (rustfmt not installed in this environment)\n'
+fi
+
+# ---------------------------------------------------------------------------
+# 8. One error shape on the hosted layer. The facade standardised on
+#    { error: { code, message } }; the Vercel handlers must not regress into
+#    the old { error: "<string>", why } form, because the console parses both
+#    but a reviewer diffing the two surfaces should not have to.
+# ---------------------------------------------------------------------------
+legacy_errors="$(grep -RInE "send\(res, [0-9]{3}, \{ *error: '" api/ 2>/dev/null | head -5)"
+if [ -z "$legacy_errors" ]; then
+  pass "api handlers emit only the unified error envelope"
+else
+  fail "string-shaped errors returned in api/:"
+  printf '%s\n' "$legacy_errors"
+fi
+
+# ---------------------------------------------------------------------------
+# 9. Runtime state stays out of the repository: the demo signing secret and
+#    the SEP-6 record store the facade writes while it runs. Tracked files
+#    only; the store being absent is the correct state for a fresh clone.
+# ---------------------------------------------------------------------------
+tracked_state="$(git ls-files | grep -E '^\.runtime/|^deployments/sep6-transactions\.json$' | head -5)"
+if [ -z "$tracked_state" ]; then
+  pass "no runtime secrets or mutable record store tracked"
+else
+  fail "runtime state committed to git:"
+  printf '%s\n' "$tracked_state"
+fi
+
 echo
 if [ "$failures" -eq 0 ]; then
   echo "gate: all checks passed"

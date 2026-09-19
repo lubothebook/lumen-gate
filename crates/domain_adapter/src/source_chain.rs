@@ -95,11 +95,14 @@ impl SourceChainBlsAdapter {
         let aggregate_key = payload[176..368].to_vec();
 
         if height == 0 {
-            return Err(AdapterError::MalformedPayload { reason: "height 0 cannot be finalized".to_string() });
+            return Err(AdapterError::MalformedPayload {
+                reason: "height 0 cannot be finalized".to_string(),
+            });
         }
         if required == 0 {
             return Err(AdapterError::MalformedPayload {
-                reason: "required threshold is 0, which would make every message acceptable".to_string(),
+                reason: "required threshold is 0, which would make every message acceptable"
+                    .to_string(),
             });
         }
         if signer_count < required {
@@ -118,7 +121,15 @@ impl SourceChainBlsAdapter {
             });
         }
 
-        Ok(DecodedPayload { height, state_root, event_root, signer_count, required, signature, aggregate_key })
+        Ok(DecodedPayload {
+            height,
+            state_root,
+            event_root,
+            signer_count,
+            required,
+            signature,
+            aggregate_key,
+        })
     }
 }
 
@@ -158,7 +169,10 @@ impl FinalityAdapter for SourceChainBlsAdapter {
 
         // 2. Is this a format version I was written for? An unknown version is
         //    refused, never reinterpreted as the version I do know.
-        if !descriptor.accepted_evidence_versions.contains(&evidence.evidence_version) {
+        if !descriptor
+            .accepted_evidence_versions
+            .contains(&evidence.evidence_version)
+        {
             return Err(AdapterError::UnknownEvidenceVersion {
                 found: evidence.evidence_version,
                 accepted: descriptor.accepted_evidence_versions.to_vec(),
@@ -197,7 +211,10 @@ impl FinalityAdapter for SourceChainBlsAdapter {
         }
         let age = policy.now.saturating_sub(decoded.height);
         if policy.max_age != u64::MAX && age > policy.max_age {
-            return Err(AdapterError::Stale { age, max_age: policy.max_age });
+            return Err(AdapterError::Stale {
+                age,
+                max_age: policy.max_age,
+            });
         }
         if policy.require_slashable {
             // The demo validator set is not bonded; a caller that demands
@@ -248,7 +265,13 @@ pub fn known_proof_systems() -> &'static [ProofSystem] {
 mod tests {
     use super::*;
 
-    fn payload(height: u64, state_root: [u8; 32], event_root: [u8; 32], signer_count: u32, required: u32) -> Vec<u8> {
+    fn payload(
+        height: u64,
+        state_root: [u8; 32],
+        event_root: [u8; 32],
+        signer_count: u32,
+        required: u32,
+    ) -> Vec<u8> {
         let mut bytes = Vec::with_capacity(BLS_PAYLOAD_LEN);
         bytes.extend_from_slice(&height.to_le_bytes());
         bytes.extend_from_slice(&state_root);
@@ -285,7 +308,12 @@ mod tests {
         assert_eq!(attestation.state_root, root);
         assert_eq!(attestation.finalized_at_unit, TimeUnit::Height);
         match attestation.security {
-            SecurityBacking::SignatureSet { signers, required, slashable, .. } => {
+            SecurityBacking::SignatureSet {
+                signers,
+                required,
+                slashable,
+                ..
+            } => {
                 assert_eq!((signers, required), (3, 2));
                 // The honest answer: this backing cannot be slashed, and the
                 // attestation says so instead of implying otherwise.
@@ -302,7 +330,9 @@ mod tests {
         let error = SourceChainBlsAdapter::new()
             .verify(&proof, &VerificationPolicy::default())
             .expect_err("a lying index must be refused");
-        assert!(matches!(error, AdapterError::DeclaredMismatch { ref field, .. } if field == "height"));
+        assert!(
+            matches!(error, AdapterError::DeclaredMismatch { ref field, .. } if field == "height")
+        );
     }
 
     #[test]
@@ -311,7 +341,9 @@ mod tests {
         let error = SourceChainBlsAdapter::new()
             .verify(&proof, &VerificationPolicy::default())
             .expect_err("a lying declared root must be refused");
-        assert!(matches!(error, AdapterError::DeclaredMismatch { ref field, .. } if field == "state_root"));
+        assert!(
+            matches!(error, AdapterError::DeclaredMismatch { ref field, .. } if field == "state_root")
+        );
     }
 
     #[test]
@@ -322,7 +354,10 @@ mod tests {
         let error = SourceChainBlsAdapter::new()
             .verify(&proof, &VerificationPolicy::default())
             .expect_err("version 99 must be refused");
-        assert!(matches!(error, AdapterError::UnknownEvidenceVersion { found: 99, .. }));
+        assert!(matches!(
+            error,
+            AdapterError::UnknownEvidenceVersion { found: 99, .. }
+        ));
     }
 
     #[test]
@@ -349,7 +384,10 @@ mod tests {
         assert!(matches!(error, AdapterError::MalformedPayload { .. }));
 
         let error = SourceChainBlsAdapter::new()
-            .verify(&evidence(vec![0u8; 100], 7, root), &VerificationPolicy::default())
+            .verify(
+                &evidence(vec![0u8; 100], 7, root),
+                &VerificationPolicy::default(),
+            )
             .expect_err("a truncated payload must be refused");
         assert!(matches!(error, AdapterError::MalformedPayload { .. }));
     }
@@ -358,7 +396,10 @@ mod tests {
     fn a_threshold_of_zero_is_refused_even_though_it_parses() {
         let root = [3u8; 32];
         let error = SourceChainBlsAdapter::new()
-            .verify(&evidence(payload(7, root, [4u8; 32], 3, 0), 7, root), &VerificationPolicy::default())
+            .verify(
+                &evidence(payload(7, root, [4u8; 32], 3, 0), 7, root),
+                &VerificationPolicy::default(),
+            )
             .expect_err("a zero threshold would accept everything");
         assert!(matches!(error, AdapterError::MalformedPayload { .. }));
     }
@@ -369,16 +410,35 @@ mod tests {
         let proof = evidence(payload(7, root, [4u8; 32], 3, 2), 7, root);
         let adapter = SourceChainBlsAdapter::new();
 
-        let below = VerificationPolicy { min_height: 8, ..VerificationPolicy::default() };
+        let below = VerificationPolicy {
+            min_height: 8,
+            ..VerificationPolicy::default()
+        };
         assert!(matches!(
             adapter.verify(&proof, &below),
-            Err(AdapterError::BelowMinimumHeight { height: 7, required: 8 })
+            Err(AdapterError::BelowMinimumHeight {
+                height: 7,
+                required: 8
+            })
         ));
 
-        let stale = VerificationPolicy { max_age: 3, now: 100, ..VerificationPolicy::default() };
-        assert!(matches!(adapter.verify(&proof, &stale), Err(AdapterError::Stale { age: 93, max_age: 3 })));
+        let stale = VerificationPolicy {
+            max_age: 3,
+            now: 100,
+            ..VerificationPolicy::default()
+        };
+        assert!(matches!(
+            adapter.verify(&proof, &stale),
+            Err(AdapterError::Stale {
+                age: 93,
+                max_age: 3
+            })
+        ));
 
-        let slashable_only = VerificationPolicy { require_slashable: true, ..VerificationPolicy::default() };
+        let slashable_only = VerificationPolicy {
+            require_slashable: true,
+            ..VerificationPolicy::default()
+        };
         assert!(matches!(
             adapter.verify(&proof, &slashable_only),
             Err(AdapterError::UnslashableBackingRefused)
@@ -389,9 +449,18 @@ mod tests {
     fn the_descriptor_states_what_it_does_not_claim() {
         let descriptor = SourceChainBlsAdapter::new().descriptor();
         assert_eq!(descriptor.accepted_evidence_versions, &[1]);
-        assert_eq!(descriptor.trust_model, TrustModel::HonestMajority { set_size: 3 });
-        assert!(!descriptor.not_claimed.is_empty(), "a descriptor with no limits is a brochure");
-        assert!(descriptor.not_claimed.iter().any(|line| line.contains("does not perform the pairing check")));
+        assert_eq!(
+            descriptor.trust_model,
+            TrustModel::HonestMajority { set_size: 3 }
+        );
+        assert!(
+            !descriptor.not_claimed.is_empty(),
+            "a descriptor with no limits is a brochure"
+        );
+        assert!(descriptor
+            .not_claimed
+            .iter()
+            .any(|line| line.contains("does not perform the pairing check")));
     }
 
     #[test]

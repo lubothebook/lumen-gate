@@ -336,7 +336,7 @@ What it does:
 | `GET /v1/self-audit`, `GET /v1/self-audit/history` | read-only view of the record the audit loop writes. It reports; it does not approve |
 | `POST /v1/relay?height=H`, `POST /v1/reconcile` | one relayer pass, and a reconciliation pass that advances SEP-6 records against live ledgers. Operator token only |
 | `GET /v1/sep10/auth`, `POST /v1/sep10/auth` | SEP-10 authentication: the anchor signs a challenge transaction, the client proves key control by signing it back, and the anchor issues a short-lived JWT. Unfunded accounts are the normal case, not an error |
-| `GET /v1/sep6/info`, `GET /v1/deposit`, `GET /v1/withdraw`, `GET /v1/transactions` | a real SEP-6 surface: official field names, records that advance only on evidence read from a ledger, and an explicit list of what is not implemented |
+| `GET /v1/sep6/info`, `GET /v1/deposit`, `GET /v1/withdraw`, `GET /v1/transactions` | a real SEP-6 surface: official field names, records that advance only on evidence read from a ledger, and an explicit list of what is not implemented. Opening a record and reading history require a SEP-10 session, and the account is the token subject - never a caller-chosen one |
 | `GET /v1/sep12/customer` | answers `501 not_implemented`. No KYC is collected and the file says so instead of implying otherwise |
 
 Full detail, including which ledger event advances which record and what is
@@ -349,6 +349,8 @@ What it does **not** do, and this is the important half: it holds no custody, no
 1. **Reading is public, writing never is.** Every mutating endpoint requires an operator token compared in constant time, and the service refuses to run writes at all when no token is configured. A capability that can be switched on by accident is worse than one that is switched off.
 2. **CORS is an allowlist, not a wildcard.** The previous revision answered every request with `Access-Control-Allow-Origin: *`, which meant any page a visitor opened could have triggered a relay that signs and spends the operator's XLM. Origins are now reflected only when they are on the allowlist.
 3. **Every input is validated before it is used.** Heights must be bounded positive integers, transaction ids must be 32-byte lower-case hex, and the one endpoint that spends money runs a single pass at a time with a cooldown, so it cannot be used to drain an account.
+4. **A session acts for its own account only.** SEP-6 record creation and history reads are bound to the subject of the SEP-10 token; an anonymous caller cannot plant pending records against somebody else's address, and no one can read another account's history by swapping a query parameter.
+5. **Refusals all look alike, and public reads are capped.** Every non-200 answer from the facade and the hosted layer is `{ "error": { "code", "message" } }`, and a fixed-window per-address rate limit with `Retry-After` keeps a single misbehaving client from taking the audit surface down for everyone else. `tools/sep-conformance.js` drives a running facade as a SEP client would and fails if any of these sentences stops being true.
 
 ## Deploying the console
 

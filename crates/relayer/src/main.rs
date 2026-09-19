@@ -152,10 +152,7 @@ fn decode_scval_bytes(encoded: &str) -> Result<Vec<u8>, String> {
     Ok(raw[8..end].to_vec())
 }
 
-fn decode_burn_event(
-    burn_message_id: String,
-    encoded_value: &str,
-) -> Result<BurnEvent, String> {
+fn decode_burn_event(burn_message_id: String, encoded_value: &str) -> Result<BurnEvent, String> {
     // Must match settlement_gateway::encode_burn_event exactly.
     let bytes = decode_scval_bytes(encoded_value)?;
     if bytes.len() < 108 {
@@ -290,7 +287,10 @@ async fn unlock_source_from_burn(
     if !status.is_success() {
         return Err(format!("source burn unlock returned {status}: {body}"));
     }
-    println!("  source unlock receipt for burn {}: {}", burn.burn_message_id, body);
+    println!(
+        "  source unlock receipt for burn {}: {}",
+        burn.burn_message_id, body
+    );
     Ok(())
 }
 
@@ -639,8 +639,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .or_else(|| std::env::var("RPC_URL").ok())
         .unwrap_or_else(|| "https://soroban-testnet.stellar.org".to_string());
     let network = std::env::var("STELLAR_NETWORK").unwrap_or_else(|_| "testnet".to_string());
-    let relayer_account = std::env::var("STELLAR_SOURCE_ACCOUNT")
-        .unwrap_or_else(|_| "relayer".to_string());
+    let relayer_account =
+        std::env::var("STELLAR_SOURCE_ACCOUNT").unwrap_or_else(|_| "relayer".to_string());
     let relayer_address = std::env::var("STELLAR_RELAYER_ADDRESS")
         .unwrap_or_else(|_| "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF".to_string());
     // Backfill support: the daemon normally follows the newest source block, but
@@ -668,10 +668,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Lumen Gate relayer");
     println!("  simulator: {sim_url}");
     println!("  Soroban RPC: {rpc_url}");
-    println!("  mode: {}", if dry_run { "dry-run" } else { "live signed CLI" });
+    println!(
+        "  mode: {}",
+        if dry_run {
+            "dry-run"
+        } else {
+            "live signed CLI"
+        }
+    );
     println!(
         "  development Groth16 fixture: {}",
-        if allow_development_zk { "explicitly enabled" } else { "quarantined" }
+        if allow_development_zk {
+            "explicitly enabled"
+        } else {
+            "quarantined"
+        }
     );
 
     let client = reqwest::Client::new();
@@ -721,29 +732,51 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             || is_placeholder(&domain_key)
             || is_placeholder(&target_domain))
     {
-        return Err(std::io::Error::other("deployment manifest still contains placeholder contract IDs").into());
+        return Err(std::io::Error::other(
+            "deployment manifest still contains placeholder contract IDs",
+        )
+        .into());
     }
     if !dry_run && std::env::var("STELLAR_SOURCE_ACCOUNT").is_err() {
-        return Err(std::io::Error::other("STELLAR_SOURCE_ACCOUNT must name the funded relayer CLI account").into());
+        return Err(std::io::Error::other(
+            "STELLAR_SOURCE_ACCOUNT must name the funded relayer CLI account",
+        )
+        .into());
     }
     if !dry_run && std::env::var("STELLAR_RELAYER_ADDRESS").is_err() {
-        return Err(std::io::Error::other("STELLAR_RELAYER_ADDRESS must be the relayer account address").into());
+        return Err(std::io::Error::other(
+            "STELLAR_RELAYER_ADDRESS must be the relayer account address",
+        )
+        .into());
     }
     if let Ok(response) = client.get(format!("{sim_url}/info")).send().await {
         if let Ok(info) = response.json::<serde_json::Value>().await {
             if !dry_run {
-                if info.get("asset_id").and_then(|value| value.as_str()) != Some(token_id.as_str()) {
-                    return Err(std::io::Error::other("SOURCE_ASSET_ID does not match the deployed SAC token").into());
+                if info.get("asset_id").and_then(|value| value.as_str()) != Some(token_id.as_str())
+                {
+                    return Err(std::io::Error::other(
+                        "SOURCE_ASSET_ID does not match the deployed SAC token",
+                    )
+                    .into());
                 }
-                if info.get("target_domain").and_then(|value| value.as_str()) != Some(target_domain.as_str()) {
-                    return Err(std::io::Error::other("source simulator target domain does not match the gateway domain").into());
+                if info.get("target_domain").and_then(|value| value.as_str())
+                    != Some(target_domain.as_str())
+                {
+                    return Err(std::io::Error::other(
+                        "source simulator target domain does not match the gateway domain",
+                    )
+                    .into());
                 }
             }
         } else if !dry_run {
-            return Err(std::io::Error::other("source simulator /info returned invalid JSON").into());
+            return Err(
+                std::io::Error::other("source simulator /info returned invalid JSON").into(),
+            );
         }
     } else if !dry_run {
-        return Err(std::io::Error::other("source simulator /info is required in live mode").into());
+        return Err(
+            std::io::Error::other("source simulator /info is required in live mode").into(),
+        );
     }
 
     let mut burn_cursor = std::env::var("BURN_START_LEDGER")
@@ -793,11 +826,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Some(height) => format!("{sim_url}/blocks/{height}"),
             None => format!("{sim_url}/blocks/latest"),
         };
-        let block = match client
-            .get(block_url)
-            .send()
-            .await
-        {
+        let block = match client.get(block_url).send().await {
             Ok(response) => response.json::<Block>().await.ok(),
             Err(error) => {
                 eprintln!("source simulator unavailable: {error}");
@@ -806,7 +835,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
 
         if let Some(block) = block {
-            println!("block {} state={} events={}", block.height, block.state_root, block.event_root);
+            println!(
+                "block {} state={} events={}",
+                block.height, block.state_root, block.event_root
+            );
             for kind in ["bls", "zk"] {
                 if kind == "zk" && !allow_development_zk {
                     if block.height == 1 {
@@ -835,7 +867,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 };
                 let message_id = events.first().map(|event| event.message_id.clone());
                 let url = match &message_id {
-                    Some(message_id) => format!("{sim_url}/proof?height={}&kind={kind}&message_id={message_id}", block.height),
+                    Some(message_id) => format!(
+                        "{sim_url}/proof?height={}&kind={kind}&message_id={message_id}",
+                        block.height
+                    ),
                     None => format!("{sim_url}/proof?height={}&kind={kind}", block.height),
                 };
                 let proof = match client.get(url).send().await {
@@ -851,9 +886,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         continue;
                     }
                 };
-                println!("  {kind} evidence height={} bytes={}", proof.declared_height, proof.payload_hex.len() / 2);
+                println!(
+                    "  {kind} evidence height={} bytes={}",
+                    proof.declared_height,
+                    proof.payload_hex.len() / 2
+                );
                 println!("  source proof submitter: {}", proof.submitter);
-                println!("  BLS payload signer_count={} required={} sig={} bytes pubkey={} bytes",
+                println!(
+                    "  BLS payload signer_count={} required={} sig={} bytes pubkey={} bytes",
                     proof.payload.signer_count,
                     proof.payload.required,
                     proof.payload.sig_hex.len() / 2,
@@ -865,9 +905,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let result = if submitted.contains(&key) {
                     Ok(())
                 } else if kind == "bls" {
-                    submit_bls(&client, &rpc_url, &proof, &registry_id, &network, &relayer_account, &relayer_address, dry_run).await
+                    submit_bls(
+                        &client,
+                        &rpc_url,
+                        &proof,
+                        &registry_id,
+                        &network,
+                        &relayer_account,
+                        &relayer_address,
+                        dry_run,
+                    )
+                    .await
                 } else {
-                    submit_zk(&client, &rpc_url, &proof, &registry_id, &network, &relayer_account, &relayer_address, dry_run).await
+                    submit_zk(
+                        &client,
+                        &rpc_url,
+                        &proof,
+                        &registry_id,
+                        &network,
+                        &relayer_account,
+                        &relayer_address,
+                        dry_run,
+                    )
+                    .await
                 };
                 match result {
                     Ok(()) => {
@@ -878,29 +938,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 if gateway_submitted.contains(&event.message_id) {
                                     continue;
                                 }
-                                let proof_siblings = if message_id.as_deref() == Some(event.message_id.as_str()) {
-                                    proof.merkle_proof.clone().unwrap_or_default()
-                                } else {
-                                    match client
-                                        .get(format!(
-                                            "{sim_url}/proof?height={}&kind=bls&message_id={}",
-                                            block.height, event.message_id
-                                        ))
-                                        .send()
-                                        .await
-                                    {
-                                        Ok(response) => response
-                                            .json::<ProofResponse>()
+                                let proof_siblings =
+                                    if message_id.as_deref() == Some(event.message_id.as_str()) {
+                                        proof.merkle_proof.clone().unwrap_or_default()
+                                    } else {
+                                        match client
+                                            .get(format!(
+                                                "{sim_url}/proof?height={}&kind=bls&message_id={}",
+                                                block.height, event.message_id
+                                            ))
+                                            .send()
                                             .await
-                                            .ok()
-                                            .and_then(|response| response.merkle_proof)
-                                            .unwrap_or_default(),
-                                        Err(error) => {
-                                            eprintln!("  Merkle proof unavailable for {}: {error}", event.message_id);
-                                            continue;
+                                        {
+                                            Ok(response) => response
+                                                .json::<ProofResponse>()
+                                                .await
+                                                .ok()
+                                                .and_then(|response| response.merkle_proof)
+                                                .unwrap_or_default(),
+                                            Err(error) => {
+                                                eprintln!(
+                                                    "  Merkle proof unavailable for {}: {error}",
+                                                    event.message_id
+                                                );
+                                                continue;
+                                            }
                                         }
-                                    }
-                                };
+                                    };
                                 match submit_gateway(
                                     &client,
                                     &rpc_url,

@@ -271,14 +271,34 @@ impl Default for VerificationPolicy {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "refusal", rename_all = "snake_case")]
 pub enum AdapterError {
-    WrongAdapter { expected: String, found: String },
-    UnknownEvidenceVersion { found: u32, accepted: Vec<u32> },
-    MalformedPayload { reason: String },
-    DeclaredMismatch { field: String, declared: String, derived: String },
-    BelowMinimumHeight { height: u64, required: u64 },
-    Stale { age: u64, max_age: u64 },
+    WrongAdapter {
+        expected: String,
+        found: String,
+    },
+    UnknownEvidenceVersion {
+        found: u32,
+        accepted: Vec<u32>,
+    },
+    MalformedPayload {
+        reason: String,
+    },
+    DeclaredMismatch {
+        field: String,
+        declared: String,
+        derived: String,
+    },
+    BelowMinimumHeight {
+        height: u64,
+        required: u64,
+    },
+    Stale {
+        age: u64,
+        max_age: u64,
+    },
     UnslashableBackingRefused,
-    UnsupportedBacking { backing: String },
+    UnsupportedBacking {
+        backing: String,
+    },
 }
 
 impl std::fmt::Display for AdapterError {
@@ -356,7 +376,11 @@ pub fn evidence_digest(payload: &[u8]) -> [u8; 32] {
 }
 
 pub(crate) fn refuse_mismatch(field: &str, declared: String, derived: String) -> AdapterError {
-    AdapterError::DeclaredMismatch { field: field.to_string(), declared, derived }
+    AdapterError::DeclaredMismatch {
+        field: field.to_string(),
+        declared,
+        derived,
+    }
 }
 
 #[cfg(test)]
@@ -372,8 +396,16 @@ mod tests {
         let deployed = "3dcbf6f582455337083d5f6d36721f6d63d47af0bef870a043c02aca7850dac9";
         let derived = AdapterId::from_name("source-chain-bls-v1");
         assert_eq!(derived.as_hex(), deployed);
-        assert_eq!(AdapterId::from_name("source-chain-bls-v1"), derived, "the derivation is stable");
-        assert_ne!(AdapterId::from_name("source-chain-zk-v1"), derived, "a different name is a different domain");
+        assert_eq!(
+            AdapterId::from_name("source-chain-bls-v1"),
+            derived,
+            "the derivation is stable"
+        );
+        assert_ne!(
+            AdapterId::from_name("source-chain-zk-v1"),
+            derived,
+            "a different name is a different domain"
+        );
     }
 
     #[test]
@@ -387,7 +419,12 @@ mod tests {
             state_root: [7u8; 32],
             finalized_at: 42,
             finalized_at_unit: TimeUnit::Height,
-            security: SecurityBacking::SignatureSet { signers: 3, required: 2, total_weight: 3, slashable: false },
+            security: SecurityBacking::SignatureSet {
+                signers: 3,
+                required: 2,
+                total_weight: 3,
+                slashable: false,
+            },
             evidence_digest: [0u8; 32],
             submitter: "G...".to_string(),
         };

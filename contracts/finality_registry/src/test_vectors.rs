@@ -27,8 +27,7 @@
 //! same code the validators run in production.
 
 /// Source-domain adapter id of the live source chain (sha256 of adapter id).
-pub const ADAPTER_HEX: &str =
-    "3dcbf6f582455337083d5f6d36721f6d63d47af0bef870a043c02aca7850dac9";
+pub const ADAPTER_HEX: &str = "3dcbf6f582455337083d5f6d36721f6d63d47af0bef870a043c02aca7850dac9";
 
 pub const NETWORK: &str = "source-testnet";
 
@@ -53,5 +52,4 @@ pub const HEIGHT: u64 = 59;
 pub const STATE_ROOT_HEX: &str = "0b2f6840916c8684b34c4e6ca3602d12526e23e1e4e6a9f2ddfef70342a67ff1";
 
 /// A state root that no proof in this file is about.
-pub const OTHER_ROOT_HEX: &str =
-    "00000000000000000000000000000000000000000000000000000000000000aa";
+pub const OTHER_ROOT_HEX: &str = "00000000000000000000000000000000000000000000000000000000000000aa";

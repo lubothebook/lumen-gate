@@ -1,9 +1,8 @@
 #![no_std]
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, crypto::bls12_381::Bls12381G1Affine,
-    crypto::bls12_381::Bls12381G2Affine, crypto::bn254::Bn254G1Affine,
-    crypto::bn254::Bn254G2Affine, crypto::bn254::Bn254Fr, Address, Bytes, BytesN, Env, String,
-    Symbol, Vec,
+    crypto::bls12_381::Bls12381G2Affine, crypto::bn254::Bn254Fr, crypto::bn254::Bn254G1Affine,
+    crypto::bn254::Bn254G2Affine, Address, Bytes, BytesN, Env, String, Symbol, Vec,
 };
 
 // ---------- Groth16 verifier (Apache-2.0-compatible pattern, adapted) ----------
@@ -17,8 +16,9 @@ mod groth16 {
     // modulo r, so the verifier must reject non-canonical public inputs before
     // constructing a scalar instead of silently accepting a different witness.
     const FR_MODULUS: [u8; 32] = [
-        0x30, 0x64, 0x4e, 0x72, 0xe1, 0x31, 0xa0, 0x29, 0xb8, 0x50, 0x45, 0xb6, 0x81, 0x81, 0x58, 0x5d,
-        0x28, 0x33, 0xe8, 0x48, 0x79, 0xb9, 0x70, 0x91, 0x43, 0xe1, 0xf5, 0x93, 0xf0, 0x00, 0x00, 0x01,
+        0x30, 0x64, 0x4e, 0x72, 0xe1, 0x31, 0xa0, 0x29, 0xb8, 0x50, 0x45, 0xb6, 0x81, 0x81, 0x58,
+        0x5d, 0x28, 0x33, 0xe8, 0x48, 0x79, 0xb9, 0x70, 0x91, 0x43, 0xe1, 0xf5, 0x93, 0xf0, 0x00,
+        0x00, 0x01,
     ];
 
     fn scalar_is_canonical(value: &BytesN<32>) -> bool {
@@ -39,8 +39,7 @@ mod groth16 {
 
     fn to_fixed<const N: usize>(env: &Env, bytes: Bytes) -> BytesN<N> {
         let val: soroban_sdk::Val = bytes.into();
-        BytesN::<N>::try_from_val(env, &val)
-            .unwrap_or_else(|_| panic!("expected {} bytes", N))
+        BytesN::<N>::try_from_val(env, &val).unwrap_or_else(|_| panic!("expected {} bytes", N))
     }
     fn g1(env: &Env, bytes: Bytes) -> Bn254G1Affine {
         Bn254G1Affine::from_bytes(to_fixed::<64>(env, bytes))
@@ -59,12 +58,7 @@ mod groth16 {
         }
         true
     }
-    pub fn verify(
-        env: &Env,
-        vk: &Bytes,
-        proof: &Bytes,
-        public_inputs: &Vec<BytesN<32>>,
-    ) -> bool {
+    pub fn verify(env: &Env, vk: &Bytes, proof: &Bytes, public_inputs: &Vec<BytesN<32>>) -> bool {
         if proof.len() != 2 * G1_SIZE + G2_SIZE {
             return false;
         }
@@ -101,10 +95,7 @@ mod groth16 {
         let gamma = g2(env, gamma_bytes);
         let delta = g2(env, delta_bytes);
         let bn254 = env.crypto().bn254();
-        if !bn254.g1_is_on_curve(&a)
-            || !bn254.g1_is_on_curve(&c)
-            || !bn254.g1_is_on_curve(&alpha)
-        {
+        if !bn254.g1_is_on_curve(&a) || !bn254.g1_is_on_curve(&c) || !bn254.g1_is_on_curve(&alpha) {
             return false;
         }
 
@@ -124,8 +115,7 @@ mod groth16 {
         let neg_alpha = -alpha;
         let neg_vk_x = -vk_x;
         let neg_c = -c;
-        let g1_points: Vec<Bn254G1Affine> =
-            Vec::from_array(env, [a, neg_alpha, neg_vk_x, neg_c]);
+        let g1_points: Vec<Bn254G1Affine> = Vec::from_array(env, [a, neg_alpha, neg_vk_x, neg_c]);
         let g2_points: Vec<Bn254G2Affine> = Vec::from_array(env, [b, beta, gamma, delta]);
         env.crypto().bn254().pairing_check(g1_points, g2_points)
     }
@@ -287,7 +277,9 @@ fn compute_evidence_digest(env: &Env, evidence: &RawEvidence) -> BytesN<32> {
 
 const BLS_PAYLOAD_MIN: u32 = 368;
 
-fn parse_bls_payload(payload: &Bytes) -> Result<(u64, BytesN<32>, BytesN<32>, u32, u32, Bytes, Bytes), RegistryError> {
+fn parse_bls_payload(
+    payload: &Bytes,
+) -> Result<(u64, BytesN<32>, BytesN<32>, u32, u32, Bytes, Bytes), RegistryError> {
     if payload.len() != BLS_PAYLOAD_MIN {
         return Err(RegistryError::BadPayloadLength);
     }
@@ -324,7 +316,15 @@ fn parse_bls_payload(payload: &Bytes) -> Result<(u64, BytesN<32>, BytesN<32>, u3
     let required = u32::from_le_bytes(req_bytes);
     let sig_bytes = payload.slice(80..176);
     let pubkey_bytes = payload.slice(176..368);
-    Ok((height, state_root, event_root, signer_count, required, sig_bytes, pubkey_bytes))
+    Ok((
+        height,
+        state_root,
+        event_root,
+        signer_count,
+        required,
+        sig_bytes,
+        pubkey_bytes,
+    ))
 }
 
 #[contract]
@@ -338,9 +338,15 @@ impl FinalityRegistry {
             panic!("already initialized");
         }
         env.storage().instance().set(&DataKey::Admin, &admin);
-        env.storage().instance().set(&DataKey::AdminRenounced, &false);
-        env.storage().instance().set(&DataKey::Vk, &Bytes::new(&env));
-        env.storage().instance().set(&DataKey::DomainList, &Vec::<BytesN<32>>::new(&env));
+        env.storage()
+            .instance()
+            .set(&DataKey::AdminRenounced, &false);
+        env.storage()
+            .instance()
+            .set(&DataKey::Vk, &Bytes::new(&env));
+        env.storage()
+            .instance()
+            .set(&DataKey::DomainList, &Vec::<BytesN<32>>::new(&env));
     }
 
     fn is_admin_renounced(env: &Env) -> bool {
@@ -375,7 +381,9 @@ impl FinalityRegistry {
             panic!("not admin");
         }
         // Set renounced flag and zero admin to dead address
-        env.storage().instance().set(&DataKey::AdminRenounced, &true);
+        env.storage()
+            .instance()
+            .set(&DataKey::AdminRenounced, &true);
         // Set admin to zero address (G...WHF) to make future checks fail even if flag bypassed
         let zero = Address::from_string(&String::from_str(
             &env,
@@ -420,7 +428,11 @@ impl FinalityRegistry {
             panic!("adapter version must be accepted");
         }
         let domain_key = compute_domain_key(&env, &adapter_id, &network);
-        if env.storage().persistent().has(&DataKey::Domain(domain_key.clone())) {
+        if env
+            .storage()
+            .persistent()
+            .has(&DataKey::Domain(domain_key.clone()))
+        {
             panic!("domain exists");
         }
         let record = DomainRecord {
@@ -516,7 +528,11 @@ impl FinalityRegistry {
         if !bls.g2_is_on_curve(&point) || !bls.g2_is_in_subgroup(&point) {
             panic!("invalid aggregate public key");
         }
-        if !env.storage().persistent().has(&DataKey::Domain(domain.clone())) {
+        if !env
+            .storage()
+            .persistent()
+            .has(&DataKey::Domain(domain.clone()))
+        {
             panic!("domain not found");
         }
         env.storage().persistent().set(
@@ -548,7 +564,11 @@ impl FinalityRegistry {
             .get(&DataKey::Finalized(domain, height))
     }
 
-    pub fn get_finalized_full(env: Env, domain: BytesN<32>, height: u64) -> Option<FinalizedRecord> {
+    pub fn get_finalized_full(
+        env: Env,
+        domain: BytesN<32>,
+        height: u64,
+    ) -> Option<FinalizedRecord> {
         env.storage()
             .persistent()
             .get(&DataKey::FinalizedFull(domain, height))
@@ -559,7 +579,10 @@ impl FinalityRegistry {
     }
 
     pub fn get_profile(env: Env, domain: BytesN<32>) -> Option<DomainProfile> {
-        let record: DomainRecord = env.storage().persistent().get(&DataKey::Domain(domain.clone()))?;
+        let record: DomainRecord = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Domain(domain.clone()))?;
         let security = record.last_security.clone();
         Some(DomainProfile {
             domain_key: domain,
@@ -607,11 +630,18 @@ impl FinalityRegistry {
             .get(&DataKey::BlsPolicy(domain_key.clone()))
             .ok_or(RegistryError::InvalidSignature)?;
 
-        if !record.accepted_versions.contains(&evidence.evidence_version) {
+        if !record
+            .accepted_versions
+            .contains(&evidence.evidence_version)
+        {
             return Err(RegistryError::VersionNotAccepted);
         }
         let digest = compute_evidence_digest(&env, &evidence);
-        if env.storage().persistent().has(&DataKey::Evidence(digest.clone())) {
+        if env
+            .storage()
+            .persistent()
+            .has(&DataKey::Evidence(digest.clone()))
+        {
             return Err(RegistryError::EvidenceAlreadyProcessed);
         }
         let (height, state_root, event_root, signer_count, required, sig_bytes, pubkey_bytes) =
@@ -662,7 +692,10 @@ impl FinalityRegistry {
         root_buf.append(&Bytes::from_array(&env, &height.to_le_bytes()));
         root_buf.append(&state_root.clone().into());
         root_buf.append(&event_root.clone().into());
-        let hashed = bls.hash_to_g1(&root_buf, &Bytes::from_array(&env, b"lumen-gate-finality-v1"));
+        let hashed = bls.hash_to_g1(
+            &root_buf,
+            &Bytes::from_array(&env, b"lumen-gate-finality-v1"),
+        );
         let g2_gen = bls.hash_to_g2(
             &Bytes::from_array(&env, b"lumen-gate-g2-generator"),
             &Bytes::from_array(&env, b"lumen-gate-finality-v1"),
@@ -680,11 +713,8 @@ impl FinalityRegistry {
         new_record.last_height = height;
         new_record.last_root = state_root.clone();
         new_record.last_event_root = event_root.clone();
-        new_record.last_security = SecurityBacking::SignatureSet(
-            signer_count,
-            required,
-            policy.slashable,
-        );
+        new_record.last_security =
+            SecurityBacking::SignatureSet(signer_count, required, policy.slashable);
         new_record.state = 2;
         env.storage()
             .persistent()
@@ -736,11 +766,18 @@ impl FinalityRegistry {
             return Err(RegistryError::NotAdmitted);
         }
 
-        if !record.accepted_versions.contains(&evidence.evidence_version) {
+        if !record
+            .accepted_versions
+            .contains(&evidence.evidence_version)
+        {
             return Err(RegistryError::VersionNotAccepted);
         }
         let digest = compute_evidence_digest(&env, &evidence);
-        if env.storage().persistent().has(&DataKey::Evidence(digest.clone())) {
+        if env
+            .storage()
+            .persistent()
+            .has(&DataKey::Evidence(digest.clone()))
+        {
             return Err(RegistryError::EvidenceAlreadyProcessed);
         }
 
@@ -859,7 +896,11 @@ impl FinalityRegistry {
     // rather than from a BLS signature set. "Machine approved" here means
     // "the last accepted evidence was a pairing check", nothing more.
     pub fn is_machine_approved(env: Env, domain: BytesN<32>) -> bool {
-        if let Some(record) = env.storage().persistent().get::<DataKey, DomainRecord>(&DataKey::Domain(domain.clone())) {
+        if let Some(record) = env
+            .storage()
+            .persistent()
+            .get::<DataKey, DomainRecord>(&DataKey::Domain(domain.clone()))
+        {
             // Only a recorded ZK attestation is reported as ZK machine approval.
             record.state == 2
                 && record.last_height > 0
@@ -901,7 +942,14 @@ mod test {
 
         let adapter = BytesN::from_array(&env, &[2u8; 32]);
         let network = String::from_str(&env, "source-testnet");
-        let domain = client.register_domain(&admin, &adapter, &network, &10, &1, &Vec::from_array(&env, [1u32]));
+        let domain = client.register_domain(
+            &admin,
+            &adapter,
+            &network,
+            &10,
+            &1,
+            &Vec::from_array(&env, [1u32]),
+        );
         // Without this the call below would fail with NotAdmitted instead of
         // testing the signature check, i.e. the test would pass for the wrong
         // reason.
@@ -946,7 +994,14 @@ mod test {
 
         let adapter = BytesN::from_array(&env, &[5u8; 32]);
         let network = String::from_str(&env, "source-testnet");
-        client.register_domain(&admin, &adapter, &network, &2, &1, &Vec::from_array(&env, [1u32]));
+        client.register_domain(
+            &admin,
+            &adapter,
+            &network,
+            &2,
+            &1,
+            &Vec::from_array(&env, [1u32]),
+        );
 
         // version 99 not accepted
         let mut payload = Bytes::new(&env);
@@ -982,7 +1037,14 @@ mod test {
 
         let adapter = BytesN::from_array(&env, &[6u8; 32]);
         let network = String::from_str(&env, "source-testnet");
-        let domain = client.register_domain(&admin, &adapter, &network, &2, &1, &Vec::from_array(&env, [1u32]));
+        let domain = client.register_domain(
+            &admin,
+            &adapter,
+            &network,
+            &2,
+            &1,
+            &Vec::from_array(&env, [1u32]),
+        );
         let profile = client.get_profile(&domain);
         assert!(profile.is_some());
         let p = profile.unwrap();
@@ -1040,14 +1102,7 @@ mod test {
         let network = String::from_str(&env, "source-testnet");
         let versions = Vec::from_array(&env, [1u32]);
 
-        let register = client.try_register_domain(
-            &attacker,
-            &adapter,
-            &network,
-            &2,
-            &1,
-            &versions,
-        );
+        let register = client.try_register_domain(&attacker, &adapter, &network, &2, &1, &versions);
         assert!(register.is_err());
 
         let domain = client.register_domain(&admin, &adapter, &network, &2, &1, &versions);
@@ -1067,7 +1122,14 @@ mod test {
         client.initialize(&admin);
         let adapter = BytesN::from_array(&env, &[7u8; 32]);
         let network = String::from_str(&env, "source-testnet");
-        let domain = client.register_domain(&admin, &adapter, &network, &2, &1, &Vec::from_array(&env, [1u32]));
+        let domain = client.register_domain(
+            &admin,
+            &adapter,
+            &network,
+            &2,
+            &1,
+            &Vec::from_array(&env, [1u32]),
+        );
         // Admit, otherwise this test would short-circuit on NotAdmitted and
         // never look at the verification key.
         client.admit_domain(&admin, &domain);

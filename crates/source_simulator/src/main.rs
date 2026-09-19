@@ -25,7 +25,8 @@ const G2_GENERATOR_HEX: &str = "13e02b6052719f607dacd3a088274f65596bd0d09920b61a
 // Checked-in development Groth16 range-proof artifacts (Apache-2.0 provenance)
 const ZK_VK_HEX: &str = include_str!("../../../circuits/range_proof_vk.hex");
 const ZK_PROOF_HEX: &str = include_str!("../../../circuits/range_proof_proof.hex");
-const ZK_PUBLIC_INPUTS_JSON: &str = include_str!("../../../circuits/range_proof_public_inputs.json");
+const ZK_PUBLIC_INPUTS_JSON: &str =
+    include_str!("../../../circuits/range_proof_public_inputs.json");
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct Block {
@@ -136,7 +137,11 @@ impl SimulatorState {
             let mut i = 0;
             while i < level.len() {
                 let left = &level[i];
-                let right = if i + 1 < level.len() { &level[i + 1] } else { left };
+                let right = if i + 1 < level.len() {
+                    &level[i + 1]
+                } else {
+                    left
+                };
                 let mut hasher = Sha256::new();
                 if left <= right {
                     hasher.update(left);
@@ -168,7 +173,11 @@ impl SimulatorState {
             state_root,
             event_root,
             timestamp_ms: now_ms(),
-            tx_count: self.events.get(&new_height).map(|v| v.len() as u64).unwrap_or(0),
+            tx_count: self
+                .events
+                .get(&new_height)
+                .map(|v| v.len() as u64)
+                .unwrap_or(0),
         };
         self.blocks.insert(new_height, block);
         self.latest_height = new_height;
@@ -178,7 +187,11 @@ impl SimulatorState {
         let nonce = self.event_nonce;
         self.event_nonce += 1;
         let height = self.latest_height + 1;
-        let event_index = self.events.get(&height).map(|v| v.len() as u32).unwrap_or(0);
+        let event_index = self
+            .events
+            .get(&height)
+            .map(|v| v.len() as u32)
+            .unwrap_or(0);
         let expiry_height = height.saturating_add(100);
 
         // This byte layout mirrors settlement_gateway::compute_payload_hash_simple.
@@ -235,8 +248,13 @@ impl SimulatorState {
             .iter()
             .map(|e| {
                 let mut h = Sha256::new();
-                h.update(hex::decode(&e.message_id).unwrap_or_else(|_| e.message_id.as_bytes().to_vec()));
-                h.update(hex::decode(&e.payload_hash).unwrap_or_else(|_| e.payload_hash.as_bytes().to_vec()));
+                h.update(
+                    hex::decode(&e.message_id).unwrap_or_else(|_| e.message_id.as_bytes().to_vec()),
+                );
+                h.update(
+                    hex::decode(&e.payload_hash)
+                        .unwrap_or_else(|_| e.payload_hash.as_bytes().to_vec()),
+                );
                 h.finalize().to_vec()
             })
             .collect();
@@ -246,7 +264,11 @@ impl SimulatorState {
         let mut level = leaves;
         while level.len() > 1 {
             let sibling_idx = if idx % 2 == 0 {
-                if idx + 1 < level.len() { idx + 1 } else { idx }
+                if idx + 1 < level.len() {
+                    idx + 1
+                } else {
+                    idx
+                }
             } else {
                 idx - 1
             };
@@ -260,7 +282,11 @@ impl SimulatorState {
             let mut i = 0;
             while i < level.len() {
                 let left = &level[i];
-                let right = if i + 1 < level.len() { &level[i + 1] } else { left };
+                let right = if i + 1 < level.len() {
+                    &level[i + 1]
+                } else {
+                    left
+                };
                 let mut hasher = Sha256::new();
                 if left <= right {
                     hasher.update(left);
@@ -284,10 +310,12 @@ impl SimulatorState {
         if self.unlocked_messages.contains_key(message_id) {
             return Err("message already unlocked".to_string());
         }
-        let found = self
-            .events
-            .values()
-            .find_map(|events| events.iter().find(|event| event.message_id == message_id).cloned());
+        let found = self.events.values().find_map(|events| {
+            events
+                .iter()
+                .find(|event| event.message_id == message_id)
+                .cloned()
+        });
         if let Some(event) = found {
             self.unlocked_messages.insert(message_id.to_string(), true);
             return Ok(event);
@@ -310,7 +338,8 @@ impl SimulatorState {
         payload_hash: String,
         target_domain: String,
     ) -> Result<BurnUnlock, String> {
-        if burn_message_id.is_empty() || recipient_on_source.is_empty() || target_domain.is_empty() {
+        if burn_message_id.is_empty() || recipient_on_source.is_empty() || target_domain.is_empty()
+        {
             return Err("burn unlock fields cannot be empty".to_string());
         }
         if amount == 0 {
@@ -362,16 +391,14 @@ impl SimulatorState {
         msg.extend_from_slice(&height.to_le_bytes());
         msg.extend_from_slice(&state_root_bytes);
         msg.extend_from_slice(&event_root_bytes);
-        let g1_hash =
-            <G1Projective as HashToCurve<ExpandMsgXmd<Sha256>>>::hash_to_curve(
-                msg.as_slice(),
-                b"lumen-gate-finality-v1",
-            );
-        let g2_gen =
-            <G2Projective as HashToCurve<ExpandMsgXmd<Sha256>>>::hash_to_curve(
-                &b"lumen-gate-g2-generator"[..],
-                b"lumen-gate-finality-v1",
-            );
+        let g1_hash = <G1Projective as HashToCurve<ExpandMsgXmd<Sha256>>>::hash_to_curve(
+            msg.as_slice(),
+            b"lumen-gate-finality-v1",
+        );
+        let g2_gen = <G2Projective as HashToCurve<ExpandMsgXmd<Sha256>>>::hash_to_curve(
+            &b"lumen-gate-g2-generator"[..],
+            b"lumen-gate-finality-v1",
+        );
 
         // aggregate signatures - deterministic sk 1,2,3
         let mut agg_sig = G1Projective::identity();
@@ -558,7 +585,11 @@ fn crc16_xmodem(data: &[u8]) -> u16 {
     for byte in data {
         crc ^= (*byte as u16) << 8;
         for _ in 0..8 {
-            crc = if crc & 0x8000 != 0 { (crc << 1) ^ 0x1021 } else { crc << 1 };
+            crc = if crc & 0x8000 != 0 {
+                (crc << 1) ^ 0x1021
+            } else {
+                crc << 1
+            };
         }
     }
     crc
@@ -615,7 +646,10 @@ async fn post_lock(
             ),
         ));
     }
-    let sender = req.sender.clone().unwrap_or_else(|| default_sender(&req.recipient));
+    let sender = req
+        .sender
+        .clone()
+        .unwrap_or_else(|| default_sender(&req.recipient));
     if !is_stellar_account(&sender) {
         return Err((
             StatusCode::BAD_REQUEST,
@@ -638,7 +672,10 @@ async fn post_lock(
     let height = s.latest_height;
     // add_lock_event appends at latest_height + 1, so every event in this loop
     // lands in the block produced below, in the order they were created.
-    let last = events.last().cloned().expect("count is clamped to at least 1");
+    let last = events
+        .last()
+        .cloned()
+        .expect("count is clamped to at least 1");
     Ok(Json(LockResponse {
         event: last,
         events,
@@ -688,7 +725,12 @@ async fn post_unlock(
 ) -> Result<Json<UnlockResponse>, (StatusCode, String)> {
     let mut s = state.lock().unwrap();
     s.unlock_message(&req.message_id)
-        .map(|event| Json(UnlockResponse { unlocked: true, event }))
+        .map(|event| {
+            Json(UnlockResponse {
+                unlocked: true,
+                event,
+            })
+        })
         .map_err(|error| {
             let status = if error == "lock message not found" {
                 StatusCode::NOT_FOUND
@@ -714,7 +756,12 @@ async fn post_burn_unlock(
         req.payload_hash,
         req.target_domain,
     )
-    .map(|burn| Json(BurnUnlockResponse { unlocked: true, burn }))
+    .map(|burn| {
+        Json(BurnUnlockResponse {
+            unlocked: true,
+            burn,
+        })
+    })
     .map_err(|error| {
         let status = if error.contains("already unlocked") {
             StatusCode::CONFLICT
@@ -802,7 +849,11 @@ async fn get_proof(
         Ok(Json(ProofResponse {
             adapter_id,
             network,
-            evidence_version: if q.tamper.as_deref() == Some("version") { 99 } else { 1 },
+            evidence_version: if q.tamper.as_deref() == Some("version") {
+                99
+            } else {
+                1
+            },
             declared_height: height,
             declared_root,
             payload_hex,
@@ -852,7 +903,11 @@ async fn get_proof(
         Ok(Json(ProofResponse {
             adapter_id: hex::encode(Sha256::digest(b"source-chain-zk-v1")),
             network,
-            evidence_version: if q.tamper.as_deref() == Some("version") { 99 } else { 1 },
+            evidence_version: if q.tamper.as_deref() == Some("version") {
+                99
+            } else {
+                1
+            },
             declared_height: height,
             declared_root,
             payload_hex,
