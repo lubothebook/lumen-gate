@@ -37,7 +37,7 @@ The full Groth16 rule set — what a proof binds, what it hides, and how public 
 
 This is the part that most projects in this space get wrong, so it is stated in the strongest terms:
 
-- **It is not a signature verification proof.** The circuit proves a quorum of approvals exists over a bitmap. It does not prove that any particular validator, key or signature exists. A prover with the required number of set bits can satisfy it. Replacing the bitmap with a BLS or ed25519 signature gadget is the next research step, not something this snapshot claims.
+- **It is not a signature verification proof.** The circuit proves a quorum of approvals exists over a bitmap. It does not prove that any particular validator, key or signature exists. A prover with the required number of set bits can satisfy it. Replacing the bitmap with a signature gadget is the next step — and the cost of that step is measured, not guessed: see section 5e (a full EdDSA verifier is 8,086 constraints, affordable; what is missing is a pairing library, not budget). This snapshot claims no signature verification.
 - **The VM-execution claim is bounded, and the bound is a constant in the circuit.** The execution lane proves "program `P`, committed to as a public input, executed from the register file whose Poseidon root is published, produced the published end root and program counter after `n` steps at cost `g`" — the four things this bullet used to say were absent are in section 5c. What it does **not** prove is that a machine of *any* size could have run it: twenty rows, sixteen instructions, sixteen memory words, eight registers, no syscalls. A program that needs a twenty-first step has no proof in this circuit, and the registry refuses a payload claiming one. Nor does it prove anything about consensus, or about a source chain's state transition function — the guest is a program someone writes, and its correctness is theirs.
 - **It is not privacy-preserving.** All four public signals are, by design, public. This lane is about *succinctness and on-chain verifiability*, not about hiding anything.
 - **It does not authorize settlement.** Because the circuit does not cover an event root with signatures, the registry **does not persist** an event root from this lane: it stores zeroes in that slot. Minting reads an event root, so the settlement anchor for the live round trip comes from the **BLS** lane. This refusal is deliberate: persisting an unsigned root would make an unconstrained value the anchor for Merkle settlement proofs.
@@ -195,8 +195,8 @@ The execution lane proves a word processor ran. The gate-vm lane proves a differ
 
 | | |
 | --- | --- |
-| Circuit | [`circuits/gate_vm.circom`](../circuits/gate_vm.circom): 5109 non-linear and 5075 linear constraints, powers-of-tau 2^14 |
-| Machine | [`crates/gate_vm`](../crates/gate_vm): 8 registers of BN254 field elements, 8 program lines of 12 packed bits, 8 opcodes (move, add, sub, mul, poseidon, assert_eq, jnz, halt), 8-row window, halt required by row eight |
+| Circuit | [`circuits/gate_vm.circom`](../circuits/gate_vm.circom): 5109 non-linear and 5075 linear constraints, powers-of-tau 2^14. The semantics live in [`circuits/gate_vm_core.circom`](../circuits/gate_vm_core.circom) as `template GateVm(K, T, R)`; the shipped file is the 8/8/8 instantiation. [`circuits/gate_vm32.circom`](../circuits/gate_vm32.circom) instantiates the same core at 32/32/8 — 22,861 non-linear and 21,779 linear constraints, a 4.38x growth that is linear in the rows, which is what "the window is the gas" looks like in a build report. The program-counter decomposition width is derived from `K` inside the core, not written down, so neither file can claim a bound its instantiation cannot enforce |
+| Machine | [`crates/gate_vm`](../crates/gate_vm): 8 registers of BN254 field elements, program lines of 12 packed bits in 8 or 32 sizes (`SUPPORTED_SHAPES`), 8 opcodes (move, add, sub, mul, poseidon, assert_eq, jnz, halt), window equals program length, halt required by the last row. `run()` refuses any shape without a compiled `main` — a witness generator that happily emits rows no circuit will read manufactures proofs nobody can verify |
 | Program commitment | `program_root = fold(Poseidon)` over the eight private cells, computed *in* the circuit and published as a public input; the cells themselves never appear in the statement. Changing the program changes the root, not the verification key — and unlike the public-words form, the statement size does not scale with the program |
 | Public inputs | 6: `program_root, start_root, event_root, end_root, hash_steps, domain_tag` — the same domain-tag rule as the other lanes, `sha256("lumen-gate-vm-v1")[0..31]` |
 | Gas | the window. A program that has not halted by row seven (of eight) has no witness; `hash_steps` is *counted by the circuit* from executed rows, never declared by the prover, which is what makes it bindable |
@@ -211,6 +211,44 @@ The execution lane proves a word processor ran. The gate-vm lane proves a differ
 **What this lane does not do.** It is register-only: there is no arbitrary-address memory bus and no consistency argument, because there is nothing to be consistent about — a claim the docs make explicitly so nobody has to discover the absence by reading the constraint list. The window bounds the run. It does not move the settlement anchor (`settlement_anchored: false` in its record, a test pinning that it stays false), and the guest's correctness remains its author's problem, exactly as section 7 item 4 says.
 
 ---
+
+## 5e. The signature-gadget budget, measured rather than hoped
+
+The standing answer to "when will the circuits check signatures themselves" was
+a promise about future research. That answer had a number hiding in it, and the
+number is now measured, with no ceremony spent and nothing imported:
+[`circuits/signature_gadget_probe.circom`](../circuits/signature_gadget_probe.circom)
+instantiates circomlib's `EdDSAPoseidonVerifier` — a complete signature check
+(scalar decomposition, subgroup-order refusal, Poseidon message hash, a
+fixed-window Montgomery ladder, a point equation) as circuit constraints, on
+the same pinned stack the lanes compile with. It costs
+**7,383 non-linear + 703 linear = 8,086 constraints**.
+
+Two facts fall out of that, and they point in opposite directions:
+
+- **Budget is not the blocker.** A verifier gadget is a tenth the size of a
+  chain step's Poseidon rounds, not a hundred times the circuit. The step-chain
+  lane (2,259 non-linear) could fold a signature check per step and the result
+  would still sit under powers-of-tau 2^14 — the size of ceremony this
+  repository already runs locally in under three minutes. "A circuit cannot
+  afford to verify signatures" is now false on the record and must not be
+  written again.
+- **This is not that verifier.** `EdDSAPoseidonVerifier` verifies Schnorr-over-
+  babyjubjub. Cosmos-family validators sign with ed25519 (same group, but the
+  message needs a SHA-512/MiMC reduction the probe does not provide) or with
+  secp256k1, and a real BLS aggregate needs an Fp2/Fp12 tower and a pairing —
+  none of which is in the pinned npm cut of circomlib (its `secp256k1/` and
+  `bigint/` directories ship in the GitHub tree, not the tarball, which is the
+  concrete reason the probe had to be EdDSA-shaped). The missing piece was, and
+  remains, the pairing-and-field-arithmetic library, not a Groth16 budget.
+
+The probe is deliberately a *main* component nobody proves with: it compiles,
+`snarkjs r1cs info` reports the number, and that is the whole of its life. The
+next honest move on this axis is choosing the source chain's actual scheme,
+vendoring the matching gadget directories from the upstream tag, and rebuilding
+the step chain around it — with this file's number as the budget line it is
+measured against.
+
 
 ## 6. How the tests keep this honest
 
@@ -296,6 +334,17 @@ node_modules/.bin/snarkjs wtns calculate build/gate_vm_js/gate_vm.wasm \
     build/gate_vm_input.json build/gate_vm.wtns
 node_modules/.bin/snarkjs wchk build/gate_vm.r1cs build/gate_vm.wtns   # the trace satisfies the circuit
 PTAU_POWER=14 ./circuits/setup.sh gate_vm                              # ceremony, prove, verify
+
+# the 32-line sibling: same program, same run, padded commitment, bigger window
+cargo run -p gate_vm -- --emit-dir build --height 42 --lines 32
+cp build/gate_vm_input.json build/gate_vm32_input.json
+node_modules/.bin/snarkjs wtns calculate build/gate_vm32_js/gate_vm32.wasm \
+    build/gate_vm32_input.json build/gate_vm32.wtns
+node_modules/.bin/snarkjs wchk build/gate_vm32.r1cs build/gate_vm32.wtns
+#   -> WITNESS CHECKING FINISHED SUCCESSFULLY: the end root is bit-identical to
+#   the 8-line run (0x12e1225b...) while the program root moved (0x1330a484...)
+#   — output invariant under padding, commitment not, both at once
+./circuits/setup.sh gate_vm32 build/gate_vm32_input.json   # power derives to 2^16
 python3 circuits/convert_to_soroban.py build/gate_vm_vk.json \
     build/gate_vm_proof.json build/gate_vm_public.json build/gate_vm \
     --public-names program_root,start_root,event_root,end_root,hash_steps,domain_tag \
@@ -310,7 +359,7 @@ The input for the execution lane is generated by the machine itself, not by a fi
 
 The same shape applies to the single-statement circuit (`./circuits/setup.sh finality_statement`), whose vectors live in [`src/test_vectors.rs`](../contracts/finality_registry/src/test_vectors.rs).
 
-A locally generated powers-of-tau and a locally generated proving key are **not** production-grade: whoever ran the ceremony could in principle know the toxic waste, and the ceremony participants are fictional. They are sufficient to demonstrate a real proof verified by a real on-chain pairing check, and `circuits/setup.sh` says so in its own header.
+A locally generated powers-of-tau and a locally generated proving key are **not** production-grade: whoever ran the ceremony could in principle know the toxic waste, and the ceremony participants are fictional. They are sufficient to demonstrate a real proof verified by a real on-chain pairing check, and `circuits/setup.sh` says so in its own header. The path out of that sentence is now wired but not yet walkable: `PTAU_SOURCE=phase1` and `PTAU_SOURCE=file:<path>` import an external transcript, verify its full contribution chain with `snarkjs powersoftau verify`, and pin the exact bytes by filename in `circuits/PTAU_SHA256` so a swapped bucket object is a hard stop rather than a silent key change. What stands between the repository and a pinned public ceremony is upstream, not here: as of 2026-09-14 both buckets the snarkjs README names answer anonymous downloads with `AccessDenied` (iden3/snarkjs issue #636, open), so until someone supplies a transcript — from a mirror, a vendored copy, or the ceremony's own archives — and a second party checks its contribution list against the published attestations, every key in this repository remains what the first sentence says it is.
 
 ---
 

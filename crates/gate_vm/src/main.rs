@@ -8,9 +8,9 @@
 //! very unsoundness the circuit exists to reject.
 
 use gate_vm::field::Fp;
-use gate_vm::isa::{Inst, Opcode, PROGRAM_LINES};
+use gate_vm::isa::{Inst, Opcode, PROGRAM_LINES, SUPPORTED_SHAPES};
 use gate_vm::poseidon::poseidon2;
-use gate_vm::program::{assemble, demo_program, program_root};
+use gate_vm::program::{demo_insts, program_root};
 use gate_vm::vm::{VmError, run};
 use gate_vm::witness;
 
@@ -38,9 +38,9 @@ fn parse_hex_or_dec(text: &str) -> Result<Fp, String> {
         .map_err(|_| format!("not a decimal u64 or 0x-hex literal: {text}"))
 }
 
-fn load_program(path: Option<&String>) -> Result<[u16; PROGRAM_LINES], String> {
+fn load_program(path: Option<&String>, lines: usize) -> Result<Vec<u16>, String> {
     let Some(path) = path else {
-        return Ok(demo_program());
+        return Ok(gate_vm::program::assemble_len(&demo_insts(), lines));
     };
     let text = std::fs::read_to_string(path).map_err(|e| format!("{path}: {e}"))?;
     let mut insts = Vec::new();
@@ -68,10 +68,12 @@ fn load_program(path: Option<&String>) -> Result<[u16; PROGRAM_LINES], String> {
         }
         insts.push(Inst::new(op, operand[0], operand[1], operand[2]));
     }
-    if insts.len() > PROGRAM_LINES {
-        return Err(format!("{path}: more than {PROGRAM_LINES} instructions"));
+    if insts.len() > lines {
+        return Err(format!(
+            "{path}: more than {lines} instructions for a {lines}-line program"
+        ));
     }
-    Ok(assemble(&insts))
+    Ok(gate_vm::program::assemble_len(&insts, lines))
 }
 
 fn main() -> Result<(), String> {
@@ -81,7 +83,9 @@ fn main() -> Result<(), String> {
     let mut start = Fp::from_u64(41);
     let mut event = Fp::from_u64(1);
     let mut window = gate_vm::isa::DEFAULT_STEPS;
+    let mut window_is_default = true;
     let mut program_file: Option<String> = None;
+    let mut lines = PROGRAM_LINES;
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
@@ -106,10 +110,24 @@ fn main() -> Result<(), String> {
             }
             "--window" => {
                 i += 1;
+                window_is_default = false;
                 window = args
                     .get(i)
                     .and_then(|v| v.parse().ok())
                     .ok_or("--window needs an integer")?;
+            }
+            "--lines" => {
+                i += 1;
+                lines = args
+                    .get(i)
+                    .and_then(|v| v.parse().ok())
+                    .ok_or("--lines needs an integer (8 or 32)")?;
+                if !SUPPORTED_SHAPES.contains(&lines) {
+                    return Err(format!(
+                        "no compiled circuit covers {lines} lines; supported: {SUPPORTED_SHAPES:?} \
+                         (and the window flag must then match)"
+                    ));
+                }
             }
             "--program" => {
                 i += 1;
@@ -130,7 +148,8 @@ fn main() -> Result<(), String> {
         i += 1;
     }
 
-    let program = load_program(program_file.as_ref())?;
+    let program = load_program(program_file.as_ref(), lines)?;
+    let window = if window_is_default { lines } else { window };
     let receipt = match run(&program, &start, &event, window) {
         Ok(receipt) => receipt,
         Err(VmError::NoHalt) => {

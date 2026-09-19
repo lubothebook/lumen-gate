@@ -70,19 +70,83 @@ if [ "$POWER" = "auto" ]; then
 fi
 
 echo
-echo "== 2. powers of tau (local ceremony, 2^$POWER) =="
-if [ ! -f "$BUILD/pot${POWER}_final.ptau" ]; then
-  "$SNARKJS" powersoftau new bn128 "$POWER" "$BUILD/pot${POWER}_0000.ptau" -v 2>&1 | tail -2
-  "$SNARKJS" powersoftau contribute "$BUILD/pot${POWER}_0000.ptau" "$BUILD/pot${POWER}_0001.ptau" \
-    --name="lumen-gate local ceremony, not a production ceremony" -e="lumen-gate local entropy" 2>&1 | tail -2
-  "$SNARKJS" powersoftau prepare phase2 "$BUILD/pot${POWER}_0001.ptau" "$BUILD/pot${POWER}_final.ptau" -v 2>&1 | tail -2
+# The phase-1 source is a policy switch, not a convenience. `local` mints a
+# fresh BN254 identity on this machine: everything downstream is sound but the
+# toxic waste was never destroyed by anyone, and no third party can compare
+# our verifier key against theirs. `phase1` takes the published Hermez
+# ceremony output for this power, verifies its full contribution chain with
+# `powersoftau verify`, and checks its sha256 against the pin recorded in
+# circuits/PTAU_SHA256 — a first fetch records the pin after the chain
+# verifies, and every later fetch must match it, so swapping a bucket object
+# is a hard stop rather than a silent new key. `file:<path>` runs the same
+# two checks on a locally supplied transcript, for setups that cannot reach
+# the network. The zkey step is byte-identical under either source.
+PTAU_SOURCE="${PTAU_SOURCE:-local}"
+HEZ_BUCKET="${HEZ_BUCKET:-https://hermez.s3-eu-west-1.amazonaws.com}"
+PTAU_DIR="$ROOT/circuits/ptau"
+PINS="$ROOT/circuits/PTAU_SHA256"
+
+phase1_verify_and_pin() { # $1 = file, $2 = label for messages
+  local f="$1" label="$2" sha
+  sha=$(sha256sum "$f" | awk '{print $1}')
+  local pinned="" base
+  base=$(basename "$f")
+  if [ -f "$PINS" ]; then
+    # keyed by filename, not by power: a transcript supplied as file:<path>
+    # pins under its own name and can never shadow (or be shadowed by) the
+    # entry a future download of the same power would check against
+    pinned=$(awk -v n="$base" '$(NF) == n {print $1; exit}' "$PINS" || true)
+  fi
+  if [ -n "$pinned" ] && [ "$pinned" != "$sha" ]; then
+    echo "$label: sha256 $sha does not match the pinned $pinned for 2^$POWER — refusing to build on it" >&2
+    exit 1
+  fi
+  if [ ! -f "$f.verified" ]; then
+    echo "verifying the contribution chain of $label (one-time, scales with the ceremony transcript)"
+    "$SNARKJS" powersoftau verify "$f" 2>&1 | tail -2
+    touch "$f.verified"
+  else
+    echo "contribution chain of $label was verified in an earlier run (marker: $f.verified)"
+  fi
+  if [ -z "$pinned" ]; then
+    mkdir -p "$PTAU_DIR"
+    echo "$sha  $base  # recorded $(date -u +%F) by circuits/setup.sh, after powersoftau verify passed on this exact file; a pin is where a chain verified locally agrees with the ceremony's published attestations only after someone checks it against them — for downloads, that audit is still owed" >> "$PINS"
+    echo "pinned $base to sha256 $sha in circuits/PTAU_SHA256"
+  fi
+}
+
+if [ "$PTAU_SOURCE" = "phase1" ]; then
+  mkdir -p "$PTAU_DIR"
+  PHASE2="$PTAU_DIR/powersOfTau28_hez_final_${POWER}.ptau"
+  if [ ! -f "$PHASE2" ]; then
+    echo "== 2. powers of tau: downloading the published 2^$POWER ceremony =="
+    curl --fail --location --output "$PHASE2.part" "$HEZ_BUCKET/powersOfTau28_hez_final_${POWER}.ptau"
+    mv "$PHASE2.part" "$PHASE2"
+  else
+    echo "== 2. powers of tau: using the downloaded 2^$POWER ceremony at $PHASE2 =="
+  fi
+  phase1_verify_and_pin "$PHASE2" "hermez 2^$POWER"
+elif [ "${PTAU_SOURCE#file:}" != "$PTAU_SOURCE" ]; then
+  PHASE2="${PTAU_SOURCE#file:}"
+  [ -f "$PHASE2" ] || { echo "PTAU_SOURCE=$PTAU_SOURCE does not exist" >&2; exit 1; }
+  echo "== 2. powers of tau: verifying the locally supplied transcript $PHASE2 =="
+  phase1_verify_and_pin "$PHASE2" "supplied transcript"
 else
-  echo "reusing $BUILD/pot${POWER}_final.ptau"
+  echo "== 2. powers of tau (LOCAL ceremony, 2^$POWER: real cryptography, nobody's entropy but ours) =="
+  PHASE2="$BUILD/pot${POWER}_final.ptau"
+  if [ ! -f "$PHASE2" ]; then
+    "$SNARKJS" powersoftau new bn128 "$POWER" "$BUILD/pot${POWER}_0000.ptau" -v 2>&1 | tail -2
+    "$SNARKJS" powersoftau contribute "$BUILD/pot${POWER}_0000.ptau" "$BUILD/pot${POWER}_0001.ptau" \
+      --name="lumen-gate local ceremony, not a production ceremony" -e="${ENTROPY:-lumen-gate local entropy}" 2>&1 | tail -2
+    "$SNARKJS" powersoftau prepare phase2 "$BUILD/pot${POWER}_0001.ptau" "$PHASE2" -v 2>&1 | tail -2
+  else
+    echo "reusing $PHASE2"
+  fi
 fi
 
 echo
 echo "== 3. groth16 setup =="
-"$SNARKJS" groth16 setup "$BUILD/${CIRCUIT}.r1cs" "$BUILD/pot${POWER}_final.ptau" "$BUILD/${CIRCUIT}_0000.zkey" 2>&1 | tail -2
+"$SNARKJS" groth16 setup "$BUILD/${CIRCUIT}.r1cs" "$PHASE2" "$BUILD/${CIRCUIT}_0000.zkey" 2>&1 | tail -2
 "$SNARKJS" zkey contribute "$BUILD/${CIRCUIT}_0000.zkey" "$BUILD/${CIRCUIT}.zkey" \
   --name="lumen-gate local contribution" -e="lumen-gate local entropy" 2>&1 | tail -2
 "$SNARKJS" zkey export verificationkey "$BUILD/${CIRCUIT}.zkey" "$BUILD/${CIRCUIT}_vk.json" 2>&1 | tail -2

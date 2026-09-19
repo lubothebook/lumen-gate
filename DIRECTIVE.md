@@ -541,6 +541,73 @@ functionality belongs in the off-chain surface, the facade and the docs.
 
 ## 4. Hardening backlog (priority order this round)
 
+### 4.0 Decisions taken this session (the operator answered; execute in order)
+
+- [ ] **Merged live registry.** One fresh registry carrying all lane slots
+      (settlement vk, step-chain, execution, gate-vm — and later the 32-line
+      gate-vm key once it exists): bootstrap, probe every lane against it, then
+      renounce. The per-lane registries stay as historical records; the merged
+      one becomes the showcase. `tools/merge-lanes-live.js` is the intended
+      vehicle, mirroring the per-lane live tools.
+- [x] **Signature-gadget feasibility prototype.** A small circom experiment that
+      *measures* — not imagines — what one BLS-style scalar-multiplication /
+      pairing check costs inside a BN254 circuit: constraint counts for the
+      field-op ladder, a budget verdict against the 64 KB wasm / 10^8-instruction
+      host model, and the report committed beside the fixture. The docs' "next
+      piece of work" sentence gets a number or a stop-sign, never a hope.
+      **Result:** `circuits/signature_gadget_probe.circom` compiles circomlib's
+      full `EdDSAPoseidonVerifier` at **7,383 + 703 = 8,086 constraints**; the
+      verdict is in PROVING_SYSTEM §5e — budget is off the list of objections,
+      the real gap is a pairing/field-arithmetic library, which the pinned npm
+      cut of circomlib does not ship (its `bigint/` and `secp256k1/` dirs are
+      GitHub-only). The pairing half of the brief could not be measured without
+      vendoring a new dependency; that is recorded as the stop-sign it is,
+      and the probe names itself as not-a-lane in its own header.
+- [x] **32-row gate-vm variant.** `GateVm(K,T,R)` becomes a parameterised core
+      with two thin mains: `gate_vm.circom` (8/8/8, unchanged — its vectors,
+      live key and audit readback keep their bytes) and `gate_vm32.circom`
+      (32-line programs, 32-row windows, 5-bit pc). New ceremony size derived
+      from the r1cs, new committed vectors, new payload ceilings. Both sizes are
+      documented as one machine with two compilations, not as two machines.
+      **Result:** core split landed with byte-identical 8/8/8 constraint counts
+      (5109/5075 — the live lane's numbers, untouched); pc width derived from
+      K, not written down; gate_vm32 compiles at 22861/21779 (4.38x — linear
+      growth, the window-as-gas claim visible in build reports); the crate grew
+      `SUPPORTED_SHAPES` + `assemble_len` + `run()` shape refusal, 20/20 tests
+      including the padded-commit property (output invariant under padding,
+      program root not) and refusal of uncompiled shapes; snarkjs `wchk` passes
+      the 32-row witness against the 32-row r1cs. The ceremony size derives to
+      2^16 and runs; committed 32-row vectors and registry ceilings ride the
+      merged-registry item, which is where a new slot gets probed anyway.
+- [x] **Public phase-1 import.** `circuits/setup.sh` accepts
+      `PTAU_SOURCE=phase1`: it downloads the published powers-of-tau for the
+      needed power, checks it against the sha256 pinned in this repository, and
+      runs the lane's setup against that file instead of a locally minted one.
+      The "who knows the toxic waste" paragraph in DEVELOPMENT_FIXTURE narrows
+      honestly: for the zkey, still one contribution here; for phase1, the
+      published ceremony's transcript, verifiable by anyone who re-downloads.
+      No lane artifact is re-minted silently: regeneration of a lane's vk is an
+      explicit, committed event, and until a merged registry exists, live slots
+      keep the keys they were deployed with.
+      **Result:** mechanism landed — `PTAU_SOURCE=local|phase1|file:<path>` in
+      `setup.sh`, chain verified with `powersoftau verify`, pins keyed by
+      filename in `circuits/PTAU_SHA256` (its header documents what a pin
+      means and what it does not). Live slots untouched, no vk re-minted.
+      Discovery on record: both public buckets the snarkjs README names are
+      anonymous-GET AccessDenied as of 2026-09-14 (upstream issue #636, open)
+      — the import path exists, the public copy it would import is currently
+      unreachable, and the docs say exactly that instead of pretending either
+      half away. `file:` mode proven end-to-end against a supplied transcript
+      (verify + pin + groth16 setup + prove all ran on it).
+- [ ] **Read-only status surface.** The console gains one card fed exclusively
+      from `deployments/*.json` (lane list, last audit round N/N with its
+      timestamp, each live lane's ledger + fee): no signer, no new endpoint, no
+      write path. The sibling agents own the surrounding UI; this card reads
+      the records, it does not touch the lattice.
+- [ ] **One 'is it a zkVM?' card.** The README's honest one-liner gets its
+      interface counterpart: four lanes, two machines, and the three bounds
+      (window, ceremony, anchor) in the same breath the card makes the claim.
+
 ### 4.1 Admin and verifying-key trust gap (implemented, keep probing)
 
 `admin` was a bootstrap role only: it set the verifying key, the BLS policy and

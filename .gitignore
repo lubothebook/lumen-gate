@@ -37,3 +37,7 @@ __pycache__/
 # SEP-6 transaction records written at runtime by the facade
 deployments/sep6-transactions.json
 /build/
+
+# imported phase-1 transcripts are gigabyte-class binaries: never committed,
+# they are re-fetched or re-supplied and re-verified; pins live in circuits/PTAU_SHA256
+circuits/ptau/

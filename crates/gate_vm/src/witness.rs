@@ -10,7 +10,6 @@
 
 use crate::field::Fp;
 use crate::poseidon::poseidon2;
-use crate::program::PROGRAM_LINES;
 use crate::vm::{Receipt, Step};
 use serde::Serialize;
 
@@ -48,7 +47,7 @@ struct CircomInput {
 /// Every number is a decimal string: no hex prefix convention can drift
 /// between this file and ffutils.
 pub fn circom_input(
-    program: &[u16; PROGRAM_LINES],
+    program: &[u16],
     steps: &[Step],
     start: &Fp,
     event: &Fp,
@@ -80,13 +79,7 @@ pub fn circom_input(
 
 /// The payload the registry parses: little-endian scalars, big-endian 32-byte
 /// roots — the byte order every other lane in this repository already uses.
-pub fn payload(
-    height: u64,
-    program: &[u16; PROGRAM_LINES],
-    start: &Fp,
-    event: &Fp,
-    receipt: &Receipt,
-) -> Vec<u8> {
+pub fn payload(height: u64, program: &[u16], start: &Fp, event: &Fp, receipt: &Receipt) -> Vec<u8> {
     let root = crate::program::program_root(program);
     let mut out = Vec::with_capacity(PAYLOAD_LEN);
     out.extend_from_slice(&height.to_le_bytes());
@@ -103,12 +96,7 @@ pub fn payload(
 /// writes into `public.json` and the order the registry binds. Decimal
 /// strings, matching what snarkjs emits, so a replay test can compare the
 /// emitter's claim with the prover's output element for element.
-pub fn public_inputs(
-    program: &[u16; PROGRAM_LINES],
-    start: &Fp,
-    event: &Fp,
-    receipt: &Receipt,
-) -> Vec<String> {
+pub fn public_inputs(program: &[u16], start: &Fp, event: &Fp, receipt: &Receipt) -> Vec<String> {
     let root = crate::program::program_root(program);
     vec![
         root.to_decimal(),

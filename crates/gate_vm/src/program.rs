@@ -19,16 +19,28 @@ use crate::field::Fp;
 use crate::isa::Inst;
 use crate::poseidon::poseidon2;
 
-pub const PROGRAM_LINES: usize = 8;
+pub use crate::isa::PROGRAM_LINES;
 pub const HALT_CELL: u16 = 7 << 9;
 
 /// Assemble instructions into the fixed program array, padded with HALT.
 pub fn assemble(instructions: &[Inst]) -> [u16; PROGRAM_LINES] {
+    let flat = assemble_len(instructions, PROGRAM_LINES);
+    let mut cells = [HALT_CELL; PROGRAM_LINES];
+    cells.copy_from_slice(&flat);
+    cells
+}
+
+/// The same padding rule at any line count. Halts, never zeros: a zero word
+/// is a MOVE, and a program that runs off its end into MOVEs is a different
+/// program. The shape check that refuses sizes without a compiled circuit
+/// lives in `vm::run`, where an unsupported shape has to fail as a refusal
+/// rather than as an unusable witness.
+pub fn assemble_len(instructions: &[Inst], lines: usize) -> Vec<u16> {
     assert!(
-        instructions.len() <= PROGRAM_LINES,
+        instructions.len() <= lines,
         "a program longer than the line space is a policy error, not padding"
     );
-    let mut cells = [HALT_CELL; PROGRAM_LINES];
+    let mut cells = vec![HALT_CELL; lines];
     for (slot, inst) in instructions.iter().enumerate() {
         cells[slot] = inst.encode();
     }
@@ -36,7 +48,7 @@ pub fn assemble(instructions: &[Inst]) -> [u16; PROGRAM_LINES] {
 }
 
 /// The fold the circuit recomputes and the registry binds as a public input.
-pub fn program_root(cells: &[u16; PROGRAM_LINES]) -> Fp {
+pub fn program_root(cells: &[u16]) -> Fp {
     let mut acc = Fp::ZERO;
     for cell in cells {
         acc = poseidon2(&acc, &Fp::from_u64(u64::from(*cell)));
@@ -49,15 +61,20 @@ pub fn program_root(cells: &[u16; PROGRAM_LINES]) -> Fp {
 /// hard-wires, now expressed as *data* the proof commits to rather than as
 /// constraints the verifier is rebuilt for.
 pub fn demo_program() -> [u16; PROGRAM_LINES] {
+    assemble(&demo_insts())
+}
+
+/// The demo program's six instructions, before padding to any line count.
+pub fn demo_insts() -> Vec<Inst> {
     use crate::isa::Opcode;
-    assemble(&[
+    vec![
         Inst::new(Opcode::Move, 0, 0, 2),
         Inst::new(Opcode::Pose, 2, 1, 2),
         Inst::new(Opcode::Pose, 2, 1, 2),
         Inst::new(Opcode::Pose, 2, 1, 2),
         Inst::new(Opcode::Pose, 2, 1, 2),
         Inst::new(Opcode::Halt, 0, 0, 0),
-    ])
+    ]
 }
 
 #[cfg(test)]

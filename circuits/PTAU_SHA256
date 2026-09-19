@@ -1,0 +1,25 @@
+# pins for phase-1 transcripts consumed by circuits/setup.sh (PTAU_SOURCE=phase1|file:)
+#
+#   <sha256>  <filename>   [provenance note recorded by setup.sh on first fetch]
+#
+# Keyed by filename, so a transcript supplied as file:<path> pins under its own
+# name and can never shadow (or be shadowed by) another file's entry at the same
+# power. A pin means: this exact byte string passed `snarkjs powersoftau verify`
+# — the full contribution chain — on a machine that ran setup.sh against it.
+#
+# What a pin does NOT mean: that anyone compared the contribution list it
+# printed against the ceremony's published attestations. Until that audit is
+# done by a second party, every pin here is trust-the-machine, and
+# deployments/DEVELOPMENT_FIXTURE.md still says exactly what it says.
+#
+# Context for why pins are recorded rather than downloaded from a list: the
+# buckets that served powersOfTau28_hez_final_* (the Hermez S3 bucket and the
+# zkevm Google Cloud mirror both named by the snarkjs README) answer anonymous
+# GETs with AccessDenied as of 2026-09-14 at the latest — an open upstream
+# issue (iden3/snarkjs #636) reports every listed file, no resolution yet. A
+# repo that simply re-pointed at a random mirror would be trading one thing to
+# trust for a worse one; the two checks setup.sh performs (chain verification,
+# pinned bytes) are what make any supplier of a transcript auditable at all.
+#
+# (no pins as of this writing — one demo entry recorded while exercising the
+# file: mode was removed; the mechanism it tested is unchanged)

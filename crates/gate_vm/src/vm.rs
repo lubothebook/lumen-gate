@@ -17,11 +17,15 @@
 //!   state that did not happen.
 
 use crate::field::Fp;
-use crate::isa::{Inst, Opcode, PROGRAM_LINES, REGISTERS};
+use crate::isa::{Inst, Opcode, REGISTERS, SUPPORTED_SHAPES};
 use crate::poseidon::poseidon2;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum VmError {
+    /// The (program lines, window rows) pair has no compiled circuit. The
+    /// generator refuses shapes it cannot describe, instead of emitting a
+    /// witness that snarkjs would compute happily and no verifier could read.
+    UnsupportedShape(usize, usize),
     /// Program cells that do not decode (an impossible input to the
     /// assembler, guarded at build time; typed here so no caller can forget).
     InvalidProgram,
@@ -41,6 +45,11 @@ impl std::fmt::Display for VmError {
             VmError::AssertionFailed => {
                 write!(f, "an AssertEq instruction compared two different values")
             }
+            VmError::UnsupportedShape(lines, rows) => write!(
+                f,
+                "no compiled circuit covers {lines} program lines with a {rows}-row window; \
+                 the lane supports one shape per gate_vm*.circom main component"
+            ),
         }
     }
 }
@@ -69,13 +78,19 @@ pub struct Receipt {
 
 /// Run the machine over `program` with the two public input elements, for
 /// exactly `window` rows (the last of which must find the machine halted).
-pub fn run(
-    program: &[u16; PROGRAM_LINES],
-    start: &Fp,
-    event: &Fp,
-    window: usize,
-) -> Result<Receipt, VmError> {
-    let mut insts = Vec::with_capacity(PROGRAM_LINES);
+pub fn run(program: &[u16], start: &Fp, event: &Fp, window: usize) -> Result<Receipt, VmError> {
+    // Shape rules, about agreement with the compiled circuits. Program length
+    // must name a size that exists as a `main` component; the window may be
+    // equal to it (the only shape a witness can satisfy) or shorter, which is
+    // a legitimate simulation of gas exhaustion — and can only end in a
+    // refusal, since rows beyond a circuit's window have no constraints to
+    // count them. A *longer* window is refused outright: it would fabricate
+    // rows no verifier will read, and the NoHalt it ends in would describe a
+    // run the circuit never ties to a trace.
+    if !SUPPORTED_SHAPES.contains(&program.len()) || window > program.len() {
+        return Err(VmError::UnsupportedShape(program.len(), window));
+    }
+    let mut insts = Vec::with_capacity(program.len());
     for cell in program {
         insts.push(Inst::decode(*cell).ok_or(VmError::InvalidProgram)?);
     }
@@ -100,7 +115,7 @@ pub fn run(
             // with no end-of-program special case.
             continue;
         }
-        if pc as usize >= PROGRAM_LINES {
+        if pc as usize >= program.len() {
             return Err(VmError::NoHalt);
         }
         let inst = insts[pc as usize];
@@ -167,7 +182,7 @@ mod tests {
     use super::*;
     use crate::program::assemble;
 
-    fn demo() -> [u16; PROGRAM_LINES] {
+    fn demo() -> [u16; crate::program::PROGRAM_LINES] {
         assemble(&[
             Inst::new(Opcode::Move, 0, 0, 2),
             Inst::new(Opcode::Pose, 2, 1, 2),
@@ -216,6 +231,54 @@ mod tests {
         assert_eq!(
             run(&program, &Fp::from_u64(7), &Fp::from_u64(9), 8).err(),
             Some(VmError::AssertionFailed)
+        );
+    }
+
+    #[test]
+    fn test_the_32_line_shape_runs_and_commits_differently() {
+        // One machine, two compilations. The padded rows are indistinguishable
+        // frozen rows — so the run's OUTPUT must survive padding — while the
+        // fold commitment must not: the same six instructions committed into
+        // 32 cells is a different commitment than into 8, because padding is
+        // program, which is the lane's whole stance on zero holes.
+        let small = crate::program::demo_program();
+        let big = crate::program::assemble_len(&crate::program::demo_insts(), 32);
+        let start = Fp::from_u64(41);
+        let event = Fp::from_u64(1);
+        let small_run = run(&small, &start, &event, 8).expect("8 runs");
+        let big_run = run(&big, &start, &event, 32).expect("32 runs");
+        assert_eq!(small_run.output, big_run.output);
+        assert_eq!(small_run.hash_steps, big_run.hash_steps);
+        assert_eq!(big_run.steps.len(), 32);
+        assert_eq!(
+            big_run.steps[31].pc, 5,
+            "pc freezes at the halt line at any scale"
+        );
+        assert_ne!(
+            crate::program::program_root(&small),
+            crate::program::program_root(&big),
+            "padding must move the commitment"
+        );
+    }
+
+    #[test]
+    fn test_shapes_without_a_compiled_circuit_are_refused() {
+        // 16 lines has no main component, and a window longer than the program
+        // describes rows no verifier reads. Both must fail as refusals, not as
+        // usable-looking receipts.
+        let sixteen = crate::program::assemble_len(&crate::program::demo_insts(), 16);
+        assert_eq!(
+            run(&sixteen, &Fp::from_u64(41), &Fp::from_u64(1), 16)
+                .err()
+                .unwrap(),
+            VmError::UnsupportedShape(16, 16)
+        );
+        let demo = crate::program::demo_program();
+        assert_eq!(
+            run(&demo, &Fp::from_u64(41), &Fp::from_u64(1), 9)
+                .err()
+                .unwrap(),
+            VmError::UnsupportedShape(8, 9)
         );
     }
 

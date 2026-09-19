@@ -22,6 +22,17 @@
 
 /// Number of program lines the machine can address (= 2^3).
 pub const PROGRAM_LINES: usize = 8;
+
+/// The largest program any compiled instantiation of `GateVm` covers. The
+/// circuit's pc decomposition and this constant are two readings of one fact;
+/// a witness generator that emitted rows for fifteen-line programs would be
+/// manufacturing proofs nobody can verify.
+pub const PROGRAM_LINES_MAX: usize = 32;
+
+/// Every (lines, rows) shape with a compiled circuit today. Growth of the VM
+/// lane means appending to this list *and* landing the matching main component;
+/// neither half alone is a supported size.
+pub const SUPPORTED_SHAPES: [usize; 2] = [PROGRAM_LINES, PROGRAM_LINES_MAX];
 /// Number of registers (= 2^3).
 pub const REGISTERS: usize = 8;
 /// The execution window: steps the trace carries, including the halting one.
