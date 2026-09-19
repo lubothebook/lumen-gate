@@ -246,6 +246,16 @@ functionality belongs in the off-chain surface, the facade and the docs.
       simulator, 20 adapter); README states the same number. The circuit suite is
       separate and needs no network: 18 checks from `tools/step-chain-tests.mjs`.
 
+- [x] **The last-word control now covers commit messages, not only files.**
+      `scripts/repo-gate.sh` scans every commit reachable from `HEAD` for the
+      retired name. Exactly one occurrence exists: `cf8127db`, authored before
+      this rule was applied. It is recorded as a known exception rather than
+      silently tolerated, because removing a word from the message of a commit
+      that other clones already have means rewriting the history of a shared
+      branch — and that breaks every parallel session working on it. The check
+      is therefore "no commit other than the recorded pre-rule one", which fails
+      the moment a new one appears, and it says so in its own output rather than
+      reporting a clean history it does not have.
 - [x] Project name is Lumen Gate everywhere; the retired brand name appears in
       no tracked file, and that is machine-checked.
 - [x] Single directive file (this document), English only, no country or region

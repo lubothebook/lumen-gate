@@ -172,6 +172,42 @@ else
   printf '%s\n' "$tracked_state"
 fi
 
+# ---------------------------------------------------------------------------
+# 10. Commit messages are part of the repository too.
+#
+# A file check is not enough: the rule is that the retired name never appears,
+# and a commit message is a place it can appear where no file check will ever
+# look. Every commit reachable from HEAD is scanned.
+#
+# One occurrence is recorded as a known exception rather than silently allowed:
+# cf8127db, authored before this rule was applied. It cannot be removed without
+# rewriting the history of a shared branch, which would invalidate every clone
+# that already has it -- a worse outcome than one documented occurrence. The
+# check is therefore "no commit other than the recorded pre-rule one", which is
+# mechanical and fails the moment a new one appears.
+# ---------------------------------------------------------------------------
+pre_rule_commit="cf8127db47ef67716c653df75a52983885419cd8"
+message_offenders=""
+scanned=0
+while IFS= read -r sha; do
+  scanned=$((scanned + 1))
+  body="$(git log -1 --format=%B "$sha" | tr '[:upper:]' '[:lower:]')"
+  case "$body" in
+    *"$needle"*)
+      case "$sha" in
+        "$pre_rule_commit"*) ;;
+        *) message_offenders="$message_offenders$sha\n" ;;
+      esac
+      ;;
+  esac
+done < <(git log --format=%H)
+if [ -z "$message_offenders" ]; then
+  pass "no commit message carries the retired name ($scanned commits scanned; one pre-rule commit recorded as an exception)"
+else
+  fail "commit messages carrying the retired name:"
+  printf '%b' "$message_offenders"
+fi
+
 echo
 if [ "$failures" -eq 0 ]; then
   echo "gate: all checks passed"
