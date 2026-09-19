@@ -85,6 +85,22 @@ async function main() {
     await page.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
     await page.goto(URL_ARG, { waitUntil: 'networkidle2', timeout: 60000 });
     await page.waitForSelector('.cube-lattice .cube', { timeout: 15000 });
+    // Wait for the page to be wired, not merely parsed: a click that lands
+    // before wire() has run does nothing at all, which looks exactly like a
+    // dead button - and that ambiguity produced a false failure against the
+    // live deployment. Two signals are accepted, newest first: the boot beacon
+    // the app sets when it has finished wiring, and, for any build that
+    // predates the beacon, the network pill leaving its "connecting" state
+    // (which only happens after the boot sequence ran).
+    await page.waitForFunction(
+      () =>
+        document.documentElement.dataset.lumenReady === 'ready' ||
+        (() => {
+          const pill = document.getElementById('netPill');
+          return Boolean(pill) && !/connecting/i.test(pill.textContent || '');
+        })(),
+      { timeout: 60000 }
+    );
     await page.evaluate(() => {
       // Scroll-behavior: smooth turns "scroll then measure" into a race, so the
       // harness measures against instant scrolling. It changes nothing else.

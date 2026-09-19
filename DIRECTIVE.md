@@ -480,6 +480,17 @@ functionality belongs in the off-chain surface, the facade and the docs.
       full-bleed lattice behind it stays interactive. No generated artwork
       anywhere, per the standing rule that the operator's pixels are the
       design.
+- [x] **The click-through runs against the live deployment, and it does not
+      guess when the page is ready.** Both browser harnesses take a URL; run
+      against the deployed console, the page check passes and the action check
+      passes three times in a row - 29 controls, every one with a consequence,
+      four disabled controls each stating its reason. The first production run
+      failed, and the reason is worth keeping: the harness waited for markup
+      instead of for the boot sequence, so a click landed before `wire()` had
+      run and every button looked dead. A false "dead button" report is worse
+      than no report, so the page now sets a boot beacon when it has finished
+      wiring and the harness accepts the beacon or, for any build that predates
+      it, the network pill leaving its "connecting" state.
 - [x] **Every control was clicked, in a browser, and the silent ones were
       fixed.** The operator's sentence - "the wallet buttons don't work, test
       the whole system and the screen" - is answerable now: 29 controls clicked

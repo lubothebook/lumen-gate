@@ -149,6 +149,22 @@ async function main() {
     await page.goto(URL_ARG, { waitUntil: 'networkidle2', timeout: 60000 });
     await page.waitForSelector('#txLog', { timeout: 15000 });
     await new Promise((r) => setTimeout(r, 1500));
+    // Wait for the page to be wired, not merely parsed: a click that lands
+    // before wire() has run does nothing at all, which looks exactly like a
+    // dead button - and that ambiguity produced a false failure against the
+    // live deployment. Two signals are accepted, newest first: the boot beacon
+    // the app sets when it has finished wiring, and, for any build that
+    // predates the beacon, the network pill leaving its "connecting" state
+    // (which only happens after the boot sequence ran).
+    await page.waitForFunction(
+      () =>
+        document.documentElement.dataset.lumenReady === 'ready' ||
+        (() => {
+          const pill = document.getElementById('netPill');
+          return Boolean(pill) && !/connecting/i.test(pill.textContent || '');
+        })(),
+      { timeout: 60000 }
+    );
 
     const snap = () => page.evaluate(SNAPSHOT);
     const settle = async () => {
@@ -321,8 +337,11 @@ async function main() {
     // The rule: a control that cannot act must say why, in its own title and in
     // the note it points at. No silent grey buttons.
     await page.reload({ waitUntil: 'networkidle2' });
-    await page.waitForSelector('#txLog', { timeout: 15000 });
-    await new Promise((r) => setTimeout(r, 1200));
+    await page.waitForFunction(
+      () => document.documentElement.dataset.lumenReady === 'ready' || !/connecting/i.test(document.getElementById('netPill')?.textContent || 'connecting'),
+      { timeout: 60000 }
+    );
+    await new Promise((r) => setTimeout(r, 600));
     const disabledReasons = await page.evaluate(() => {
       const out = [];
       for (const button of document.querySelectorAll('button[disabled], button:disabled')) {

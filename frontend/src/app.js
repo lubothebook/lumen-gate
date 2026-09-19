@@ -1344,4 +1344,13 @@ loadStatus()
     await loadAuditHistory();
     return queryFinality('');
   })
-  .catch((error) => log(`Startup failed: ${error}`, 'bad'));
+  .catch((error) => log(`Startup failed: ${error}`, 'bad'))
+  .finally(() => {
+    // A page whose handlers are attached and a page whose handlers are not yet
+    // attached look identical from the outside: both render, both are full of
+    // buttons, and only one of them answers a click. That ambiguity cost a
+    // browser check a false failure against the live deployment, where the
+    // first click landed before wire() had run. The flag below is the page
+    // saying it is ready, for the tools that drive it.
+    document.documentElement.dataset.lumenReady = 'ready';
+  });
