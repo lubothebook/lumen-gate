@@ -55,6 +55,21 @@ Concretely, the Registry computes `H = hash_to_curve(height || state_root || eve
 
 **Where a human still sits, honestly.** Admin-gated bootstrap is a real trust point during setup: whoever holds the admin key decides the initial verifying key and the initial BLS policy. That is why renounce is part of the product and not a footnote, and why the deployed registry has not yet renounced — the on-chain transaction is pending, and this file will not claim it until it is done.
 
+## The same flow, driven from the console
+
+The receipts elsewhere in this file were produced from a terminal. This one was not: the browser console read live status through `/api/status`, created three lock events in one source block through `POST /api/source?path=/lock`, and asked the operator facade for a single relayer pass through `POST /api/relay`. That one pass anchored the block (`f92bfa11…`) and minted all three messages:
+
+| step | transaction |
+| --- | --- |
+| BLS evidence accepted for source height 1 | `f92bfa119ca091fdfc9564c85f429969250b78c60993e92117a53dcb4d7ec30a` |
+| gasless mint 1 of 3 | `2091566f2d36c12132109e60508933e2966dba0d40dda380be10fbb554106769` |
+| gasless mint 2 of 3 | `179d0ee59d15bcdea47569b254fc848c823a1992e557242373abbf54e5351b85` |
+| gasless mint 3 of 3 | `2d5845626e59f9f49912422e11aeddea5a0ab73c24b6425b65906408f165cb40` |
+
+The block held three events, so the Merkle proof was a real tree walk at depth 2 rather than the degenerate single-leaf case. The recipient's XLM balance is **identical before and after** (`1.5000000`): the inbound direction is gasless for the user. The relayer collected `0.3 wSRC` in fees and spent `0.0746712 XLM` on the three transactions plus a trustline, and the arithmetic reconciles exactly — `(13.7 + 13.7000001 + 13.7000002) − 3 × 0.1 = 40.8000003 wSRC` received. Full record: `deployments/testnet.json` → `console_round_trip`.
+
+**This run also found a defect, which is the point of driving the product instead of the CLI.** A lock with a plain-string source sender was accepted by the simulator, hashed into the message id, signed into BLS evidence and *anchored* by the registry — and only then failed at the CLI, because the gateway carries that field in an `Address`-typed argument. The result was a half-settled block: a permanent on-chain finality record for a message nobody could ever mint, with the fee already paid. The simulator now validates sender and recipient as Stellar strkeys before creating an event, so the failure lands where the operator can still act on it.
+
 ## The system keeps proving it, not just proved it once
 
 A test suite proves the contract behaved correctly at the moment someone ran it. That is a one-time claim. The self-audit loop turns it into a standing one.
@@ -65,7 +80,8 @@ A test suite proves the contract behaved correctly at the moment someone ran it.
 2. submits an honest proof and requires it to be **accepted**,
 3. resubmits the identical evidence and requires `#9 EvidenceAlreadyProcessed`,
 4. submits a proof with one byte of the signature tampered and requires `#7 InvalidSignature`,
-5. asks whether the admin capability has actually been given up.
+5. asks whether the admin capability has actually been given up,
+6. resolves every element the console looks up against the markup, because a typo in a selector produces an interface that loads, looks finished and silently does nothing.
 
 Results are timestamped and appended to [`deployments/self-audit.json`](deployments/self-audit.json), and served read-only at `/self-audit` on the anchor facade. Run it with:
 
@@ -76,11 +92,11 @@ REGISTRY_ID=CCXJDQMTJUGXKNFOQPC25IYVOAVWDMLJBNQYX75MAREHV7MZMU5OSEN4 \
 
 **It holds no mint authority.** It cannot approve anything, it cannot change the verifying key, and it is not a new trusted party in the settlement path — it only asks the contract questions and writes down the answers. If it stops running, nothing about settlement changes; you just stop getting fresh evidence.
 
-The latest recorded round is **5/5** (`deployments/self-audit.json`, 2026-09-19T16:47:44Z): honest evidence accepted, replay rejected, tampered signature rejected, verifying key immutable, admin capability renounced. The registry's admin capability was given up permanently with `renounce_admin`, which is the last setup step — after that nobody, including the deployer, can change the verifying key or add a domain.
+The latest recorded round is **6/6** (`deployments/self-audit.json`, round 3): source chain reachable, honest evidence accepted, replay rejected, tampered signature rejected, verifying key immutable, admin capability renounced, console wiring consistent. The registry's admin capability was given up permanently with `renounce_admin`, which is the last setup step — after that nobody, including the deployer, can change the verifying key or add a domain.
 
 ### What this round of work broke, and what that found
 
-The audit loop is only worth running if the failures are written down. This round produced four, all recorded in `deployments/testnet.json` under `findings`:
+The audit loop is only worth running if the failures are written down. This build has produced ten, all recorded in `deployments/testnet.json` under `findings`. The first four:
 
 1. **The first live gasless attempt failed**: the Stellar Asset Contract rejects minting the token to the account that issues it, so the relayer-reward mint trapped and the whole transaction rolled back. The relayer now runs from a separate account that holds the wrapped asset's trustline — which is also the honest topology, because the fee payer should not be the issuer.
 2. **The relayer reported the wrong transaction hash.** It took the first 64-hex-character run out of the CLI output; the CLI echoes its arguments, and the evidence contains a 64-hex adapter id, so the adapter id was printed as the receipt. It now confirms a candidate through `getTransaction` before calling it a receipt — a hash the network has not seen is never reported.
@@ -131,7 +147,7 @@ The Groth16 proof was generated from a circuit compiled in this repository, agai
 
 ### Test status
 
-`cargo test --workspace --lib` → **23 passed, 0 failed** (12 in `finality_registry`, 11 in `settlement_gateway`). Run it yourself; the count in this file is not aspirational. Three of the registry tests replay the exact 256-byte proof and 768-byte key that a testnet transaction accepted, so a regression in the verifier or in the byte encoding fails the suite instead of only failing in production. `-- --nocapture` prints the measured CPU cost of the pairing check.
+`cargo test --workspace --lib` → **26 passed, 0 failed** (12 in `finality_registry`, 11 in `settlement_gateway`, 3 in `source_simulator`). Run it yourself; the count in this file is not aspirational. Three of the registry tests replay the exact 256-byte proof and 768-byte key that a testnet transaction accepted, so a regression in the verifier or in the byte encoding fails the suite instead of only failing in production. `-- --nocapture` prints the measured CPU cost of the pairing check.
 
 ### What is not claimed yet
 
