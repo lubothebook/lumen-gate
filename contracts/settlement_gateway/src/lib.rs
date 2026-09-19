@@ -1,7 +1,7 @@
 #![no_std]
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, token, Address, Bytes, BytesN, Env,
-    IntoVal, Symbol, Vec,
+    IntoVal, String, Symbol, Vec,
 };
 
 #[contracttype]
@@ -55,6 +55,13 @@ pub struct FeeConfig {
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FinalizedRecord {
+    pub state_root: BytesN<32>,
+    pub event_root: BytesN<32>,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DataKey {
     Admin,
     Registry,
@@ -66,6 +73,8 @@ pub enum DataKey {
     FeeConfig,
     RelayerReward(Address),
     PendingMint(BytesN<32>), // message_id -> pending amount for gasless claim
+    TargetDomain,
+    AdminRenounced,
 }
 
 #[contracterror]
@@ -83,6 +92,7 @@ pub enum GatewayError {
     EventRootNotFinalized = 10,
     FeeTooHigh = 11,
     InsufficientAmountAfterFee = 12,
+    InvalidMessageKind = 13,
 }
 
 fn compute_message_id(env: &Env, params: &CrossDomainMessageParams) -> BytesN<32> {
@@ -138,6 +148,46 @@ fn compute_payload_hash_lock(
     env.crypto().sha256(&buf).into()
 }
 
+fn compute_event_leaf(
+    env: &Env,
+    message_id: &BytesN<32>,
+    payload_hash: &BytesN<32>,
+) -> BytesN<32> {
+    let mut buf = Bytes::new(env);
+    buf.append(&message_id.clone().into());
+    buf.append(&payload_hash.clone().into());
+    env.crypto().sha256(&buf).into()
+}
+
+// The reverse-direction event is deliberately a Bytes value rather than a
+// tuple. This gives the relayer a stable, documented wire format without
+// depending on a generated contract client for event-data decoding.
+//
+// Layout (little endian unless noted):
+// amount:i128 | source_height:u64 | nonce:u64 | expiry_height:u64 |
+// target_domain:32 | payload_hash:32 | recipient_len:u32 | recipient:bytes
+fn encode_burn_event(
+    env: &Env,
+    amount: i128,
+    source_height: u64,
+    nonce: u64,
+    expiry_height: u64,
+    target_domain: &BytesN<32>,
+    payload_hash: &BytesN<32>,
+    recipient_on_source: &Bytes,
+) -> Bytes {
+    let mut encoded = Bytes::new(env);
+    encoded.append(&Bytes::from_array(env, &amount.to_le_bytes()));
+    encoded.append(&Bytes::from_array(env, &source_height.to_le_bytes()));
+    encoded.append(&Bytes::from_array(env, &nonce.to_le_bytes()));
+    encoded.append(&Bytes::from_array(env, &expiry_height.to_le_bytes()));
+    encoded.append(&target_domain.clone().into());
+    encoded.append(&payload_hash.clone().into());
+    encoded.append(&Bytes::from_array(env, &recipient_on_source.len().to_le_bytes()));
+    encoded.append(recipient_on_source);
+    encoded
+}
+
 fn verify_merkle_proof(env: &Env, leaf: &BytesN<32>, proof: &Bytes, root: &BytesN<32>) -> bool {
     if proof.len() % 32 != 0 {
         return false;
@@ -187,12 +237,19 @@ pub struct SettlementGateway;
 #[contractimpl]
 impl SettlementGateway {
     pub fn initialize(env: Env, admin: Address, registry: Address, token: Address) {
+        admin.require_auth();
         if env.storage().instance().has(&DataKey::Initialized) {
             panic!("already initialized");
         }
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Registry, &registry);
         env.storage().instance().set(&DataKey::Token, &token);
+        let target_domain: BytesN<32> = env
+            .crypto()
+            .sha256(&Bytes::from_slice(&env, b"lumen-gate-stellar-testnet"))
+            .into();
+        env.storage().instance().set(&DataKey::TargetDomain, &target_domain);
+        env.storage().instance().set(&DataKey::AdminRenounced, &false);
         env.storage().instance().set(&DataKey::Initialized, &true);
         // default fee config 1% min 1
         let fee = FeeConfig {
@@ -211,11 +268,47 @@ impl SettlementGateway {
         env.storage().instance().get(&DataKey::Token)
     }
 
+    pub fn get_target_domain(env: Env) -> Option<BytesN<32>> {
+        env.storage().instance().get(&DataKey::TargetDomain)
+    }
+
+    fn admin_renounced(env: &Env) -> bool {
+        env.storage().instance().get(&DataKey::AdminRenounced).unwrap_or(false)
+    }
+
+    pub fn is_admin_renounced(env: Env) -> bool {
+        Self::admin_renounced(&env)
+    }
+
+    pub fn renounce_admin(env: Env, admin: Address) {
+        if Self::admin_renounced(&env) {
+            panic!("admin already renounced");
+        }
+        admin.require_auth();
+        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        if stored_admin != admin {
+            panic!("not admin");
+        }
+        env.storage().instance().set(&DataKey::AdminRenounced, &true);
+        let zero = Address::from_string(&String::from_str(
+            &env,
+            "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+        ));
+        env.storage().instance().set(&DataKey::Admin, &zero);
+        env.events().publish(
+            (Symbol::new(&env, "admin_renounced"), admin),
+            (Symbol::new(&env, "machine_settlement_only"),),
+        );
+    }
+
     pub fn get_fee_config(env: Env) -> Option<FeeConfig> {
         env.storage().instance().get(&DataKey::FeeConfig)
     }
 
     pub fn set_fee_config(env: Env, admin: Address, collector: Address, fee_bps: u32, min_fee: i128) {
+        if env.storage().instance().get::<DataKey, bool>(&DataKey::AdminRenounced).unwrap_or(false) {
+            panic!("admin renounced");
+        }
         admin.require_auth();
         let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
         if stored_admin != admin {
@@ -316,9 +409,6 @@ impl SettlementGateway {
             kind: params.kind,
             expiry_height: params.expiry_height,
         };
-        env.storage()
-            .persistent()
-            .set(&DataKey::ProcessedMessage(message_id.clone()), &true);
         env.events().publish(
             (Symbol::new(&env, "lock"), message.message_id.clone()),
             (from, amount, target_domain, nonce),
@@ -388,7 +478,24 @@ impl SettlementGateway {
         if expected_id != message.message_id {
             return Err(GatewayError::InvalidMessageId);
         }
-        if (env.ledger().sequence() as u64) > message.expiry_height {
+        let target_domain: BytesN<32> = env
+            .storage()
+            .instance()
+            .get(&DataKey::TargetDomain)
+            .ok_or(GatewayError::NotInitialized)?;
+        if message.target_domain != target_domain {
+            return Err(GatewayError::InvalidMessageId);
+        }
+        if !matches!(&message.kind, MessageKind::Lock | MessageKind::Mint) {
+            return Err(GatewayError::InvalidMessageKind);
+        }
+        if payload_amount <= 0 {
+            return Err(GatewayError::InvalidAmount);
+        }
+        // Expiry is expressed in the source domain's height space. Comparing it
+        // with Stellar's unrelated ledger sequence would expire every source
+        // message immediately after deployment.
+        if message.source_height > message.expiry_height {
             return Err(GatewayError::Expired);
         }
         if Self::is_processed(
@@ -413,11 +520,12 @@ impl SettlementGateway {
                 message.source_height.into_val(env),
             ],
         );
-        let is_finalized: Option<BytesN<32>> =
-            env.invoke_contract(&registry_addr, &Symbol::new(env, "is_finalized"), args.clone());
-        if is_finalized.is_none() {
-            return Err(GatewayError::NotFinalized);
-        }
+        let finalized: Option<FinalizedRecord> = env.invoke_contract(
+            &registry_addr,
+            &Symbol::new(env, "get_finalized_full"),
+            args,
+        );
+        let finalized = finalized.ok_or(GatewayError::NotFinalized)?;
 
         let expected_payload_hash =
             compute_payload_hash_simple(env, &payload_asset, payload_amount, &payload_recipient);
@@ -425,11 +533,9 @@ impl SettlementGateway {
             return Err(GatewayError::InvalidPayloadHash);
         }
 
-        if merkle_proof.len() > 0 {
-            let root_to_verify = is_finalized.unwrap();
-            if !verify_merkle_proof(env, &message.message_id, &merkle_proof, &root_to_verify) {
-                return Err(GatewayError::InvalidMerkleProof);
-            }
+        let leaf = compute_event_leaf(env, &message.message_id, &message.payload_hash);
+        if !verify_merkle_proof(env, &leaf, &merkle_proof, &finalized.event_root) {
+            return Err(GatewayError::InvalidMerkleProof);
         }
 
         Self::mark_processed(
@@ -540,9 +646,19 @@ impl SettlementGateway {
         env.storage()
             .persistent()
             .set(&DataKey::ProcessedMessage(message_id.clone()), &true);
+        let burn_event = encode_burn_event(
+            &env,
+            amount,
+            message.source_height,
+            nonce,
+            expiry_height,
+            &message.target_domain,
+            &message.payload_hash,
+            &recipient_on_source,
+        );
         env.events().publish(
             (Symbol::new(&env, "burn"), message.message_id.clone()),
-            (from, amount, target_domain, nonce),
+            burn_event,
         );
         Ok(message)
     }
@@ -688,6 +804,42 @@ mod test {
     }
 
     #[test]
+    fn test_hwm_accepts_first_zero_nonce() {
+        let env = Env::default();
+        let source = BytesN::from_array(&env, &[1u8; 32]);
+        let target = BytesN::from_array(&env, &[2u8; 32]);
+        let sender = Address::generate(&env);
+        // The high-water mark is (source, target, sender) scoped and defaults to
+        // "nothing seen yet", so the very first nonce -- even nonce 0 -- must be
+        // accepted. Storage is only reachable from inside a contract frame.
+        let gateway_id = env.register(SettlementGateway, ());
+        env.as_contract(&gateway_id, || {
+            assert!(!SettlementGateway::is_processed(&env, &source, &target, &sender, 0));
+            SettlementGateway::mark_processed(&env, &source, &target, &sender, 0).unwrap();
+            assert!(SettlementGateway::is_processed(&env, &source, &target, &sender, 0));
+            assert!(!SettlementGateway::is_processed(&env, &source, &target, &sender, 1));
+            // Replaying the same nonce must fail: the mark only moves forward.
+            assert!(SettlementGateway::mark_processed(&env, &source, &target, &sender, 0).is_err());
+            // And every nonce below the mark is covered without extra state.
+            SettlementGateway::mark_processed(&env, &source, &target, &sender, 5).unwrap();
+            assert!(SettlementGateway::is_processed(&env, &source, &target, &sender, 3));
+            assert!(SettlementGateway::mark_processed(&env, &source, &target, &sender, 4).is_err());
+            assert!(!SettlementGateway::is_processed(&env, &source, &target, &sender, 6));
+        });
+    }
+
+    #[test]
+    fn test_event_leaf_binds_message_and_payload() {
+        let env = Env::default();
+        let message = BytesN::from_array(&env, &[1u8; 32]);
+        let payload_a = BytesN::from_array(&env, &[2u8; 32]);
+        let payload_b = BytesN::from_array(&env, &[3u8; 32]);
+        let a = compute_event_leaf(&env, &message, &payload_a);
+        let b = compute_event_leaf(&env, &message, &payload_b);
+        assert_ne!(a, b);
+    }
+
+    #[test]
     fn test_gasless_fee_split() {
         // Fee abstraction: amount 100, fee 10, recipient gets 90, relayer gets 10
         let amount = 100i128;
@@ -724,6 +876,20 @@ mod test {
                 Some(BytesN::from_array(&env, &[0u8; 32]))
             }
         }
+        pub fn get_finalized_full(
+            env: Env,
+            _domain: BytesN<32>,
+            _height: u64,
+        ) -> Option<FinalizedRecord> {
+            let root = env
+                .storage()
+                .instance()
+                .get::<Symbol, BytesN<32>>(&Symbol::new(&env, "root"))?;
+            Some(FinalizedRecord {
+                state_root: BytesN::from_array(&env, &[0u8; 32]),
+                event_root: root,
+            })
+        }
         pub fn set_root(env: Env, root: BytesN<32>) {
             env.storage()
                 .instance()
@@ -732,10 +898,9 @@ mod test {
     }
 
     #[test]
-    fn test_zero_xlm_gasless_live_proof() {
-        // Critical proof for claim: 0 XLM recipient gets asset via fee from source lock
-        // Fresh never-funded keypair: Address::generate = never friendbot, 0 XLM
-        // Uses finalize_inbound_gasless + sponsored CAP-33 path
+    fn test_gasless_fee_split_with_fresh_simulated_account() {
+        // Unit-level fee split only. A fresh Testnet account must be tested
+        // independently before any live gasless claim is documented.
         let env = Env::default();
         env.mock_all_auths();
 
@@ -744,16 +909,19 @@ mod test {
         let sac = env.register_stellar_asset_contract_v2(token_admin.clone());
         let token_addr = sac.address();
 
-        let fresh_recipient = Address::generate(&env); // 0 XLM, never funded — proof
+        let fresh_recipient = Address::generate(&env); // simulated 0 XLM account
         let relayer = Address::generate(&env);
-        let sender_on_source = Address::generate(&env);
+        let sender_on_source = fresh_recipient.clone();
 
         let total_locked_on_source = 110i128;
         let fee = 10i128;
         let expected_to_recipient = 100i128;
 
         let source_domain = BytesN::from_array(&env, &[1u8; 32]);
-        let target_domain = BytesN::from_array(&env, &[2u8; 32]);
+        let target_domain: BytesN<32> = env
+            .crypto()
+            .sha256(&Bytes::from_slice(&env, b"lumen-gate-stellar-testnet"))
+            .into();
         let payload_hash = compute_payload_hash_simple(
             &env,
             &token_addr,
@@ -768,7 +936,7 @@ mod test {
             event_index: 0,
             nonce: 0,
             sender: sender_on_source.clone(),
-            recipient: sender_on_source.clone(),
+            recipient: fresh_recipient.clone(),
             payload_hash: payload_hash.clone(),
             kind: MessageKind::Lock,
             expiry_height: 10000,
@@ -776,22 +944,23 @@ mod test {
         let message = CrossDomainMessage {
             message_id: compute_message_id(&env, &params),
             source_domain,
-            target_domain,
+            target_domain: target_domain.clone(),
             source_height: 1,
             event_index: 0,
             nonce: 0,
             sender: sender_on_source.clone(),
-            recipient: sender_on_source.clone(),
+            recipient: fresh_recipient.clone(),
             payload_hash,
             kind: MessageKind::Lock,
             expiry_height: 10000,
         };
 
         let mock2_id = env.register(MockRegistryWithRoot, ());
+        let message_root = compute_event_leaf(&env, &message.message_id, &message.payload_hash);
         env.as_contract(&mock2_id, || {
             env.storage()
                 .instance()
-                .set(&Symbol::new(&env, "root"), &message.message_id);
+                .set(&Symbol::new(&env, "root"), &message_root);
         });
 
         let gateway2_id = env.register(SettlementGateway, ());
@@ -835,12 +1004,12 @@ mod test {
         let fresh2 = Address::generate(&env);
         let params2 = CrossDomainMessageParams {
             source_domain: BytesN::from_array(&env, &[1u8; 32]),
-            target_domain: BytesN::from_array(&env, &[2u8; 32]),
+            target_domain: target_domain.clone(),
             source_height: 2,
             event_index: 0,
             nonce: 1,
             sender: sender_on_source.clone(),
-            recipient: sender_on_source.clone(),
+            recipient: fresh2.clone(),
             payload_hash: compute_payload_hash_simple(
                 &env,
                 &token_addr,
@@ -863,10 +1032,11 @@ mod test {
             kind: params2.kind,
             expiry_height: params2.expiry_height,
         };
+        let message2_root = compute_event_leaf(&env, &message2.message_id, &message2.payload_hash);
         env.as_contract(&mock2_id, || {
             env.storage()
                 .instance()
-                .set(&Symbol::new(&env, "root"), &message2.message_id);
+                .set(&Symbol::new(&env, "root"), &message2_root);
         });
         let res2 = gateway2_client.try_finalize_inbound_sponsored(
             &relayer,

@@ -1,5 +1,5 @@
 {
-  "name": "migrate-to-stellar-anchor",
+  "name": "lumen-gate-anchor",
   "version": "0.1.0",
   "main": "server.js",
   "scripts": {

@@ -25,6 +25,7 @@
         }
       ]
     ],
+    [],
     [
       [
         "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
@@ -38,7 +39,7 @@
                   "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
                 },
                 {
-                  "bytes": "0505050505050505050505050505050505050505050505050505050505050505"
+                  "bytes": "0808080808080808080808080808080808080808080808080808080808080808"
                 },
                 {
                   "string": "source-testnet"
@@ -88,7 +89,7 @@
                     "symbol": "Domain"
                   },
                   {
-                    "bytes": "af01cb794f0055a0e0b7b3185785c715382138fe8574fb74d97639cb8153e567"
+                    "bytes": "fd4e957af6a87aeb139643e8c7ae7532c9f961188dee9ec3dd637934ab2d952f"
                   }
                 ]
               },
@@ -112,7 +113,7 @@
                       "symbol": "adapter_id"
                     },
                     "val": {
-                      "bytes": "0505050505050505050505050505050505050505050505050505050505050505"
+                      "bytes": "0808080808080808080808080808080808080808080808080808080808080808"
                     }
                   },
                   {
@@ -241,7 +242,7 @@
                       "val": {
                         "vec": [
                           {
-                            "bytes": "af01cb794f0055a0e0b7b3185785c715382138fe8574fb74d97639cb8153e567"
+                            "bytes": "fd4e957af6a87aeb139643e8c7ae7532c9f961188dee9ec3dd637934ab2d952f"
                           }
                         ]
                       }
@@ -296,7 +297,7 @@
               "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
               "key": {
                 "ledger_key_nonce": {
-                  "nonce": "5541220902715666415"
+                  "nonce": "1033654523790656264"
                 }
               },
               "durability": "temporary",
