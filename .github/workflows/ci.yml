@@ -34,8 +34,15 @@ jobs:
           toolchain: '1.98.1'
           target: wasm32v1-none
           cache: true
+      # The setup action passes `-D warnings` by default and that is kept on
+      # purpose: every field the relayer decodes is now read by the code that
+      # submits, and the one crate-wide warning class the SDK forces (the
+      # deprecated event publisher) is allowed with a reason at the crate root
+      # rather than left to erode. Dead code is a CI error, not a suggestion.
       - name: cargo test
         run: cargo test --workspace
+      - name: cargo clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
       - name: cargo fmt
         run: cargo fmt --all -- --check
 
@@ -49,9 +56,23 @@ jobs:
           toolchain: '1.98.1'
           target: wasm32v1-none
           cache: true
+      - name: install the pinned stellar CLI
+        run: |
+          # soroban-sdk 28 refuses a plain `cargo build` for wasm outright: its
+          # build script only passes when the build system sets the
+          # spec-shaking marker that `stellar contract build` exports, so a
+          # raw cargo invocation can never be green here. Pinning the CLI to
+          # the SDK's own release line keeps the marker and the optimizer
+          # deterministic without depending on what a runner happens to have.
+          curl -fsSL https://github.com/stellar/stellar-cli/releases/download/v28.0.0/stellar-cli-28.0.0-x86_64-unknown-linux-gnu.tar.gz -o /tmp/stellar.tar.gz
+          mkdir -p "$HOME/.local/bin"
+          tar -xzf /tmp/stellar.tar.gz -C "$HOME/.local/bin"
+          chmod +x "$HOME/.local/bin/stellar"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/stellar" --version
       - name: build both contracts
         run: |
-          cargo build --release --target wasm32v1-none -p finality_registry -p settlement_gateway
+          stellar contract build
           ls -l target/wasm32v1-none/release/*.wasm
 
   surface:
@@ -81,8 +102,13 @@ jobs:
           # needs a signer for the challenge, and the challenge transaction is
           # never submitted to any network.
           KEY=$(node -e "const {Keypair}=require('@stellar/stellar-sdk');process.stdout.write(Keypair.random().secret())")
+          # The key is appended to $GITHUB_ENV for the probe step, which signs
+          # a stale challenge of its own, but it must also be inlined on the
+          # server command: GITHUB_ENV only takes effect for later steps, and
+          # a server started in this same step without the key answers every
+          # SEP-10 route as not_configured and collapses the whole probe.
           echo "SEP10_SIGNING_SECRET=$KEY" >> "$GITHUB_ENV"
-          node anchor/server.js > /tmp/facade.log 2>&1 &
+          PUBLIC_FACADE_URL=http://127.0.0.1:8081 SEP10_HOME_DOMAIN=127.0.0.1:8081 SEP10_SIGNING_SECRET="$KEY" node anchor/server.js > /tmp/facade.log 2>&1 &
           for _ in $(seq 1 30); do
             curl -sf http://127.0.0.1:8081/v1/health > /dev/null && break
             sleep 1

@@ -1,3 +1,9 @@
+// Clippy's argument-count and type-complexity caps exist for code where a
+// struct would clarify; here the argument list IS the specification - a
+// verifier's public inputs and a transaction builder's envelope fields read
+// clearer inline than buried in a wrapper type. The lint is allowed at the
+// crate root, once, with this reason, rather than silently at call sites.
+#![allow(clippy::too_many_arguments, clippy::type_complexity)]
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -200,7 +206,7 @@ impl SimulatorState {
         payload_hasher.update((amount as i128).to_le_bytes());
         payload_hasher.update(recipient.as_bytes());
         let payload_hash_bytes = payload_hasher.finalize();
-        let payload_hash = hex::encode(&payload_hash_bytes);
+        let payload_hash = hex::encode(payload_hash_bytes);
 
         // The source adapter domain is deterministic and matches the deployment
         // script. target_domain is the gateway's pinned Stellar domain.
@@ -218,7 +224,7 @@ impl SimulatorState {
         id_hasher.update(height.to_le_bytes());
         id_hasher.update(event_index.to_le_bytes());
         id_hasher.update(nonce.to_le_bytes());
-        id_hasher.update(&payload_hash_bytes);
+        id_hasher.update(payload_hash_bytes);
         id_hasher.update(expiry_height.to_le_bytes());
         id_hasher.update([1u8]); // MessageKind::Lock
         id_hasher.update(sender.as_bytes());
@@ -683,42 +689,6 @@ async fn post_lock(
     }))
 }
 
-#[cfg(test)]
-mod account_tests {
-    use super::{crc16_xmodem, is_stellar_account};
-
-    // Real testnet accounts, used as the vectors this checker must accept.
-    const DEPLOYER: &str = "GBYFDKP4KLQ575HTJRDTHF4HUIVXAQLJNEZMWYJ5HBY3C3GDSPX5H4FR";
-    const RELAYER: &str = "GBDJAEDH5KA4GFZQV3BAD54GN6GS3S3MS23R6SE2RUMHZBIYVMQJZTHD";
-
-    #[test]
-    fn accepts_real_account_strkeys() {
-        assert!(is_stellar_account(DEPLOYER));
-        assert!(is_stellar_account(RELAYER));
-    }
-
-    #[test]
-    fn rejects_plain_strings_and_near_misses() {
-        // The exact string that produced the half-settled block during the
-        // console demo: accepted by the simulator, rejected by the CLI.
-        assert!(!is_stellar_account("G-source-user"));
-        assert!(!is_stellar_account(""));
-        assert!(!is_stellar_account("GABC"));
-        // Valid shape, wrong checksum.
-        let mut broken = String::from(DEPLOYER);
-        broken.replace_range(10..11, "A");
-        assert!(!is_stellar_account(&broken));
-        // Lower case is not the strkey alphabet.
-        assert!(!is_stellar_account(&DEPLOYER.to_lowercase()));
-    }
-
-    #[test]
-    fn crc16_matches_the_known_vector() {
-        // CRC16-XMODEM of "123456789" is 0x31C3.
-        assert_eq!(crc16_xmodem(b"123456789"), 0x31C3);
-    }
-}
-
 async fn post_unlock(
     State(state): State<SharedState>,
     Json(req): Json<UnlockRequest>,
@@ -781,7 +751,7 @@ async fn get_events(
         Json(s.events.get(&h).cloned().unwrap_or_default())
     } else {
         let mut all = Vec::new();
-        for (_h, evts) in &s.events {
+        for evts in s.events.values() {
             all.extend(evts.clone());
         }
         Json(all)
@@ -807,15 +777,12 @@ async fn get_proof(
 
         let tamper_clone = q.tamper.clone();
         if let Some(t) = tamper_clone {
-            match t.as_str() {
-                "sig" => {
-                    for i in 80..176 {
-                        if i < payload.len() {
-                            payload[i] = 0;
-                        }
+            if t.as_str() == "sig" {
+                for i in 80..176 {
+                    if i < payload.len() {
+                        payload[i] = 0;
                     }
                 }
-                _ => {}
             }
         }
 
@@ -981,4 +948,40 @@ async fn main() {
         .unwrap();
     println!("Source simulator listening on 0.0.0.0:{}", port);
     axum::serve(listener, app).await.unwrap();
+}
+
+#[cfg(test)]
+mod account_tests {
+    use super::{crc16_xmodem, is_stellar_account};
+
+    // Real testnet accounts, used as the vectors this checker must accept.
+    const DEPLOYER: &str = "GBYFDKP4KLQ575HTJRDTHF4HUIVXAQLJNEZMWYJ5HBY3C3GDSPX5H4FR";
+    const RELAYER: &str = "GBDJAEDH5KA4GFZQV3BAD54GN6GS3S3MS23R6SE2RUMHZBIYVMQJZTHD";
+
+    #[test]
+    fn accepts_real_account_strkeys() {
+        assert!(is_stellar_account(DEPLOYER));
+        assert!(is_stellar_account(RELAYER));
+    }
+
+    #[test]
+    fn rejects_plain_strings_and_near_misses() {
+        // The exact string that produced the half-settled block during the
+        // console demo: accepted by the simulator, rejected by the CLI.
+        assert!(!is_stellar_account("G-source-user"));
+        assert!(!is_stellar_account(""));
+        assert!(!is_stellar_account("GABC"));
+        // Valid shape, wrong checksum.
+        let mut broken = String::from(DEPLOYER);
+        broken.replace_range(10..11, "A");
+        assert!(!is_stellar_account(&broken));
+        // Lower case is not the strkey alphabet.
+        assert!(!is_stellar_account(&DEPLOYER.to_lowercase()));
+    }
+
+    #[test]
+    fn crc16_matches_the_known_vector() {
+        // CRC16-XMODEM of "123456789" is 0x31C3.
+        assert_eq!(crc16_xmodem(b"123456789"), 0x31C3);
+    }
 }

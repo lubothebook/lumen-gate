@@ -138,9 +138,8 @@ impl CrossDomainMessage {
             hasher.update((field.len() as u64).to_le_bytes());
             hasher.update(field);
         }
-        match &params.kind {
-            MessageKind::Custom(bytes) => hasher.update(bytes),
-            _ => {}
+        if let MessageKind::Custom(bytes) = &params.kind {
+            hasher.update(bytes);
         }
         let digest = hasher.finalize();
         let mut out = [0u8; 32];

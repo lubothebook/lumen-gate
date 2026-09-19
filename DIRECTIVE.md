@@ -296,6 +296,34 @@ functionality belongs in the off-chain surface, the facade and the docs.
       below-threshold master-key signature the previous verifier accepted.
 - [x] The self-audit loop asks twelve questions; question 12 runs
       `tools/check-sep10.js` as `sep10_weight_verification`.
+- [x] CI is strict and green-shaped. The `tests` job keeps the toolchain
+      action's implicit `-D warnings` (dead code is a CI error, not a
+      suggestion) and adds `cargo clippy --workspace --all-targets
+      -- -D warnings`; the one suppression is `#![allow(deprecated)]` at both
+      contract roots, reasoned at the site, for the event-publisher migration
+      that belongs to a coordinated redeploy (listed below, not hidden). The
+      `contracts` job no longer runs a bare `cargo build` for wasm, which can
+      never pass: soroban-sdk 28's build script looks for a marker that only
+      `stellar contract build` exports, so the job installs the CLI pinned to
+      the SDK's release line (v28.0.0) and builds with it; a rebuild from
+      current source reproduces the gateway at the deployed `wasm_bytes`
+      (18,303). The `surface` job was red since its first run for an
+      instructive reason: `GITHUB_ENV` does not reach a process started in the
+      same step, so the facade booted without its SEP-10 key and answered
+      every route `not_configured`; the key and public URL are now inlined on
+      the server command, and the probe passes 27/27 against exactly the CI
+      invocation (verified locally on 127.0.0.1, the origin that previously
+      failed).
+- [x] The relayer reads what it declares. The BLS lane cross-checks the
+      signed payload against the block it is about to attest - equal height,
+      state root and event root - before spending gas on submission, and the
+      ZK lane is exempt with a stated reason because its payload commits to a
+      different relation; a mismatched envelope is refused with a print, not
+      silently paid for. Manifest resolution is now uniform: RPC URL falls
+      back to `deployments/testnet.json`, and so does the relayer fee
+      recipient (`accounts.relayer_only`), which was the one place the
+      placeholder address could still win; a live run whose `STELLAR_NETWORK`
+      disagrees with the manifest's network aborts before signing.
 
 ### Still missing (stated, not hidden)
 
@@ -338,6 +366,12 @@ functionality belongs in the off-chain surface, the facade and the docs.
 - [ ] Bonds, slashing, validator rotation, fraud proofs.
 - [ ] SEP-24 hosted flow and SEP-12 KYC. Marked `not_implemented` where a client
       would look for them.
+- [ ] Event-format migration debt: both contracts publish through the
+      publisher SDK 28 deprecates, because the relayer decodes Burn payloads
+      from the exact legacy topics. Moving to the event macros changes the
+      on-chain topic layout and must land together with a relayer decoder
+      change and a redeploy; until then the crate-root `allow(deprecated)`
+      stands, and nothing else may lean on it as precedent.
 - [ ] Relayer liveness: one operator runs it. It is not a trusted party in the
       mint decision, but it is a liveness dependency.
 - [ ] The recorded settlement receipts were re-verified against Horizon this

@@ -1,3 +1,9 @@
+// Clippy's argument-count and type-complexity caps exist for code where a
+// struct would clarify; here the argument list IS the specification - a
+// verifier's public inputs and a transaction builder's envelope fields read
+// clearer inline than buried in a wrapper type. The lint is allowed at the
+// crate root, once, with this reason, rather than silently at call sites.
+#![allow(clippy::too_many_arguments, clippy::type_complexity)]
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use serde::{Deserialize, Serialize};
 use std::convert::TryInto;
@@ -99,6 +105,21 @@ impl Deployment {
                 }
                 if let Some(id) = value.get("contract_id").and_then(|value| value.as_str()) {
                     return Some(id.to_string());
+                }
+            }
+        }
+        None
+    }
+    /// Same first-key-wins rule as `contract`, for operator accounts. The
+    /// relayer's own address matters: it is the fee recipient of a gasless
+    /// mint, and a placeholder there is how an operator pays without being
+    /// repaid. The manifest names it, so the manifest is consulted before the
+    /// broken default is used.
+    fn account(&self, keys: &[&str]) -> Option<String> {
+        for key in keys {
+            if let Some(value) = self.accounts.get(*key) {
+                if !value.is_empty() && !is_placeholder(value) {
+                    return Some(value.clone());
                 }
             }
         }
@@ -635,14 +656,45 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let sim_url = option_after(&args, "--sim-url")
         .or_else(|| std::env::var("SIM_URL").ok())
         .unwrap_or_else(|| "http://localhost:3001".to_string());
+    // The manifest is loaded first because it is configuration, and the
+    // relayer's stated rule is that addresses come from `deployments/testnet.json`
+    // when they are not explicitly overridden. Reading it before the endpoints
+    // are resolved is what makes that rule true for the RPC and the fee
+    // recipient, not only for the contract ids.
+    let deployment: Option<Deployment> = std::fs::read_to_string("deployments/testnet.json")
+        .ok()
+        .and_then(|contents| serde_json::from_str(&contents).ok());
+    let network = std::env::var("STELLAR_NETWORK").unwrap_or_else(|_| "testnet".to_string());
+    if !dry_run {
+        if let Some(deployment) = &deployment {
+            if deployment.network != network {
+                return Err(std::io::Error::other(format!(
+                    "the deployment manifest is network '{}' but STELLAR_NETWORK is '{network}'; refusing to sign testnet-shaped calls against another network's addresses",
+                    deployment.network
+                ))
+                .into());
+            }
+        }
+    }
     let rpc_url = option_after(&args, "--rpc")
         .or_else(|| std::env::var("RPC_URL").ok())
+        .or_else(|| {
+            deployment
+                .as_ref()
+                .map(|deployment| deployment.rpc_url.clone())
+                .filter(|url| !url.is_empty())
+        })
         .unwrap_or_else(|| "https://soroban-testnet.stellar.org".to_string());
-    let network = std::env::var("STELLAR_NETWORK").unwrap_or_else(|_| "testnet".to_string());
     let relayer_account =
         std::env::var("STELLAR_SOURCE_ACCOUNT").unwrap_or_else(|_| "relayer".to_string());
     let relayer_address = std::env::var("STELLAR_RELAYER_ADDRESS")
-        .unwrap_or_else(|_| "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF".to_string());
+        .ok()
+        .or_else(|| {
+            deployment
+                .as_ref()
+                .and_then(|deployment| deployment.account(&["relayer", "relayer_only"]))
+        })
+        .unwrap_or_else(|| "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF".to_string());
     // Backfill support: the daemon normally follows the newest source block, but
     // a specific height can be pinned (for a replay, an audit, or a demo where
     // empty blocks keep arriving faster than a human can act). `--once` exits
@@ -695,9 +747,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Err(error) => return Err(std::io::Error::other(error).into()),
     };
 
-    let deployment: Option<Deployment> = std::fs::read_to_string("deployments/testnet.json")
-        .ok()
-        .and_then(|contents| serde_json::from_str(&contents).ok());
     let registry_id = deployment
         .as_ref()
         .and_then(|deployment| deployment.contract(&["finality_registry", "registry"]))
@@ -901,6 +950,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 );
                 if let Some(vk) = &proof.vk_hex {
                     println!("  ZK VK bytes={}", vk.len() / 2);
+                }
+                // Boundary rule, the same one the registry applies to declared
+                // fields: nothing in a proof envelope is trusted. For the BLS
+                // lane the payload carries the very roots the signature
+                // covers, so the relayer requires them to equal the block it
+                // fetched before it spends a transaction fee on submission.
+                // The ZK lane is exempt because its payload commits to a
+                // different relation (a Poseidon chain), not to these fields.
+                if kind == "bls" {
+                    let envelope_is_coherent = proof.payload.height == proof.declared_height
+                        && proof.declared_height == block.height
+                        && proof.payload.state_root == block.state_root
+                        && proof.payload.event_root == block.event_root;
+                    if !envelope_is_coherent {
+                        eprintln!(
+                            "  bls evidence refused before submission: the proof describes height {} (state {}\u{2026}, event {}\u{2026}) but the block is height {} (state {}\u{2026}, event {}\u{2026})",
+                            proof.payload.height,
+                            &proof.payload.state_root[..8.min(proof.payload.state_root.len())],
+                            &proof.payload.event_root[..8.min(proof.payload.event_root.len())],
+                            block.height,
+                            &block.state_root[..8.min(block.state_root.len())],
+                            &block.event_root[..8.min(block.event_root.len())],
+                        );
+                        continue;
+                    }
                 }
                 let result = if submitted.contains(&key) {
                     Ok(())

@@ -1,4 +1,18 @@
 #![no_std]
+// SDK 28 deprecates `env.events().publish` in favour of the `#[contractevent]`
+// macro, which changes the emitted event's topic structure. The deployed
+// contracts publish in the legacy shape and the relayer decodes the Burn
+// payload from those exact topics, so matching the new macro here would break
+// live consumers for a style warning. The allowance is scoped to this crate,
+// named at its cause, and listed in the directive's known gaps; a migration
+// of events is a coordinated contract redeploy, not a silent edit.
+#![allow(deprecated)]
+// Clippy's argument-count and type-complexity caps exist for code where a
+// struct would clarify; here the argument list IS the specification - a
+// verifier's public inputs and a transaction builder's envelope fields read
+// clearer inline than buried in a wrapper type. The lint is allowed at the
+// crate root, once, with this reason, rather than silently at call sites.
+#![allow(clippy::too_many_arguments, clippy::type_complexity)]
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, crypto::bls12_381::Bls12381G1Affine,
     crypto::bls12_381::Bls12381G2Affine, crypto::bn254::Bn254Fr, crypto::bn254::Bn254G1Affine,
@@ -338,13 +352,13 @@ fn parse_bls_payload(
     for i in 0u32..32 {
         sr_arr[i as usize] = sr_slice.get(i).unwrap_or(0);
     }
-    let state_root = BytesN::from_array(&env, &sr_arr);
+    let state_root = BytesN::from_array(env, &sr_arr);
     let er_slice = payload.slice(40..72);
     let mut er_arr = [0u8; 32];
     for i in 0u32..32 {
         er_arr[i as usize] = er_slice.get(i).unwrap_or(0);
     }
-    let event_root = BytesN::from_array(&env, &er_arr);
+    let event_root = BytesN::from_array(env, &er_arr);
     let sc_slice = payload.slice(72..76);
     let mut sc_bytes = [0u8; 4];
     for i in 0u32..4 {
@@ -481,7 +495,7 @@ impl FinalityRegistry {
         if stored_admin != admin {
             panic!("not admin");
         }
-        if accepted_versions.len() == 0 || !accepted_versions.contains(&adapter_version) {
+        if accepted_versions.is_empty() || !accepted_versions.contains(adapter_version) {
             panic!("adapter version must be accepted");
         }
         let domain_key = compute_domain_key(&env, &adapter_id, &network);
@@ -687,10 +701,7 @@ impl FinalityRegistry {
             .get(&DataKey::BlsPolicy(domain_key.clone()))
             .ok_or(RegistryError::InvalidSignature)?;
 
-        if !record
-            .accepted_versions
-            .contains(&evidence.evidence_version)
-        {
+        if !record.accepted_versions.contains(evidence.evidence_version) {
             return Err(RegistryError::VersionNotAccepted);
         }
         let digest = compute_evidence_digest(&env, &evidence);
@@ -823,10 +834,7 @@ impl FinalityRegistry {
             return Err(RegistryError::NotAdmitted);
         }
 
-        if !record
-            .accepted_versions
-            .contains(&evidence.evidence_version)
-        {
+        if !record.accepted_versions.contains(evidence.evidence_version) {
             return Err(RegistryError::VersionNotAccepted);
         }
         let digest = compute_evidence_digest(&env, &evidence);
@@ -863,7 +871,7 @@ impl FinalityRegistry {
             .instance()
             .get(&DataKey::Vk)
             .unwrap_or(Bytes::new(&env));
-        if vk.len() == 0 || public_inputs.is_empty() {
+        if vk.is_empty() || public_inputs.is_empty() {
             return Err(RegistryError::InvalidProof);
         }
 
@@ -999,10 +1007,7 @@ impl FinalityRegistry {
         if record.state == 0 || record.state >= 3 {
             return Err(RegistryError::NotAdmitted);
         }
-        if !record
-            .accepted_versions
-            .contains(&evidence.evidence_version)
-        {
+        if !record.accepted_versions.contains(evidence.evidence_version) {
             return Err(RegistryError::VersionNotAccepted);
         }
 
@@ -1301,7 +1306,10 @@ mod test {
     /// enough that writing the length twice invites a typo.
     fn decode_hex_var(text: &str) -> std::vec::Vec<u8> {
         let bytes = text.as_bytes();
-        assert!(bytes.len() % 2 == 0, "hex string must have an even length");
+        assert!(
+            bytes.len().is_multiple_of(2),
+            "hex string must have an even length"
+        );
         let mut out = std::vec::Vec::with_capacity(bytes.len() / 2);
         let digit = |c: u8| match c {
             b'0'..=b'9' => c - b'0',
@@ -1467,9 +1475,9 @@ mod test {
         let client = FinalityRegistryClient::new(&env, &contract_id);
         let admin = Address::generate(&env);
         client.initialize(&admin);
-        assert_eq!(client.is_admin_renounced_check(), false);
+        assert!(!client.is_admin_renounced_check());
         client.renounce_admin(&admin);
-        assert_eq!(client.is_admin_renounced_check(), true);
+        assert!(client.is_admin_renounced_check());
         // After renounce, set_vk should fail
         let vk = soroban_sdk::Bytes::from_array(&env, &[1u8; 10]);
         let res = client.try_set_vk(&admin, &vk);
@@ -1772,11 +1780,11 @@ mod test {
     }
 
     fn sc_vk(env: &Env) -> Bytes {
-        Bytes::from_slice(env, &decode_hex_var(&vsc::VK_HEX))
+        Bytes::from_slice(env, &decode_hex_var(vsc::VK_HEX))
     }
 
     fn sc_proof(env: &Env) -> Bytes {
-        Bytes::from_slice(env, &decode_hex_var(&vsc::PROOF_HEX))
+        Bytes::from_slice(env, &decode_hex_var(vsc::PROOF_HEX))
     }
 
     fn sc_inputs(env: &Env) -> Vec<BytesN<32>> {
@@ -1867,6 +1875,17 @@ mod test {
             vsc::PUBLIC_INPUTS_HEX[SC_TAG],
             "009517e443e84062a6781b2a92160d0a325f4c5a45826a0c0b54644e2ed574f0"
         );
+        // The order table only earns its bytes if the test ties it to the
+        // indices the verifier actually reads; that is what makes "the
+        // contract test and this file cannot drift apart" an assertion
+        // instead of a wish.
+        assert_eq!(vsc::PUBLIC_INPUT_ORDER.len(), vsc::PUBLIC_INPUTS_HEX.len());
+        assert_eq!(vsc::PUBLIC_INPUT_ORDER[SC_START], "chain_start_root");
+        assert_eq!(vsc::PUBLIC_INPUT_ORDER[SC_END], "chain_end_root");
+        assert_eq!(vsc::PUBLIC_INPUT_ORDER[SC_EVENT], "event_root");
+        assert_eq!(vsc::PUBLIC_INPUT_ORDER[SC_THRESHOLD], "threshold");
+        assert_eq!(vsc::PUBLIC_INPUT_ORDER[SC_LENGTH], "chain_length");
+        assert_eq!(vsc::PUBLIC_INPUT_ORDER[SC_TAG], "domain_tag");
     }
 
     #[test]
@@ -2041,7 +2060,7 @@ mod test {
         // proof one byte short and one byte long. Both are format errors: the
         // length is checked before any decoding, so the refusal is a clean
         // InvalidProof rather than a decoding panic.
-        let mut short_proof = decode_hex_var(&vsc::PROOF_HEX);
+        let mut short_proof = decode_hex_var(vsc::PROOF_HEX);
         short_proof.pop();
         let res = client.try_submit_step_chain_zk(
             &sc_evidence(&env, 93),
@@ -2054,7 +2073,7 @@ mod test {
             res
         );
 
-        let mut long_proof = decode_hex_var(&vsc::PROOF_HEX);
+        let mut long_proof = decode_hex_var(vsc::PROOF_HEX);
         long_proof.push(0);
         let res = client.try_submit_step_chain_zk(
             &sc_evidence(&env, 94),

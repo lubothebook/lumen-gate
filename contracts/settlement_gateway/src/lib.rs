@@ -1,4 +1,16 @@
 #![no_std]
+// Mirrors finality_registry: SDK 28 deprecates `env.events().publish` for the
+// `#[contractevent]` macro, whose topic layout differs from what the deployed
+// contract emits and what the relayer decodes. Migrating is a coordinated
+// redeploy, so the legacy publisher stays, allowed explicitly rather than by
+// leaving the warning to fail a strict build.
+#![allow(deprecated)]
+// Clippy's argument-count and type-complexity caps exist for code where a
+// struct would clarify; here the argument list IS the specification - a
+// verifier's public inputs and a transaction builder's envelope fields read
+// clearer inline than buried in a wrapper type. The lint is allowed at the
+// crate root, once, with this reason, rather than silently at call sites.
+#![allow(clippy::too_many_arguments, clippy::type_complexity)]
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, token, Address, Bytes, BytesN, Env,
     IntoVal, String, Symbol, Vec,
@@ -214,10 +226,10 @@ fn encode_burn_event(
 }
 
 fn verify_merkle_proof(env: &Env, leaf: &BytesN<32>, proof: &Bytes, root: &BytesN<32>) -> bool {
-    if proof.len() % 32 != 0 {
+    if !proof.len().is_multiple_of(32) {
         return false;
     }
-    if proof.len() == 0 {
+    if proof.is_empty() {
         return leaf == root;
     }
     let mut current = leaf.clone();
@@ -429,7 +441,7 @@ impl SettlementGateway {
         let registry_domain: BytesN<32> = BytesN::from_array(&env, &[0u8; 32]);
 
         let token_client = token::Client::new(&env, &token_addr);
-        token_client.transfer(&from, &env.current_contract_address(), &amount);
+        token_client.transfer(&from, env.current_contract_address(), &amount);
 
         let payload_hash =
             compute_payload_hash_lock(&env, &token_addr, amount, &recipient_on_source);

@@ -280,8 +280,8 @@ mod tests {
         bytes.extend_from_slice(&required.to_le_bytes());
         // A structurally valid signature and key: the real pairing check runs
         // on-chain, so this side only has to see non-degenerate bytes.
-        bytes.extend(std::iter::repeat(1u8).take(96));
-        bytes.extend(std::iter::repeat(2u8).take(192));
+        bytes.extend(std::iter::repeat_n(1u8, 96));
+        bytes.extend(std::iter::repeat_n(2u8, 192));
         bytes
     }
 
