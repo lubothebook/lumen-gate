@@ -314,6 +314,19 @@ functionality belongs in the off-chain surface, the facade and the docs.
       the server command, and the probe passes 27/27 against exactly the CI
       invocation (verified locally on 127.0.0.1, the origin that previously
       failed).
+- [x] The cash-out path keeps its function and loses its geography. The
+      exit client had inherited the counterparty anchor's region: a
+      hard-coded fiat identifier, `TR_*` environment names, and a file named
+      for it. The client is now `anchor/cashout-client.js`, discovers the
+      SEP-38 buy assets from the anchor's own `/info` list (override:
+      `CASHOUT_QUOTE_ASSET`) instead of naming a currency, and refuses
+      honestly when nothing is quotable; verified live - the discovery path
+      reproduces the committed receipt's 24.27-unit quote against the testnet
+      anchor. The gate gained the patterns that missed it (`\bTRY\b`, the
+      env prefix, the old slugs), canaried by planting and removing a
+      violation, and gained a written exclusion: recorded third-party
+      responses in `deployments/` stay byte-exact because a tidied receipt is
+      not a receipt.
 - [x] The relayer reads what it declares. The BLS lane cross-checks the
       signed payload against the block it is about to attest - equal height,
       state root and event root - before spending gas on submission, and the
