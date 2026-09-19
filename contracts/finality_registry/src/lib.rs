@@ -1807,12 +1807,12 @@ mod step_chain_vectors;
 mod execution_trace_vectors;
 
 #[cfg(test)]
-mod gate_vm_vectors;
-#[cfg(test)]
 /// The 32-line sibling's committed vectors: its own ceremony's key, the same
 /// demo execution, and the invariance the split was built on -- end root
 /// equal to the 8-line lane's, program commitment different by construction.
 mod gate_vm32_vectors;
+#[cfg(test)]
+mod gate_vm_vectors;
 
 // ---------------------------------------------------------------------------
 // Multi-step chained lane: payload parsing and public-input binding
@@ -3761,8 +3761,8 @@ mod test {
                 &inputs.get(index as u32).unwrap().to_array(),
             ));
         }
-        let steps =
-            hash_steps_override.unwrap_or_else(|| public_u64(&inputs.get(GV_HASH_STEPS as u32).unwrap()));
+        let steps = hash_steps_override
+            .unwrap_or_else(|| public_u64(&inputs.get(GV_HASH_STEPS as u32).unwrap()));
         payload.append(&Bytes::from_array(env, &steps.to_le_bytes()));
         payload
     }
@@ -3804,7 +3804,10 @@ mod test {
     fn test_gate_vm32_vectors_are_the_layout_the_sibling_expects() {
         assert_eq!(g3x::VK_HEX.len(), (GATE_VM32_VK_LEN as usize) * 2);
         assert_eq!(g3x::PROOF_HEX.len(), 256 * 2);
-        assert_eq!(g3x::PUBLIC_INPUTS_HEX.len(), GATE_VM32_PUBLIC_INPUTS as usize);
+        assert_eq!(
+            g3x::PUBLIC_INPUTS_HEX.len(),
+            GATE_VM32_PUBLIC_INPUTS as usize
+        );
         assert_eq!(
             g3x::PUBLIC_INPUT_ORDER,
             [
@@ -3820,7 +3823,10 @@ mod test {
         let env = Env::default();
         let rebuilt = g32_payload(&env, g3x::HEIGHT, None);
         let committed = Bytes::from_slice(&env, &decode_hex_var(g3x::PAYLOAD_HEX));
-        assert_eq!(rebuilt, committed, "the reconstructed payload must equal the committed bytes");
+        assert_eq!(
+            rebuilt, committed,
+            "the reconstructed payload must equal the committed bytes"
+        );
         assert_eq!(committed.len(), GATE_VM32_PAYLOAD_LEN);
     }
 
@@ -3867,7 +3873,8 @@ mod test {
             "one machine, one tag"
         );
         assert_ne!(
-            gvx::VK_HEX, g3x::VK_HEX,
+            gvx::VK_HEX,
+            g3x::VK_HEX,
             "the two 896-byte siblings must be different ceremonies"
         );
         assert_eq!(gvx::VK_HEX.len(), g3x::VK_HEX.len());
@@ -3895,7 +3902,10 @@ mod test {
                 network,
                 payload: g32_payload(&env, g3x::HEIGHT, Some(32)),
                 declared_height: g3x::HEIGHT,
-                declared_root: BytesN::from_array(&env, &inputs.get(GV_END as u32).unwrap().to_array()),
+                declared_root: BytesN::from_array(
+                    &env,
+                    &inputs.get(GV_END as u32).unwrap().to_array(),
+                ),
                 submitter: Address::generate(&env),
             },
             &g32_hex(&env, g3x::PROOF_HEX),
@@ -3918,7 +3928,14 @@ mod test {
         let admin = Address::generate(&env);
         client.initialize(&admin);
         let (adapter, network) = sc_domain(&env);
-        let domain = client.register_domain(&admin, &adapter, &network, &10, &1, &Vec::from_array(&env, [1u32]));
+        let domain = client.register_domain(
+            &admin,
+            &adapter,
+            &network,
+            &10,
+            &1,
+            &Vec::from_array(&env, [1u32]),
+        );
         client.admit_domain(&admin, &domain);
         client.set_gate_vm32_vk(&admin, &g32_hex(&env, gvx::VK_HEX)); // the WRONG 896
 
@@ -3969,7 +3986,10 @@ mod test {
         let (client, admin, _domain) = g32_registry(&env);
         client.renounce_admin(&admin);
         let res = client.try_set_gate_vm32_vk(&admin, &g32_hex(&env, g3x::VK_HEX));
-        assert!(res.is_err(), "the sibling slot must freeze with all the others");
+        assert!(
+            res.is_err(),
+            "the sibling slot must freeze with all the others"
+        );
     }
 
     #[test]
