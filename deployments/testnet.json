@@ -1,447 +1,454 @@
 {
- "network": "testnet",
- "network_passphrase": "Test SDF Network ; September 2015",
- "protocol_version_at_deploy": 28,
- "rpc_url": "https://soroban-testnet.stellar.org",
- "horizon_url": "https://horizon-testnet.stellar.org",
- "recorded_at": "2026-09-19",
- "note": "Every hash in this file was read back from Stellar testnet, not written from memory. Superseded contracts are kept rather than deleted so what was replaced, and why, stays visible. Re-verify with anchor/self-audit.js.",
- "accounts": {
-  "deployer_and_relayer": "GBYFDKP4KLQ575HTJRDTHF4HUIVXAQLJNEZMWYJ5HBY3C3GDSPX5H4FR",
-  "end_user": "GD6Z33PJZXS4V75JRXHD6YQNCWDJKB72JGGSGVXQM4USF4SWVDBXG4E3",
-  "relayer_only": "GCPVJ6Z5DZA3KZ3WOJRIDNLKEMTKMBR6HDZEUSFXKOYX5Q7BG6VLVCAK",
-  "gasless_recipient": "GCN65ER7FFAKQCECCWMUQVNGK5AQQIBON6KIJBO5FIYTHLXV4EFGVYGM"
- },
- "contracts": {
-  "finality_registry": {
-   "contract_id": "CCXJDQMTJUGXKNFOQPC25IYVOAVWDMLJBNQYX75MAREHV7MZMU5OSEN4",
-   "wasm_hash": "9be6b84b31839de3f8810cd33c42018e95809e13d3867eddde7f2ba1224e02d4",
-   "status": "live",
-   "admin": "renounced - permanently given up, see the renounce_admin receipt"
+  "network": "testnet",
+  "network_passphrase": "Test SDF Network ; September 2015",
+  "protocol_version_at_deploy": 28,
+  "rpc_url": "https://soroban-testnet.stellar.org",
+  "horizon_url": "https://horizon-testnet.stellar.org",
+  "recorded_at": "2026-09-19",
+  "note": "Every hash in this file was read back from Stellar testnet, not written from memory. Superseded contracts are kept rather than deleted so what was replaced, and why, stays visible. Re-verify with anchor/self-audit.js.",
+  "accounts": {
+    "deployer_and_relayer": "GBYFDKP4KLQ575HTJRDTHF4HUIVXAQLJNEZMWYJ5HBY3C3GDSPX5H4FR",
+    "end_user": "GD6Z33PJZXS4V75JRXHD6YQNCWDJKB72JGGSGVXQM4USF4SWVDBXG4E3",
+    "relayer_only": "GCPVJ6Z5DZA3KZ3WOJRIDNLKEMTKMBR6HDZEUSFXKOYX5Q7BG6VLVCAK",
+    "gasless_recipient": "GCN65ER7FFAKQCECCWMUQVNGK5AQQIBON6KIJBO5FIYTHLXV4EFGVYGM"
   },
-  "settlement_gateway": {
-   "contract_id": "CBUKVNCPF5XRYJVAH2SRLTLUMZT6T677T5KAJADXZIQOQTCTSBITQVPA",
-   "wasm_bytes": 18303,
-   "status": "live",
-   "superseded": {
-    "CAXQVMSRRMZSM36P4XE53BJFUIYHOGIDWVDGA6A5LK5HTRL4KWQUBX5B": "v1, 15137 bytes - could not be driven from the command line: its inbound entrypoint takes a struct with a nested enum, and soroban-spec-tools' parse_union is unimplemented, so the CLI panics before it can build the argument",
-    "CBFCPCX4ISXOQXCAUBFN5AS5AIDJNSE3BHY5ROSZJ7JS6SAKZ2IM45UZ": "v2, 18242 bytes - added the enum-free tooling entrypoints, and minted live at height 91; retired because the SAC admin had already been handed to it and set_admin cannot be called by anyone else",
-    "CBOWN6KAURZI6YWBMP7TJKULDKLRLR6YMFU4KNM6E52VHE3XHFJCXDDE": "v3, 18303 bytes - first build with the burn footprint fix; retired because it was initialized against the old SAC"
-   },
-   "what_v4_fixes": "burn_and_relay wrote a storage key derived from the live ledger sequence (message_id embeds source_height). Simulation and execution run at different ledger sequences, so the execution footprint no longer contained the key and the host rejected the write with Storage::ExceededLimit. The marker is now keyed on the outbound nonce, which is read from contract storage and is therefore identical in both phases.",
-   "admin": "renounced - permanently given up; a second renounce_admin traps in the host. See receipts.gateway_renounce_admin"
+  "contracts": {
+    "finality_registry": {
+      "contract_id": "CCXJDQMTJUGXKNFOQPC25IYVOAVWDMLJBNQYX75MAREHV7MZMU5OSEN4",
+      "wasm_hash": "9be6b84b31839de3f8810cd33c42018e95809e13d3867eddde7f2ba1224e02d4",
+      "status": "live",
+      "admin": "renounced - permanently given up, see the renounce_admin receipt"
+    },
+    "settlement_gateway": {
+      "contract_id": "CBUKVNCPF5XRYJVAH2SRLTLUMZT6T677T5KAJADXZIQOQTCTSBITQVPA",
+      "wasm_bytes": 18303,
+      "status": "live",
+      "superseded": {
+        "CAXQVMSRRMZSM36P4XE53BJFUIYHOGIDWVDGA6A5LK5HTRL4KWQUBX5B": "v1, 15137 bytes - could not be driven from the command line: its inbound entrypoint takes a struct with a nested enum, and soroban-spec-tools' parse_union is unimplemented, so the CLI panics before it can build the argument",
+        "CBFCPCX4ISXOQXCAUBFN5AS5AIDJNSE3BHY5ROSZJ7JS6SAKZ2IM45UZ": "v2, 18242 bytes - added the enum-free tooling entrypoints, and minted live at height 91; retired because the SAC admin had already been handed to it and set_admin cannot be called by anyone else",
+        "CBOWN6KAURZI6YWBMP7TJKULDKLRLR6YMFU4KNM6E52VHE3XHFJCXDDE": "v3, 18303 bytes - first build with the burn footprint fix; retired because it was initialized against the old SAC"
+      },
+      "what_v4_fixes": "burn_and_relay wrote a storage key derived from the live ledger sequence (message_id embeds source_height). Simulation and execution run at different ledger sequences, so the execution footprint no longer contained the key and the host rejected the write with Storage::ExceededLimit. The marker is now keyed on the outbound nonce, which is read from contract storage and is therefore identical in both phases.",
+      "admin": "renounced - permanently given up; a second renounce_admin traps in the host. See receipts.gateway_renounce_admin"
+    },
+    "wrapped_asset_sac": {
+      "contract_id": "CBPBDVLP7K436KEXOAJMPFFHEF5OXNN4KJIB2HDFDBRWOABQ6WBTURRV",
+      "asset": "wSRC",
+      "issuer": "GBYFDKP4KLQ575HTJRDTHF4HUIVXAQLJNEZMWYJ5HBY3C3GDSPX5H4FR",
+      "admin": "CBUKVNCPF5XRYJVAH2SRLTLUMZT6T677T5KAJADXZIQOQTCTSBITQVPA",
+      "status": "live",
+      "replaced": {
+        "CBKLE7B66MYIARGQM5WCQQZBLBH2W7TH5FTRC22QIS67HOJT5TGB3CKV": "asset WSRC. Its admin was handed to gateway v2. Because set_admin can only be called by the current admin, and the current admin was a contract with no set_admin entrypoint, the old SAC could never be re-pointed at a fixed gateway. Deploying a fresh SAC was the only way forward. Handing the admin to a contract is one-way: do it last."
+      }
+    }
   },
-  "wrapped_asset_sac": {
-   "contract_id": "CBPBDVLP7K436KEXOAJMPFFHEF5OXNN4KJIB2HDFDBRWOABQ6WBTURRV",
-   "asset": "wSRC",
-   "issuer": "GBYFDKP4KLQ575HTJRDTHF4HUIVXAQLJNEZMWYJ5HBY3C3GDSPX5H4FR",
-   "admin": "CBUKVNCPF5XRYJVAH2SRLTLUMZT6T677T5KAJADXZIQOQTCTSBITQVPA",
-   "status": "live",
-   "replaced": {
-    "CBKLE7B66MYIARGQM5WCQQZBLBH2W7TH5FTRC22QIS67HOJT5TGB3CKV": "asset WSRC. Its admin was handed to gateway v2. Because set_admin can only be called by the current admin, and the current admin was a contract with no set_admin entrypoint, the old SAC could never be re-pointed at a fixed gateway. Deploying a fresh SAC was the only way forward. Handing the admin to a contract is one-way: do it last."
-   }
-  }
- },
- "receipts": {
-  "registry_deploy": "df468a305e35f2deb6b81d52164a91380592dcf58c4b5edc2d3ca06645901e2a",
-  "gateway_v1_deploy": "2116fc69293466f40a72c7886a5097c5cbcc62c5911331ffc404cbf56e9c9d67",
-  "registry_initialize": "6fa09843673fe15624967f9b05f2cd186061e68d85f3b119d7037a00657e2f0b",
-  "register_domain": "ad80fe5a7f058aab7521d6aa5f1141be17d54feba578ea7ad7ce546007d7339f",
-  "set_bls_policy": "e37cc48ceb175b36d2d6c8d13fa8b22c6e8efa1cd7f9179484c17de7eda8d5f0",
-  "admit_domain": "a7d9cce11a863e962bfa11f0873b5e2997ca9ee3fb3bcf2ca764ebac54519090",
-  "bls_finality_accepted_height_1": "b181956b9a9c3fc4f18faeea3938bdf2ea19b96edc9bd4414ddeb243e02008a4",
-  "set_vk": "76e6c3978af3c32aecce89578085d2b8a6bddcf167a2e386e1760450a3314c3b",
-  "zk_finality_accepted_height_19": "12be652f628e5ac8fb571dc8131d9cfd8c2283b29be5fc64ffd87ca475d39ff2",
-  "zk_finality_accepted_height_39": "15e2143fead918662d82c190ec9b23a3dd37509de5d609bc0656631d4c4e71d3",
-  "zk_finality_accepted_height_18": "1c2179bbf45e3949c7369c18520843b6d1f975829f358ee3f04c2b65496279a0",
-  "renounce_admin": "8ca278c88a6ee375c21c09870b48320b953eea3ed3e7c35f55a03b87e03639b4",
-  "wrapped_asset_sac_v1_deploy": "5ede26e153d32670da46eafe46339698ad6291e6e254ced31659bceeca5f7268",
-  "gateway_v2_deploy": "21bf6132fb9669d552d4da63af3a431f9aa98d596550484564cad611d1c1e797",
-  "gateway_v2_initialize": "fc44725c96456cc00bb1a5c9234e6df2b8c1ef71fb8096a439502513196dd3af",
-  "sac_v1_set_admin_to_gateway_v2": "2c58b422aa3ed02c8ceda5735ea972afa37ca0ac7d89238d8f8ad6af6765b5cf",
-  "zk_finality_accepted_height_91": "4f612bfc15931640c6d2ae7ce52443375f5462af2acaacbef51cdffbde0d8f66",
-  "bls_finality_accepted_height_91": "c81ddd1371b66179a041f4baa98d2433dfb14c7129c170a961232247d1b72d1e",
-  "forward_mint_height_91_on_gateway_v2": "e1e1b3ccd82887800344eb284fd328d735b89dffa17bc245ee3d56a7f527fd4d",
-  "gateway_wasm_v3_upload": "04b1b2c1137be28145aafd28d42354f90f64853fa3f7edc35b83c2d7463506d1",
-  "gateway_v3_deploy": "8994fa24020c6b258fdcbc30cbd4fad3165ec85c69811f5a4f78a5d055db7c3b",
-  "gateway_v3_initialize": "065213ec8af71c6346074c20cc70ea2c1cb1466193993b399c42e3b0da060431",
-  "wrapped_asset_sac_v2_deploy": "35a14146d3dcf3925eb7d04fdb5dba1529fb8557ef2e0d0035203c772c4aed5c",
-  "gateway_v4_deploy": "48c4b3b805b95c9e3e101170a6acd2c76d57815b4cb617a26828e7efd0b13cd0",
-  "gateway_v4_initialize": "670e73948e3b38183bcbb4f73d551659fd1fa12b361658883ae3965d2d27e8c4",
-  "sac_v2_set_admin_to_gateway_v4": "5848a763d05cb11232299c0997dde0b1dfb9804cd5b0265910fba21c399303e9",
-  "zk_finality_accepted_height_32": "f3bb88d185364ca20ebdc41f65421d2f308c4005205c7ee143d104a263c83a29",
-  "bls_finality_accepted_height_32": "20ddf3915d5fdf5bd08e2fc92820c1bdb71da45643cac04f1824338a01a4af34",
-  "forward_mint_height_32": "3d5d9936bf514b10423fe4ed4f39009899f02ae1f5cdb8b5fd16517258f57997",
-  "reverse_burn": "ca0a16605acb41c1dcb1e4db2dedaf4b45e98347b013e37d8e9906a559b83340",
-  "gateway_wasm_v2_upload": "86d0e640fb4b747fdbb070ced33bd6db6a3d98ce6aa70cb9a54d6d3d7fa28ec7",
-  "registry_bls_accepted_height_1_console_run": "f92bfa119ca091fdfc9564c85f429969250b78c60993e92117a53dcb4d7ec30a",
-  "console_mint_1_of_3": "2091566f2d36c12132109e60508933e2966dba0d40dda380be10fbb554106769",
-  "console_mint_2_of_3": "179d0ee59d15bcdea47569b254fc848c823a1992e557242373abbf54e5351b85",
-  "console_mint_3_of_3": "2d5845626e59f9f49912422e11aeddea5a0ab73c24b6425b65906408f165cb40",
-  "relayer_trustline_change_trust": "a159f26765eeb003618a705b392ecd8ec2ceb5ba773fbe86ac11ea03de08ed5d",
-  "gateway_renounce_admin": "f3396d449411843489ae3f209efe74af823633e20e45a9d86b70ec324c2bbf0b",
-  "post_renounce_mint_1_of_2": "c1f02301d26210e82b26262eeaf98f2f415fd1003e515adf27ae698f5cf24f3a",
-  "post_renounce_mint_2_of_2": "2c4eedacf7d9e3efa7fc439b898ec99c4c61f092d44cbcc7edc9a5666dddbf50",
-  "post_renounce_bls_anchor_height_36": "04a785cfb54cb6ea6be9a769f9ae49e6480650f9612ed75dd2603798e914a650",
-  "console_wallet_round_trip_2_bls_anchor": "887c7af024a6ece05f02288f9aafe24d3a53ebc33b50c0447a469ac3ee0529bb",
-  "console_wallet_round_trip_2_mint_1_of_3": "97215ba232efe8f4f6c053cac44ab755be339ae8a099a3d815a5b4a661fc4029",
-  "console_wallet_round_trip_2_mint_2_of_3": "bff382a7fc15e3203d12d6393701d3cb547206f868675e488d7596f7f2800c0e",
-  "console_wallet_round_trip_2_mint_3_of_3": "f5fb010fee7fc7fc575bd6fde4cdc794ea1d34667f627cee92753f1f9b8e9ee3",
-  "relayer_trustline_change_trust_2": "bece5a45d662016d78d32552544423278ec42582d20fb046b7efedabd5a4f8a9"
- },
- "gasless": {
-  "claim": "an account whose entire XLM balance equals its minimum reserve - zero spendable stroops - received wrapped tokens. It could not have paid for its own mint.",
-  "source_height": 156,
-  "message_id": "e1b965d79f64f989ab61ba17eaca5076ac3be4d32a7e8724b0167efea4e50c33",
-  "merkle_proof_siblings": 0,
-  "merkle_note": "the block holds exactly one event, so the leaf is the root and the proof is empty. The CLI cannot express an empty --merkle_proof value; the relayer passes a zero-byte file with --merkle_proof-file-path instead",
-  "recipient": "GCN65ER7FFAKQCECCWMUQVNGK5AQQIBON6KIJBO5FIYTHLXV4EFGVYGM",
-  "recipient_xlm_before_stroops": 15000000,
-  "recipient_xlm_after_stroops": 15000000,
-  "recipient_minimum_reserve_stroops": 15000000,
-  "recipient_spendable_before_stroops": 0,
-  "recipient_spendable_after_stroops": 0,
-  "recipient_wrapped_before": 0,
-  "recipient_wrapped_after": 199000000,
-  "relayer": "GBDJAEDH5KA4GFZQV3BAD54GN6GS3S3MS23R6SE2RUMHZBIYVMQJZTHD",
-  "relayer_xlm_fee_paid_stroops": 137293,
-  "relayer_wrapped_fee_earned": 1000000,
-  "fee_amount": 1000000,
-  "transaction": "8b4e9bd59f405b8d3ecd11dcf1dee1e906ffcf16100cbcb1899cae7b42da88b4",
-  "ledger": 4763378,
-  "horizon_verified": true,
-  "rpc_status": "SUCCESS",
-  "finality_backing": "BLS12-381 aggregate signature over (height, state_root, event_root), 3 signers, 2 required, verified inside Soroban",
-  "how_it_was_run": "target/debug/relayer --height 156 --once with STELLAR_SOURCE_ACCOUNT=lumen-relayer and RELAYER_FEE=1000000; the relayer read the addresses from this manifest rather than from the environment"
- },
- "findings": [
-  {
-   "id": "gasless-issuer-cannot-hold-own-asset",
-   "found": "the first live gasless attempt failed: the Stellar Asset Contract rejects minting the token to the account that issues it, so the relayer-reward mint to the issuer account trapped with 'operation invalid on issuer' and the whole transaction rolled back",
-   "fix": "run the relayer from a separate account that holds a trustline for the wrapped asset, which is also the honest topology: the fee payer is not the issuer"
+  "receipts": {
+    "registry_deploy": "df468a305e35f2deb6b81d52164a91380592dcf58c4b5edc2d3ca06645901e2a",
+    "gateway_v1_deploy": "2116fc69293466f40a72c7886a5097c5cbcc62c5911331ffc404cbf56e9c9d67",
+    "registry_initialize": "6fa09843673fe15624967f9b05f2cd186061e68d85f3b119d7037a00657e2f0b",
+    "register_domain": "ad80fe5a7f058aab7521d6aa5f1141be17d54feba578ea7ad7ce546007d7339f",
+    "set_bls_policy": "e37cc48ceb175b36d2d6c8d13fa8b22c6e8efa1cd7f9179484c17de7eda8d5f0",
+    "admit_domain": "a7d9cce11a863e962bfa11f0873b5e2997ca9ee3fb3bcf2ca764ebac54519090",
+    "bls_finality_accepted_height_1": "b181956b9a9c3fc4f18faeea3938bdf2ea19b96edc9bd4414ddeb243e02008a4",
+    "set_vk": "76e6c3978af3c32aecce89578085d2b8a6bddcf167a2e386e1760450a3314c3b",
+    "zk_finality_accepted_height_19": "12be652f628e5ac8fb571dc8131d9cfd8c2283b29be5fc64ffd87ca475d39ff2",
+    "zk_finality_accepted_height_39": "15e2143fead918662d82c190ec9b23a3dd37509de5d609bc0656631d4c4e71d3",
+    "zk_finality_accepted_height_18": "1c2179bbf45e3949c7369c18520843b6d1f975829f358ee3f04c2b65496279a0",
+    "renounce_admin": "8ca278c88a6ee375c21c09870b48320b953eea3ed3e7c35f55a03b87e03639b4",
+    "wrapped_asset_sac_v1_deploy": "5ede26e153d32670da46eafe46339698ad6291e6e254ced31659bceeca5f7268",
+    "gateway_v2_deploy": "21bf6132fb9669d552d4da63af3a431f9aa98d596550484564cad611d1c1e797",
+    "gateway_v2_initialize": "fc44725c96456cc00bb1a5c9234e6df2b8c1ef71fb8096a439502513196dd3af",
+    "sac_v1_set_admin_to_gateway_v2": "2c58b422aa3ed02c8ceda5735ea972afa37ca0ac7d89238d8f8ad6af6765b5cf",
+    "zk_finality_accepted_height_91": "4f612bfc15931640c6d2ae7ce52443375f5462af2acaacbef51cdffbde0d8f66",
+    "bls_finality_accepted_height_91": "c81ddd1371b66179a041f4baa98d2433dfb14c7129c170a961232247d1b72d1e",
+    "forward_mint_height_91_on_gateway_v2": "e1e1b3ccd82887800344eb284fd328d735b89dffa17bc245ee3d56a7f527fd4d",
+    "gateway_wasm_v3_upload": "04b1b2c1137be28145aafd28d42354f90f64853fa3f7edc35b83c2d7463506d1",
+    "gateway_v3_deploy": "8994fa24020c6b258fdcbc30cbd4fad3165ec85c69811f5a4f78a5d055db7c3b",
+    "gateway_v3_initialize": "065213ec8af71c6346074c20cc70ea2c1cb1466193993b399c42e3b0da060431",
+    "wrapped_asset_sac_v2_deploy": "35a14146d3dcf3925eb7d04fdb5dba1529fb8557ef2e0d0035203c772c4aed5c",
+    "gateway_v4_deploy": "48c4b3b805b95c9e3e101170a6acd2c76d57815b4cb617a26828e7efd0b13cd0",
+    "gateway_v4_initialize": "670e73948e3b38183bcbb4f73d551659fd1fa12b361658883ae3965d2d27e8c4",
+    "sac_v2_set_admin_to_gateway_v4": "5848a763d05cb11232299c0997dde0b1dfb9804cd5b0265910fba21c399303e9",
+    "zk_finality_accepted_height_32": "f3bb88d185364ca20ebdc41f65421d2f308c4005205c7ee143d104a263c83a29",
+    "bls_finality_accepted_height_32": "20ddf3915d5fdf5bd08e2fc92820c1bdb71da45643cac04f1824338a01a4af34",
+    "forward_mint_height_32": "3d5d9936bf514b10423fe4ed4f39009899f02ae1f5cdb8b5fd16517258f57997",
+    "reverse_burn": "ca0a16605acb41c1dcb1e4db2dedaf4b45e98347b013e37d8e9906a559b83340",
+    "gateway_wasm_v2_upload": "86d0e640fb4b747fdbb070ced33bd6db6a3d98ce6aa70cb9a54d6d3d7fa28ec7",
+    "registry_bls_accepted_height_1_console_run": "f92bfa119ca091fdfc9564c85f429969250b78c60993e92117a53dcb4d7ec30a",
+    "console_mint_1_of_3": "2091566f2d36c12132109e60508933e2966dba0d40dda380be10fbb554106769",
+    "console_mint_2_of_3": "179d0ee59d15bcdea47569b254fc848c823a1992e557242373abbf54e5351b85",
+    "console_mint_3_of_3": "2d5845626e59f9f49912422e11aeddea5a0ab73c24b6425b65906408f165cb40",
+    "relayer_trustline_change_trust": "a159f26765eeb003618a705b392ecd8ec2ceb5ba773fbe86ac11ea03de08ed5d",
+    "gateway_renounce_admin": "f3396d449411843489ae3f209efe74af823633e20e45a9d86b70ec324c2bbf0b",
+    "post_renounce_mint_1_of_2": "c1f02301d26210e82b26262eeaf98f2f415fd1003e515adf27ae698f5cf24f3a",
+    "post_renounce_mint_2_of_2": "2c4eedacf7d9e3efa7fc439b898ec99c4c61f092d44cbcc7edc9a5666dddbf50",
+    "post_renounce_bls_anchor_height_36": "04a785cfb54cb6ea6be9a769f9ae49e6480650f9612ed75dd2603798e914a650",
+    "console_wallet_round_trip_2_bls_anchor": "887c7af024a6ece05f02288f9aafe24d3a53ebc33b50c0447a469ac3ee0529bb",
+    "console_wallet_round_trip_2_mint_1_of_3": "97215ba232efe8f4f6c053cac44ab755be339ae8a099a3d815a5b4a661fc4029",
+    "console_wallet_round_trip_2_mint_2_of_3": "bff382a7fc15e3203d12d6393701d3cb547206f868675e488d7596f7f2800c0e",
+    "console_wallet_round_trip_2_mint_3_of_3": "f5fb010fee7fc7fc575bd6fde4cdc794ea1d34667f627cee92753f1f9b8e9ee3",
+    "relayer_trustline_change_trust_2": "bece5a45d662016d78d32552544423278ec42582d20fb046b7efedabd5a4f8a9"
   },
-  {
-   "id": "relayer-hash-parser",
-   "found": "the relayer reported 'transaction receipt' by taking the first 64-hex-character run in the CLI output. The CLI echoes the arguments, and the evidence payload contains a 64-hex adapter id, so the adapter id was reported as the transaction hash",
-   "fix": "collect every candidate and keep only one that Soroban RPC getTransaction confirms as SUCCESS"
+  "gasless": {
+    "claim": "an account whose entire XLM balance equals its minimum reserve - zero spendable stroops - received wrapped tokens. It could not have paid for its own mint.",
+    "source_height": 156,
+    "message_id": "e1b965d79f64f989ab61ba17eaca5076ac3be4d32a7e8724b0167efea4e50c33",
+    "merkle_proof_siblings": 0,
+    "merkle_note": "the block holds exactly one event, so the leaf is the root and the proof is empty. The CLI cannot express an empty --merkle_proof value; the relayer passes a zero-byte file with --merkle_proof-file-path instead",
+    "recipient": "GCN65ER7FFAKQCECCWMUQVNGK5AQQIBON6KIJBO5FIYTHLXV4EFGVYGM",
+    "recipient_xlm_before_stroops": 15000000,
+    "recipient_xlm_after_stroops": 15000000,
+    "recipient_minimum_reserve_stroops": 15000000,
+    "recipient_spendable_before_stroops": 0,
+    "recipient_spendable_after_stroops": 0,
+    "recipient_wrapped_before": 0,
+    "recipient_wrapped_after": 199000000,
+    "relayer": "GBDJAEDH5KA4GFZQV3BAD54GN6GS3S3MS23R6SE2RUMHZBIYVMQJZTHD",
+    "relayer_xlm_fee_paid_stroops": 137293,
+    "relayer_wrapped_fee_earned": 1000000,
+    "fee_amount": 1000000,
+    "transaction": "8b4e9bd59f405b8d3ecd11dcf1dee1e906ffcf16100cbcb1899cae7b42da88b4",
+    "ledger": 4763378,
+    "horizon_verified": true,
+    "rpc_status": "SUCCESS",
+    "finality_backing": "BLS12-381 aggregate signature over (height, state_root, event_root), 3 signers, 2 required, verified inside Soroban",
+    "how_it_was_run": "target/debug/relayer --height 156 --once with STELLAR_SOURCE_ACCOUNT=lumen-relayer and RELAYER_FEE=1000000; the relayer read the addresses from this manifest rather than from the environment"
   },
-  {
-   "id": "relayer-would-not-resume",
-   "found": "if the finality evidence for a height had already been accepted (registry error #9), the relayer treated it as a failure and skipped the mint, stranding every message that was anchored before a restart",
-   "fix": "error #9 on the registry call and error #4 on the gateway call are now treated as the desired end state"
-  },
-  {
-   "id": "tests-passing-for-the-wrong-reason",
-   "found": "two registry unit tests asserted only that a call failed. They registered a domain but never admitted it, so the call failed with NotAdmitted before any signature or pairing check ran",
-   "fix": "both tests now admit the domain and assert the specific expected error variant (InvalidSignature, InvalidProof)"
-  },
-  {
-   "id": "self-audit-reported-the-wrong-thing",
-   "found": "a round failed 'honest_evidence_accepted' with the detail '#null unknown', and reported the replay and tamper probes as 'saw acceptance'. The honest call had failed before reaching the contract (no submitter address was set, so the CLI could not build the transaction), and the probes treated 'no contract error was parsed' as 'the contract accepted it'",
-   "fix": "the submitter now falls back to accounts.deployer_and_relayer in this manifest, and every check reports what actually happened: a contract error code, or the CLI's own refusal with its output tail. A call that never reached the contract can no longer be read as acceptance"
-  },
-  {
-   "id": "self-audit-overwrote-its-own-history",
-   "found": "the README said audit rounds are appended to deployments/self-audit.json, but the loop started from an empty in-memory array and wrote the whole file, so each run erased the previous rounds",
-   "fix": "prior rounds are loaded at start-up and the round counter continues from them. The file now holds rounds 1 and 2 from this session, both 5/5"
-  },
-  {
-   "id": "relay-endpoint-was-open",
-   "found": "the anchor facade served every endpoint with 'Access-Control-Allow-Origin: *' and the relay endpoint needed only LUMEN_ALLOW_RELAY=1. Any page a visitor opened could have triggered a relayer pass that signs and spends the operator's XLM",
-   "fix": "writes now require a constant-time compared operator token and refuse to run at all when no token is configured; CORS reflects an origin allowlist instead of '*'; the relay runs one pass at a time with a cooldown"
-  },
-  {
-   "id": "stellar-toml-advertised-a-fake-issuer",
-   "found": "the discovery document other people's software reads declared the wrapped asset with the placeholder issuer GCEXAMPLEISSUERxxxx and also listed USDC, an asset this deployment does not issue",
-   "fix": "the issuer is the real account, the phantom currency is gone, and the entry now carries status, conditions and an explicit note that this is a testnet demonstration asset"
-  },
-  {
-   "id": "source-sender-was-not-validated",
-   "found": "the simulator accepted any string as the source-chain sender and hashed it into the message id. The gateway carries that field in an Address-typed argument, so a plain string like 'G-source-user' passed the simulator, was signed into BLS evidence, was accepted and anchored by the registry - and only then failed in the CLI with 'Account alias not Found'. The result was a half-settled block: a permanent on-chain finality record for a message that could never be minted, paid for",
-   "fix": "the simulator validates the sender and the recipient as Stellar strkeys (checksum included) before it creates an event, so the failure happens at the boundary where the operator can still correct it. Covered by three unit tests, including the exact string that caused the half-settled block"
-  },
-  {
-   "id": "hosted-relay-was-unauthenticated",
-   "found": "the anchor facade served CORS '*', and its relay endpoint was guarded only by the LUMEN_ALLOW_RELAY flag. Any page a visitor opened could have asked the operator to sign and pay for a relayer pass",
-   "fix": "writes require a constant-time compared operator token and refuse to run when none is configured; the relay is POST-only, runs one pass at a time and holds a cooldown; CORS reflects an allowlist. The console says 'relay disabled' instead of offering a button that would fail"
-  },
-  {
-   "id": "facade-could-not-tell-a-missing-relayer-from-an-idle-one",
-   "found": "when the relayer binary was not on disk, the facade's relay endpoint returned ok:false with 'no transaction was confirmed in this pass'. That reads exactly like a healthy relayer that found nothing to do, so an operator debugging a dead deployment would look at the chain instead of at the missing binary",
-   "fix": "the spawn result is inspected and reported: a missing binary, a killed process and an empty pass now produce three different messages, and the console prints the reason instead of a generic refusal"
-  },
-  {
-   "id": "audit-probe-reused-a-recorded-height",
-   "found": "round 8 of the self-audit loop reported a failure that was not a contract failure. The source simulator is deterministic and restarts at height 1, while the registry keeps its records, so after a restart the loop proposed evidence for a height the chain already held. The guard refused it with #9, which is the correct answer, but the round then presented a correctly refused replay as 'a valid proof was rejected'. Any rebuild of the demo source chain reaches this state, and the loop had no way to tell the two apart.",
-   "fix": "the loop now reads get_last_finalized for the source domain before it locks a probe block and waits for the simulator to pass that height, so a refusal can only mean the contract refused something the chain had never seen. Round 9 is 7/7 with the guard intact: the replay probe still gets #9, and the honest probe now lands on a genuinely new height."
-  },
-  {
-   "id": "the-artwork-was-redrawn-in-the-repo",
-   "found": "the page was not painting the submitted cube. frontend/public/grid-tile.png had been replaced by a brightened variant with a heavier, larger square and thicker strokes (the artwork's own greys run 6-25; the file in the repo ran up to 51 with a visibly bigger outline). So the background every reader saw was a redrawn grid, and the submitted pixels were nowhere on the page. This is what 'the cubes are bigger than my pixels' was.",
-   "fix": "frontend/public/grid-tile.png is now the submitted file byte for byte (sha256 recorded in interface_state.lattice), the page embeds it directly and paints it unfiltered - the scrims that had also been dimming it are gone - and tools/check-console.js compares the embedded copy against the file, so the artwork cannot be silently redrawn again. A 60x60 window of the rendered page carries exactly the artwork's own grey values."
-  },
-  {
-   "id": "audit-read-the-gateway-id-as-a-string",
-   "found": "the self-audit's gateway check reported 'no gateway id: set GATEWAY_ID or record contracts.settlement_gateway in the manifest' while the gateway id was sitting in the manifest. The helper read contracts.settlement_gateway as a bare string and called .trim() on it, but the manifest records each contract as an object ({contract_id, status, wasm_bytes, ...}). The type error was swallowed by the helper's own catch, so a passing capability (the gateway's admin really is renounced) was reported as unproven. A config reader that fails silently is the same defect as a check that passes on empty output.",
-   "fix": "gatewayIdFromManifest() accepts both shapes - a bare id or an object carrying contract_id - and the round after the fix is where the check passed on its own evidence (a second renounce trapping in the host), not on the absence of an error."
-  },
-  {
-   "id": "second-probe-inside-a-closed-rate-window",
-   "found": "the SEP conformance probe ends by bursting the facade's rate limit on purpose, which closes the window for every client at that address. A second round started inside the same minute therefore read HTTP 429 on its own opening requests and reported a healthy facade as broken (3/14 checks). Nothing was wrong with the facade: the probe was reading its own previous burst.",
-   "fix": "the probe waits out a window that a previous burst closed before it starts, using the Retry-After the facade sends and capping the wait at 90 seconds. The burst is still a burst, and the next round starts from an open window instead of inheriting a closed one."
-  },
-  {
-   "id": "operator-dialog-cleared-into-nothing",
-   "found": "the operator dialog's Clear button cleared the token and left the dialog open on an empty field, with the reader's focus unmanaged. Closing it with the mouse or Escape dropped focus to the browser's default instead of the button that opened it, so a keyboard user lost their place in the console.",
-   "fix": "Clear now closes the dialog and focus returns to the control that opened it; Save does the same, and the dialog restores focus on any close path (Clear, Close, Escape) through one handler. Opening the dialog puts the caret in the token field and selects it, so the field the dialog exists for is one keystroke away."
-  },
-  {
-   "id": "the-lattice-checker-pinned-one-density",
-   "found": "the behavioural check that guards the lattice asserted a fixed 60px cell and a literally 4px frame. That is true on a 1x display and false on every other one, so a check written to protect the pointer frame would have failed on a 2x screen and been edited to match the screen instead of the contract. Pinning one instantiation of a rule ages into a lie about the rule.",
-   "fix": "the check now asserts the contract rather than an instantiation: the tokens default to the tile's own 60px and the frame's own 4px, the cell and the ring are divided by the device pixel ratio so one asset pixel stays one screen pixel, the frame transform snaps to whole device pixels, the tile's sha256 must equal the hash the manifest records, and the sizing function is driven at dpr 1 and dpr 2 with the tokens the page actually sets (60/4 and 30/2) plus the reader's 60px override. It runs inside the console-surface record of the self-audit round, so the pixel language is audited every round, not once."
-  }
- ],
- "negative_probes": {
-  "replay_same_bls_evidence": {
-   "outcome": "rejected",
-   "contract_error": 9,
-   "error_name": "EvidenceAlreadyProcessed"
-  },
-  "replay_same_zk_evidence": {
-   "outcome": "rejected",
-   "contract_error": 9,
-   "error_name": "EvidenceAlreadyProcessed"
-  },
-  "tampered_bls_signature": {
-   "outcome": "rejected",
-   "contract_error": 7,
-   "error_name": "InvalidSignature"
-  },
-  "tampered_groth16_proof": {
-   "outcome": "rejected",
-   "contract_error": 8,
-   "error_name": "InvalidProof",
-   "detail": "one byte flipped in proof element A, submitted against a fresh height"
-  },
-  "submit_before_admit_domain": {
-   "outcome": "rejected",
-   "contract_error": 12,
-   "error_name": "NotAdmitted"
-  },
-  "admin_action_after_renounce": {
-   "outcome": "rejected",
-   "error_name": "WasmVm InvalidAction, VM call trapped",
-   "detail": "set_vk and register_domain both trap. The admin capability is gone for everyone, including the deployer."
-  },
-  "mint_replay_through_tooling_entrypoint": {
-   "outcome": "rejected",
-   "contract_error": 4,
-   "error_name": "AlreadyProcessed"
-  },
-  "source_chain_burn_replay": {
-   "outcome": "rejected",
-   "http_status": 409,
-   "detail": "burn message already unlocked"
-  }
- },
- "domain": {
-  "name": "source-testnet",
-  "domain_key": "4c00370b422dcf0f72234af78a49d2fafa5196c3ee6b19f2b6a8e815f587137e",
-  "derivation": "sha256(adapter_id || network)",
-  "adapter_id": "3dcbf6f582455337083d5f6d36721f6d63d47af0bef870a043c02aca7850dac9",
-  "state": 2,
-  "machine_approved": true,
-  "bls_policy": {
-   "signer_count": 3,
-   "required": 2,
-   "slashable": false
-  }
- },
- "gasless_recipient_note": "a Stellar account must exist and hold a trustline to receive a Stellar asset, so 'gasless' here means zero spendable XLM, not zero account setup",
- "target_domain": "30e4a8e86c86dd7efbf8e589bc2055dd42f3f6e18569103e44eccc1e01cf8ef1",
- "target_domain_source": "read back from the gateway with get_target_domain on testnet, not copied from config",
- "end_to_end": {
-  "forward": {
-   "path": "user locks on the source chain, the block is finalised, the gateway verifies a Merkle proof of the lock event against the finalised event root, the wrapped asset is minted",
-   "source_height": 32,
-   "lock_events_in_block": 4,
-   "merkle_proof_depth": 2,
-   "event_root": "300aaa9ac9c07541ce79cd64af93a057b8612492be430c603ee536cd855b5dc8",
-   "state_root": "1be4a3ad8ef51bf8f4c8c77f202083052521c6d5a123e5648f1f4a1c65efdfb5",
-   "amount_minted": 400000002,
-   "recipient_balance_before": 0,
-   "recipient_balance_after": 400000002,
-   "finality_backing": "BLS12-381 aggregate signature over (height, state_root, event_root), 3 signers, 2 required",
-   "zk_also_submitted_for_this_height": true
-  },
-  "reverse": {
-   "path": "user burns the wrapped asset, the gateway emits a burn event, the relayer decodes it from ledger evidence, the source chain releases the locked amount",
-   "amount_burned": 150000000,
-   "recipient_balance_after_burn": 250000002,
-   "burn_message_id": "8087e4ad4542d0bd87eee5b0de0a95d6fa124c17e6ab6797bc5d589c7fd5699e",
-   "source_height": 4762540,
-   "source_chain_released_amount": 150000000,
-   "payload_hash_recomputed_independently": true,
-   "replay_of_burn_message": "rejected with HTTP 409"
-  }
- },
- "zk": {
-  "curve": "bn254",
-  "proving_system": "groth16",
-  "circuit": "circuits/finality_statement.circom",
-  "public_input_order": [
-   "prev_state_root",
-   "event_root",
-   "threshold",
-   "state_root"
+  "findings": [
+    {
+      "id": "gasless-issuer-cannot-hold-own-asset",
+      "found": "the first live gasless attempt failed: the Stellar Asset Contract rejects minting the token to the account that issues it, so the relayer-reward mint to the issuer account trapped with 'operation invalid on issuer' and the whole transaction rolled back",
+      "fix": "run the relayer from a separate account that holds a trustline for the wrapped asset, which is also the honest topology: the fee payer is not the issuer"
+    },
+    {
+      "id": "relayer-hash-parser",
+      "found": "the relayer reported 'transaction receipt' by taking the first 64-hex-character run in the CLI output. The CLI echoes the arguments, and the evidence payload contains a 64-hex adapter id, so the adapter id was reported as the transaction hash",
+      "fix": "collect every candidate and keep only one that Soroban RPC getTransaction confirms as SUCCESS"
+    },
+    {
+      "id": "relayer-would-not-resume",
+      "found": "if the finality evidence for a height had already been accepted (registry error #9), the relayer treated it as a failure and skipped the mint, stranding every message that was anchored before a restart",
+      "fix": "error #9 on the registry call and error #4 on the gateway call are now treated as the desired end state"
+    },
+    {
+      "id": "tests-passing-for-the-wrong-reason",
+      "found": "two registry unit tests asserted only that a call failed. They registered a domain but never admitted it, so the call failed with NotAdmitted before any signature or pairing check ran",
+      "fix": "both tests now admit the domain and assert the specific expected error variant (InvalidSignature, InvalidProof)"
+    },
+    {
+      "id": "self-audit-reported-the-wrong-thing",
+      "found": "a round failed 'honest_evidence_accepted' with the detail '#null unknown', and reported the replay and tamper probes as 'saw acceptance'. The honest call had failed before reaching the contract (no submitter address was set, so the CLI could not build the transaction), and the probes treated 'no contract error was parsed' as 'the contract accepted it'",
+      "fix": "the submitter now falls back to accounts.deployer_and_relayer in this manifest, and every check reports what actually happened: a contract error code, or the CLI's own refusal with its output tail. A call that never reached the contract can no longer be read as acceptance"
+    },
+    {
+      "id": "self-audit-overwrote-its-own-history",
+      "found": "the README said audit rounds are appended to deployments/self-audit.json, but the loop started from an empty in-memory array and wrote the whole file, so each run erased the previous rounds",
+      "fix": "prior rounds are loaded at start-up and the round counter continues from them. The file now holds rounds 1 and 2 from this session, both 5/5"
+    },
+    {
+      "id": "relay-endpoint-was-open",
+      "found": "the anchor facade served every endpoint with 'Access-Control-Allow-Origin: *' and the relay endpoint needed only LUMEN_ALLOW_RELAY=1. Any page a visitor opened could have triggered a relayer pass that signs and spends the operator's XLM",
+      "fix": "writes now require a constant-time compared operator token and refuse to run at all when no token is configured; CORS reflects an origin allowlist instead of '*'; the relay runs one pass at a time with a cooldown"
+    },
+    {
+      "id": "stellar-toml-advertised-a-fake-issuer",
+      "found": "the discovery document other people's software reads declared the wrapped asset with the placeholder issuer GCEXAMPLEISSUERxxxx and also listed USDC, an asset this deployment does not issue",
+      "fix": "the issuer is the real account, the phantom currency is gone, and the entry now carries status, conditions and an explicit note that this is a testnet demonstration asset"
+    },
+    {
+      "id": "source-sender-was-not-validated",
+      "found": "the simulator accepted any string as the source-chain sender and hashed it into the message id. The gateway carries that field in an Address-typed argument, so a plain string like 'G-source-user' passed the simulator, was signed into BLS evidence, was accepted and anchored by the registry - and only then failed in the CLI with 'Account alias not Found'. The result was a half-settled block: a permanent on-chain finality record for a message that could never be minted, paid for",
+      "fix": "the simulator validates the sender and the recipient as Stellar strkeys (checksum included) before it creates an event, so the failure happens at the boundary where the operator can still correct it. Covered by three unit tests, including the exact string that caused the half-settled block"
+    },
+    {
+      "id": "hosted-relay-was-unauthenticated",
+      "found": "the anchor facade served CORS '*', and its relay endpoint was guarded only by the LUMEN_ALLOW_RELAY flag. Any page a visitor opened could have asked the operator to sign and pay for a relayer pass",
+      "fix": "writes require a constant-time compared operator token and refuse to run when none is configured; the relay is POST-only, runs one pass at a time and holds a cooldown; CORS reflects an allowlist. The console says 'relay disabled' instead of offering a button that would fail"
+    },
+    {
+      "id": "facade-could-not-tell-a-missing-relayer-from-an-idle-one",
+      "found": "when the relayer binary was not on disk, the facade's relay endpoint returned ok:false with 'no transaction was confirmed in this pass'. That reads exactly like a healthy relayer that found nothing to do, so an operator debugging a dead deployment would look at the chain instead of at the missing binary",
+      "fix": "the spawn result is inspected and reported: a missing binary, a killed process and an empty pass now produce three different messages, and the console prints the reason instead of a generic refusal"
+    },
+    {
+      "id": "audit-probe-reused-a-recorded-height",
+      "found": "round 8 of the self-audit loop reported a failure that was not a contract failure. The source simulator is deterministic and restarts at height 1, while the registry keeps its records, so after a restart the loop proposed evidence for a height the chain already held. The guard refused it with #9, which is the correct answer, but the round then presented a correctly refused replay as 'a valid proof was rejected'. Any rebuild of the demo source chain reaches this state, and the loop had no way to tell the two apart.",
+      "fix": "the loop now reads get_last_finalized for the source domain before it locks a probe block and waits for the simulator to pass that height, so a refusal can only mean the contract refused something the chain had never seen. Round 9 is 7/7 with the guard intact: the replay probe still gets #9, and the honest probe now lands on a genuinely new height."
+    },
+    {
+      "id": "the-artwork-was-redrawn-in-the-repo",
+      "found": "the page was not painting the submitted cube. frontend/public/grid-tile.png had been replaced by a brightened variant with a heavier, larger square and thicker strokes (the artwork's own greys run 6-25; the file in the repo ran up to 51 with a visibly bigger outline). So the background every reader saw was a redrawn grid, and the submitted pixels were nowhere on the page. This is what 'the cubes are bigger than my pixels' was.",
+      "fix": "frontend/public/grid-tile.png is now the submitted file byte for byte (sha256 recorded in interface_state.lattice), the page embeds it directly and paints it unfiltered - the scrims that had also been dimming it are gone - and tools/check-console.js compares the embedded copy against the file, so the artwork cannot be silently redrawn again. A 60x60 window of the rendered page carries exactly the artwork's own grey values."
+    },
+    {
+      "id": "audit-read-the-gateway-id-as-a-string",
+      "found": "the self-audit's gateway check reported 'no gateway id: set GATEWAY_ID or record contracts.settlement_gateway in the manifest' while the gateway id was sitting in the manifest. The helper read contracts.settlement_gateway as a bare string and called .trim() on it, but the manifest records each contract as an object ({contract_id, status, wasm_bytes, ...}). The type error was swallowed by the helper's own catch, so a passing capability (the gateway's admin really is renounced) was reported as unproven. A config reader that fails silently is the same defect as a check that passes on empty output.",
+      "fix": "gatewayIdFromManifest() accepts both shapes - a bare id or an object carrying contract_id - and the round after the fix is where the check passed on its own evidence (a second renounce trapping in the host), not on the absence of an error."
+    },
+    {
+      "id": "second-probe-inside-a-closed-rate-window",
+      "found": "the SEP conformance probe ends by bursting the facade's rate limit on purpose, which closes the window for every client at that address. A second round started inside the same minute therefore read HTTP 429 on its own opening requests and reported a healthy facade as broken (3/14 checks). Nothing was wrong with the facade: the probe was reading its own previous burst.",
+      "fix": "the probe waits out a window that a previous burst closed before it starts, using the Retry-After the facade sends and capping the wait at 90 seconds. The burst is still a burst, and the next round starts from an open window instead of inheriting a closed one."
+    },
+    {
+      "id": "operator-dialog-cleared-into-nothing",
+      "found": "the operator dialog's Clear button cleared the token and left the dialog open on an empty field, with the reader's focus unmanaged. Closing it with the mouse or Escape dropped focus to the browser's default instead of the button that opened it, so a keyboard user lost their place in the console.",
+      "fix": "Clear now closes the dialog and focus returns to the control that opened it; Save does the same, and the dialog restores focus on any close path (Clear, Close, Escape) through one handler. Opening the dialog puts the caret in the token field and selects it, so the field the dialog exists for is one keystroke away."
+    },
+    {
+      "id": "the-lattice-checker-pinned-one-density",
+      "found": "the behavioural check that guards the lattice asserted a fixed 60px cell and a literally 4px frame. That is true on a 1x display and false on every other one, so a check written to protect the pointer frame would have failed on a 2x screen and been edited to match the screen instead of the contract. Pinning one instantiation of a rule ages into a lie about the rule.",
+      "fix": "the check now asserts the contract rather than an instantiation: the tokens default to the tile's own 60px and the frame's own 4px, the cell and the ring are divided by the device pixel ratio so one asset pixel stays one screen pixel, the frame transform snaps to whole device pixels, the tile's sha256 must equal the hash the manifest records, and the sizing function is driven at dpr 1 and dpr 2 with the tokens the page actually sets (60/4 and 30/2) plus the reader's 60px override. It runs inside the console-surface record of the self-audit round, so the pixel language is audited every round, not once."
+    }
   ],
-  "vk_bytes": 768,
-  "proof_bytes": 256,
-  "toolchain": "circom 2.2.3, snarkjs 0.7.6, Powers-of-Tau generated locally",
-  "what_it_proves": "that a quorum of approvals exists over a bitmap, and that the three roots participate in one Poseidon relation, so none of them is free metadata",
-  "what_it_does_not_prove": "it is not a signature verifier. It does not prove that any particular validator signed anything. This is stated in the circuit header too.",
-  "consequence_for_settlement": "because no signature covers the roots in the ZK lane, the registry does not persist an event root from it. Persisting one would let an unconstrained value become the anchor for a Merkle settlement proof. The settlement path for height 32 is anchored by the BLS lane, whose signature does cover the event root."
- },
- "known_simplifications": [
-  "source chain is a local deterministic simulator, not a live external network",
-  "BLS validator secret keys are the fixed demo values 1, 2, 3 - production requires a DKG",
-  "no bond, fee or slashing economic layer",
-  "the Groth16 lane is a quorum and root-binding proof, not a signature proof",
-  "self-audit checks are behavioural probes against the live registry, not formal verification"
- ],
- "console_round_trip": {
-  "what": "the browser console itself drove a settlement end to end: it read live status through /api/status, created three lock events on the source chain through POST /api/source?path=/lock, and asked the operator facade for one relayer pass through POST /api/relay. No terminal was involved in steps that the console exposes.",
-  "source_height": 1,
-  "source_sender": "GBUZQFEVG3M3COEW3MTWTGXACCRZIYAS2ROVG2QR5VMAB3D7NI6SFUQQ",
-  "events_in_block": 3,
-  "merkle_depth": 2,
-  "recipient": "GCN65ER7FFAKQCECCWMUQVNGK5AQQIBON6KIJBO5FIYTHLXV4EFGVYGM",
-  "relayer": "GCWG62VXMQ6JNW2NJNCIJQS2HPN5VAMDDXSKIFEWE42EAQ3MA26CNVXC",
-  "recipient_wsrc_before": "19.9000000",
-  "recipient_wsrc_after": "60.7000003",
-  "recipient_xlm_before": "1.5000000",
-  "recipient_xlm_after": "1.5000000",
-  "relayer_wsrc_after": "0.3000000",
-  "relayer_xlm_spent": "0.0746712",
-  "note": "the recipient's XLM is identical before and after: the inbound direction is gasless for the user. The relayer paid every fee and was repaid 0.1 wSRC per message out of the locked amount. The arithmetic reconciles exactly: (13.7 + 13.7000001 + 13.7000002) - 3 x 0.1 = 40.8000003 wSRC received, 0.3 wSRC to the relayer."
- },
- "admin_state": {
-  "registry": "renounced on-chain, 8ca278c8...: the verifying key and the domain list are frozen for everyone, including the deployer",
-  "gateway": "renounced on-chain, f3396d44...: the value-moving contract has no owner. set_fee_config and set_target_domain are frozen",
-  "probe": "the audit loop simulates renounce_admin against both contracts every round and requires the host to trap. A simulation that still succeeds means the capability is still live, and is reported as a failure",
-  "verified_after_renounce": "after the gateway renounce, a lock of two events was created from the console and settled: one BLS anchor plus two gasless mints, with the recipient's XLM unchanged at 1.5000000 and wSRC 60.7000003 -> 77.9000004. Nothing in the settlement path needed an admin, which is the point of the renounce"
- },
- "post_renounce_round_trip": {
-  "source_height": 36,
-  "events": 2,
-  "merkle_depth": 1,
-  "recipient": "GCN65ER7FFAKQCECCWMUQVNGK5AQQIBON6KIJBO5FIYTHLXV4EFGVYGM",
-  "recipient_wsrc_before": "60.7000003",
-  "recipient_wsrc_after": "77.9000004",
-  "recipient_xlm_before": "1.5000000",
-  "recipient_xlm_after": "1.5000000",
-  "arithmetic": "(8.7 - 0.1) + (8.7000001 - 0.1) = 17.2000001 wSRC received, 0.2 wSRC to the relayer"
- },
- "console_wallet_round_trip": {
-  "what": "the same browser-only run repeated against the hardened console: operator token entered in the page, lock created with one click, relayer pass triggered from the page, and the four resulting transactions read back from Horizon. No terminal was used for any step the interface exposes.",
-  "driver": "headless chromium against the dev server; every number below was asserted on the rendered page",
-  "source_height": 5,
-  "source_sender": "GCIX6HTVRGKDMHV7NL5FR47L37SETNH6S3HUKEMGWMVS5I4PLZTXENPL",
-  "events_in_block": 3,
-  "merkle_depth": 2,
-  "steps": {
-   "lock": "done at source height 5, 3 events in the block",
-   "finality": "done, registry recorded the height and the page read the record back",
-   "mint": "done, three transactions confirmed"
+  "negative_probes": {
+    "replay_same_bls_evidence": {
+      "outcome": "rejected",
+      "contract_error": 9,
+      "error_name": "EvidenceAlreadyProcessed"
+    },
+    "replay_same_zk_evidence": {
+      "outcome": "rejected",
+      "contract_error": 9,
+      "error_name": "EvidenceAlreadyProcessed"
+    },
+    "tampered_bls_signature": {
+      "outcome": "rejected",
+      "contract_error": 7,
+      "error_name": "InvalidSignature"
+    },
+    "tampered_groth16_proof": {
+      "outcome": "rejected",
+      "contract_error": 8,
+      "error_name": "InvalidProof",
+      "detail": "one byte flipped in proof element A, submitted against a fresh height"
+    },
+    "submit_before_admit_domain": {
+      "outcome": "rejected",
+      "contract_error": 12,
+      "error_name": "NotAdmitted"
+    },
+    "admin_action_after_renounce": {
+      "outcome": "rejected",
+      "error_name": "WasmVm InvalidAction, VM call trapped",
+      "detail": "set_vk and register_domain both trap. The admin capability is gone for everyone, including the deployer."
+    },
+    "mint_replay_through_tooling_entrypoint": {
+      "outcome": "rejected",
+      "contract_error": 4,
+      "error_name": "AlreadyProcessed"
+    },
+    "source_chain_burn_replay": {
+      "outcome": "rejected",
+      "http_status": 409,
+      "detail": "burn message already unlocked"
+    }
   },
-  "transactions": [
-   "08c5f77e159611c46384fffb2d63742a1bb3ead4c0347b4f104f1c07c81dd35e",
-   "0213281f07ea0608154d71f2d63e9f873ab570df09efddec5ef00fed205e9a92",
-   "32b094150b7817439c14f6e4cfb71afbd7c28bda1346f94890e6aac7467460e4",
-   "e159ea23cab0fc091bfcbf424b776b1a4b1befd0cee196d454ca3d5a54585279"
-  ],
-  "ledgers": [
-   4764388,
-   4764389,
-   4764390,
-   4764391
-  ],
-  "arithmetic": "each mint moved 13.7000000 wSRC out of the locked amount: 13.6000000 to the recipient and 0.1000000 to the relayer, so the recipient's XLM never moved and the relayer paid the network fee",
-  "balances_after": {
-   "gasless_recipient_wsrc": "200.3000013",
-   "gasless_recipient_xlm": "1.5000000",
-   "relayer_wsrc": "0.3000000",
-   "relayer_xlm": "9999.9563345",
-   "relayer_trustline_tx": "a8c2b64304bf009ecbcd9a73fa778e00a96faf34a82ff39a136a07e8559b5fa0"
+  "domain": {
+    "name": "source-testnet",
+    "domain_key": "4c00370b422dcf0f72234af78a49d2fafa5196c3ee6b19f2b6a8e815f587137e",
+    "derivation": "sha256(adapter_id || network)",
+    "adapter_id": "3dcbf6f582455337083d5f6d36721f6d63d47af0bef870a043c02aca7850dac9",
+    "state": 2,
+    "machine_approved": true,
+    "bls_policy": {
+      "signer_count": 3,
+      "required": 2,
+      "slashable": false
+    }
   },
-  "note": "the first attempt of this round was refused before it reached the chain: the relayer refuses to run when the simulator's asset id is not the SAC this deployment mints, and the facade now passes that id itself instead of relying on an operator to remember it"
- },
- "interface_state": {
-  "language": "the page background is the source chain: one square per block, using the project's own tile. It runs the full height of the document and is interrupted once, by the wallet console, which is the only part of the page that can move value",
-  "console_position": "deliberately placed below the overview and the settlement explanation, so a reader arrives at the wallet knowing what it is about to do",
-  "wordmark": "the header and favicon use the project's own assets, embedded as data URIs so the page renders with no network at all",
-  "capability_gating": "the lock button is disabled when no source adapter is configured, the settle button when no operator is configured, and the reason is printed under the control rather than shown as a failure after the click",
-  "lattice": "the page background is the submitted artwork, painted unfiltered: frontend/public/grid-tile.png, 60x60, sha256 54e261769ac062fdc5c06084c80671cd52f26f4e2b7dac7284402399c7d2019f, embedded in the page as a data URI. One asset pixel per screen pixel (cell = 60 / devicePixelRatio, so a 2x display gets a 30px cell that still lands on 60 physical pixels), image-rendering: pixelated, and a hover frame of 4 screen pixels snapped to the same lattice. A footer switch offers 1:1 px, 60px and 30px for readers who want the grid denser or coarser than their display implies."
- },
- "console_wallet_round_trip_history": [
-  {
-   "what": "a browser-only run of the whole flow: operator token entered in the wallet console, lock created with one click, and the relayer pass triggered from the page. No terminal was used for any step the interface exposes.",
-   "driver": "headless chromium against the dev server, so the assertions are made on the rendered page rather than on the API",
-   "source_height": 48,
-   "events_in_block": 3,
-   "merkle_depth": 2,
-   "steps": {
-    "lock": "done at source height 48",
-    "finality": "done, registry recorded height 48",
-    "mint": "done, three transactions confirmed"
-   },
-   "transactions": [
-    "887c7af024a6ece05f02288f9aafe24d3a53ebc33b50c0447a469ac3ee0529bb",
-    "97215ba232efe8f4f6c053cac44ab755be339ae8a099a3d815a5b4a661fc4029",
-    "bff382a7fc15e3203d12d6393701d3cb547206f868675e488d7596f7f2800c0e",
-    "f5fb010fee7fc7fc575bd6fde4cdc794ea1d34667f627cee92753f1f9b8e9ee3"
-   ],
-   "note": "the page reported each step from the response it received, not from a hard-coded state: the finality step reads the registry record back through /api/finality after the pass"
+  "gasless_recipient_note": "a Stellar account must exist and hold a trustline to receive a Stellar asset, so 'gasless' here means zero spendable XLM, not zero account setup",
+  "target_domain": "30e4a8e86c86dd7efbf8e589bc2055dd42f3f6e18569103e44eccc1e01cf8ef1",
+  "target_domain_source": "read back from the gateway with get_target_domain on testnet, not copied from config",
+  "end_to_end": {
+    "forward": {
+      "path": "user locks on the source chain, the block is finalised, the gateway verifies a Merkle proof of the lock event against the finalised event root, the wrapped asset is minted",
+      "source_height": 32,
+      "lock_events_in_block": 4,
+      "merkle_proof_depth": 2,
+      "event_root": "300aaa9ac9c07541ce79cd64af93a057b8612492be430c603ee536cd855b5dc8",
+      "state_root": "1be4a3ad8ef51bf8f4c8c77f202083052521c6d5a123e5648f1f4a1c65efdfb5",
+      "amount_minted": 400000002,
+      "recipient_balance_before": 0,
+      "recipient_balance_after": 400000002,
+      "finality_backing": "BLS12-381 aggregate signature over (height, state_root, event_root), 3 signers, 2 required",
+      "zk_also_submitted_for_this_height": true
+    },
+    "reverse": {
+      "path": "user burns the wrapped asset, the gateway emits a burn event, the relayer decodes it from ledger evidence, the source chain releases the locked amount",
+      "amount_burned": 150000000,
+      "recipient_balance_after_burn": 250000002,
+      "burn_message_id": "8087e4ad4542d0bd87eee5b0de0a95d6fa124c17e6ab6797bc5d589c7fd5699e",
+      "source_height": 4762540,
+      "source_chain_released_amount": 150000000,
+      "payload_hash_recomputed_independently": true,
+      "replay_of_burn_message": "rejected with HTTP 409"
+    }
+  },
+  "zk": {
+    "curve": "bn254",
+    "proving_system": "groth16",
+    "circuit": "circuits/finality_statement.circom",
+    "public_input_order": [
+      "prev_state_root",
+      "event_root",
+      "threshold",
+      "state_root"
+    ],
+    "vk_bytes": 768,
+    "proof_bytes": 256,
+    "toolchain": "circom 2.2.3, snarkjs 0.7.6, Powers-of-Tau generated locally",
+    "what_it_proves": "that a quorum of approvals exists over a bitmap, and that the three roots participate in one Poseidon relation, so none of them is free metadata",
+    "what_it_does_not_prove": "it is not a signature verifier. It does not prove that any particular validator signed anything. This is stated in the circuit header too.",
+    "consequence_for_settlement": "because no signature covers the roots in the ZK lane, the registry does not persist an event root from it. Persisting one would let an unconstrained value become the anchor for a Merkle settlement proof. The settlement path for height 32 is anchored by the BLS lane, whose signature does cover the event root."
+  },
+  "known_simplifications": [
+    "source chain is a local deterministic simulator, not a live external network",
+    "BLS validator secret keys are the fixed demo values 1, 2, 3 - production requires a DKG",
+    "no bond, fee or slashing economic layer",
+    "the Groth16 lane is a quorum and root-binding proof, not a signature proof",
+    "self-audit checks are behavioural probes against the live registry, not formal verification"
+  ],
+  "console_round_trip": {
+    "what": "the browser console itself drove a settlement end to end: it read live status through /api/status, created three lock events on the source chain through POST /api/source?path=/lock, and asked the operator facade for one relayer pass through POST /api/relay. No terminal was involved in steps that the console exposes.",
+    "source_height": 1,
+    "source_sender": "GBUZQFEVG3M3COEW3MTWTGXACCRZIYAS2ROVG2QR5VMAB3D7NI6SFUQQ",
+    "events_in_block": 3,
+    "merkle_depth": 2,
+    "recipient": "GCN65ER7FFAKQCECCWMUQVNGK5AQQIBON6KIJBO5FIYTHLXV4EFGVYGM",
+    "relayer": "GCWG62VXMQ6JNW2NJNCIJQS2HPN5VAMDDXSKIFEWE42EAQ3MA26CNVXC",
+    "recipient_wsrc_before": "19.9000000",
+    "recipient_wsrc_after": "60.7000003",
+    "recipient_xlm_before": "1.5000000",
+    "recipient_xlm_after": "1.5000000",
+    "relayer_wsrc_after": "0.3000000",
+    "relayer_xlm_spent": "0.0746712",
+    "note": "the recipient's XLM is identical before and after: the inbound direction is gasless for the user. The relayer paid every fee and was repaid 0.1 wSRC per message out of the locked amount. The arithmetic reconciles exactly: (13.7 + 13.7000001 + 13.7000002) - 3 x 0.1 = 40.8000003 wSRC received, 0.3 wSRC to the relayer."
+  },
+  "admin_state": {
+    "registry": "renounced on-chain, 8ca278c8...: the verifying key and the domain list are frozen for everyone, including the deployer",
+    "gateway": "renounced on-chain, f3396d44...: the value-moving contract has no owner. set_fee_config and set_target_domain are frozen",
+    "probe": "the audit loop simulates renounce_admin against both contracts every round and requires the host to trap. A simulation that still succeeds means the capability is still live, and is reported as a failure",
+    "verified_after_renounce": "after the gateway renounce, a lock of two events was created from the console and settled: one BLS anchor plus two gasless mints, with the recipient's XLM unchanged at 1.5000000 and wSRC 60.7000003 -> 77.9000004. Nothing in the settlement path needed an admin, which is the point of the renounce"
+  },
+  "post_renounce_round_trip": {
+    "source_height": 36,
+    "events": 2,
+    "merkle_depth": 1,
+    "recipient": "GCN65ER7FFAKQCECCWMUQVNGK5AQQIBON6KIJBO5FIYTHLXV4EFGVYGM",
+    "recipient_wsrc_before": "60.7000003",
+    "recipient_wsrc_after": "77.9000004",
+    "recipient_xlm_before": "1.5000000",
+    "recipient_xlm_after": "1.5000000",
+    "arithmetic": "(8.7 - 0.1) + (8.7000001 - 0.1) = 17.2000001 wSRC received, 0.2 wSRC to the relayer"
+  },
+  "console_wallet_round_trip": {
+    "what": "the same browser-only run repeated against the hardened console: operator token entered in the page, lock created with one click, relayer pass triggered from the page, and the four resulting transactions read back from Horizon. No terminal was used for any step the interface exposes.",
+    "driver": "headless chromium against the dev server; every number below was asserted on the rendered page",
+    "source_height": 5,
+    "source_sender": "GCIX6HTVRGKDMHV7NL5FR47L37SETNH6S3HUKEMGWMVS5I4PLZTXENPL",
+    "events_in_block": 3,
+    "merkle_depth": 2,
+    "steps": {
+      "lock": "done at source height 5, 3 events in the block",
+      "finality": "done, registry recorded the height and the page read the record back",
+      "mint": "done, three transactions confirmed"
+    },
+    "transactions": [
+      "08c5f77e159611c46384fffb2d63742a1bb3ead4c0347b4f104f1c07c81dd35e",
+      "0213281f07ea0608154d71f2d63e9f873ab570df09efddec5ef00fed205e9a92",
+      "32b094150b7817439c14f6e4cfb71afbd7c28bda1346f94890e6aac7467460e4",
+      "e159ea23cab0fc091bfcbf424b776b1a4b1befd0cee196d454ca3d5a54585279"
+    ],
+    "ledgers": [
+      4764388,
+      4764389,
+      4764390,
+      4764391
+    ],
+    "arithmetic": "each mint moved 13.7000000 wSRC out of the locked amount: 13.6000000 to the recipient and 0.1000000 to the relayer, so the recipient's XLM never moved and the relayer paid the network fee",
+    "balances_after": {
+      "gasless_recipient_wsrc": "200.3000013",
+      "gasless_recipient_xlm": "1.5000000",
+      "relayer_wsrc": "0.3000000",
+      "relayer_xlm": "9999.9563345",
+      "relayer_trustline_tx": "a8c2b64304bf009ecbcd9a73fa778e00a96faf34a82ff39a136a07e8559b5fa0"
+    },
+    "note": "the first attempt of this round was refused before it reached the chain: the relayer refuses to run when the simulator's asset id is not the SAC this deployment mints, and the facade now passes that id itself instead of relying on an operator to remember it"
+  },
+  "interface_state": {
+    "language": "the page background is the source chain: one square per block, using the project's own tile. It runs the full height of the document and is interrupted once, by the wallet console, which is the only part of the page that can move value",
+    "console_position": "deliberately placed below the overview and the settlement explanation, so a reader arrives at the wallet knowing what it is about to do",
+    "wordmark": "the header and favicon use the project's own assets, embedded as data URIs so the page renders with no network at all",
+    "capability_gating": "the lock button is disabled when no source adapter is configured, the settle button when no operator is configured, and the reason is printed under the control rather than shown as a failure after the click",
+    "lattice": "the page background is the submitted artwork, painted unfiltered: frontend/public/grid-tile.png, 60x60, sha256 54e261769ac062fdc5c06084c80671cd52f26f4e2b7dac7284402399c7d2019f, embedded in the page as a data URI. One asset pixel per screen pixel (cell = 60 / devicePixelRatio, so a 2x display gets a 30px cell that still lands on 60 physical pixels), image-rendering: pixelated, and a hover frame of 4 screen pixels snapped to the same lattice. A footer switch offers 1:1 px, 60px and 30px for readers who want the grid denser or coarser than their display implies."
+  },
+  "console_wallet_round_trip_history": [
+    {
+      "what": "a browser-only run of the whole flow: operator token entered in the wallet console, lock created with one click, and the relayer pass triggered from the page. No terminal was used for any step the interface exposes.",
+      "driver": "headless chromium against the dev server, so the assertions are made on the rendered page rather than on the API",
+      "source_height": 48,
+      "events_in_block": 3,
+      "merkle_depth": 2,
+      "steps": {
+        "lock": "done at source height 48",
+        "finality": "done, registry recorded height 48",
+        "mint": "done, three transactions confirmed"
+      },
+      "transactions": [
+        "887c7af024a6ece05f02288f9aafe24d3a53ebc33b50c0447a469ac3ee0529bb",
+        "97215ba232efe8f4f6c053cac44ab755be339ae8a099a3d815a5b4a661fc4029",
+        "bff382a7fc15e3203d12d6393701d3cb547206f868675e488d7596f7f2800c0e",
+        "f5fb010fee7fc7fc575bd6fde4cdc794ea1d34667f627cee92753f1f9b8e9ee3"
+      ],
+      "note": "the page reported each step from the response it received, not from a hard-coded state: the finality step reads the registry record back through /api/finality after the pass"
+    }
+  ],
+  "execution_lane": {
+    "lane": "execution trace",
+    "circuit": "circuits/execution_trace.circom",
+    "entrypoint": "submit_execution_zk",
+    "registry_id": "CAQ77OEKCHLLCE36MOHY6NO3YJU45FTRLY73REQW4DI5TQMFMZZ5G6LK",
+    "deployed_this_run": true,
+    "admin": "renounced in the same run, before the post-renounce key replacement was refused",
+    "signer": "GCWXGQO2UTLNHXHE7MZ6O6HMUS3AUJ3K2PTE4R2AJ47OLRHGS52A4GPI",
+    "record": "deployments/execution-lane.json",
+    "honest_transaction": "70cb914ad86535ed9a9ba6eefd57f7bade0011f45fe3fa5f2b1b3a26aadc0601",
+    "honest_ledger": 4765687,
+    "stroops_charged": 206052,
+    "steps_executed": 16,
+    "row_budget": 20,
+    "gas_used": 25,
+    "final_pc": 12,
+    "program_digest": "725aa389f603a7d2bd1eaf9a5318f8c31f19346b89011da238ff558a3abd3004",
+    "key_bytes": 1920,
+    "proof_bytes": 256,
+    "payload_bytes": 232,
+    "public_inputs": 22,
+    "what_it_proves": "there exists a run of the committed program, from the register file whose Poseidon root is published and from zeroed memory, ending halted at the published program counter after exactly the published number of steps at exactly the published cost, with the ending register file hashing to the published end root and every row following from the previous one by one legal instruction",
+    "what_it_does_not_prove": "it does not move the settlement anchor: the record is written with settlement_anchored false and nothing is written into the domain that minting reads. Nor is it a general-purpose VM: twenty rows, sixteen instructions, sixteen memory words, eight registers, no syscalls",
+    "checks": "14/14 live checks in tools/execution-lane-live.js; 34/34 in the constraint matrix tools/execution-trace-tests.mjs"
+  },
+  "gate_vm_lane": {
+    "lane": "gate vm (register machine, in-circuit Poseidon, fold-committed program)",
+    "circuit": "circuits/gate_vm.circom",
+    "entrypoint": "submit_gate_vm_zk",
+    "registry_id": "CDWJWDJVCB72ZFVVYVTIY4ZQF2676CJWWKXOSJCC7KQCGS2EI5ZKXI6T",
+    "deployed_this_run": true,
+    "admin": "renounced in the same run, after the key bootstrap; the key is frozen like the other three",
+    "signer": "GAUJNOSC56E3PL6T3SJA5VRXLFQG7E6RYX4ZNQB5PBHFADBNVDCKZV3X",
+    "proof_transaction": "6d67f5f402fc954b6e3cbdc94234a649409cfd246c4a6f489c679acb5e26d7e8",
+    "ledger": 4765859,
+    "fee_stroops": 177143,
+    "checks": "14/14 (deployments/gate-vm-lane.json): honest accept, eight refusal classes, anchor untouched, key frozen after renounce",
+    "statement": "a committed eight-line program ran on an eight-register field machine for four in-circuit Poseidon steps within an eight-row window, from the published start and event roots to the published end root; the hash count is counted by the circuit, not declared by the submitter",
+    "note": "Ledger, fee and success read back from horizon-testnet for the transaction hash above. This lane proves a run of this repository's own machine; the settlement anchor is a different registry (CCXJDQMT...), and this run wrote nothing there."
+  },
+  "merged_registry": {
+    "contract_id": "CBND4C3EC2RTVF6H2JBL4FEB4BI6KT4JGZALBIMMNVAWCIMBZDNSRYKG",
+    "status": "renounced; all four lane slots installed and proven byte-exact in one contract",
+    "record": "deployments/merged-registry.json",
+    "proven_at": "2026-09-19",
+    "note": "37 per-lane checks (11 step-chain, 13 execution, 13 gate-vm) plus 12 merged-registry checks, live on testnet, all passing; the audit loop re-proves the union every round (check 14). The first attempt's registry CBVB2PCB55ZNXBMVQEUSU2ZNSMGI3H5XQUFM54DRQ3DJ6SLT6CZ4LBEZ is equally live, equally frozen and equally proven — only its receipt had an aggregator bug, which is why this one exists; neither is rewound, and the historical per-lane registries stay what they were: records, not the showcase."
   }
- ],
- "execution_lane": {
-  "lane": "execution trace",
-  "circuit": "circuits/execution_trace.circom",
-  "entrypoint": "submit_execution_zk",
-  "registry_id": "CAQ77OEKCHLLCE36MOHY6NO3YJU45FTRLY73REQW4DI5TQMFMZZ5G6LK",
-  "deployed_this_run": true,
-  "admin": "renounced in the same run, before the post-renounce key replacement was refused",
-  "signer": "GCWXGQO2UTLNHXHE7MZ6O6HMUS3AUJ3K2PTE4R2AJ47OLRHGS52A4GPI",
-  "record": "deployments/execution-lane.json",
-  "honest_transaction": "70cb914ad86535ed9a9ba6eefd57f7bade0011f45fe3fa5f2b1b3a26aadc0601",
-  "honest_ledger": 4765687,
-  "stroops_charged": 206052,
-  "steps_executed": 16,
-  "row_budget": 20,
-  "gas_used": 25,
-  "final_pc": 12,
-  "program_digest": "725aa389f603a7d2bd1eaf9a5318f8c31f19346b89011da238ff558a3abd3004",
-  "key_bytes": 1920,
-  "proof_bytes": 256,
-  "payload_bytes": 232,
-  "public_inputs": 22,
-  "what_it_proves": "there exists a run of the committed program, from the register file whose Poseidon root is published and from zeroed memory, ending halted at the published program counter after exactly the published number of steps at exactly the published cost, with the ending register file hashing to the published end root and every row following from the previous one by one legal instruction",
-  "what_it_does_not_prove": "it does not move the settlement anchor: the record is written with settlement_anchored false and nothing is written into the domain that minting reads. Nor is it a general-purpose VM: twenty rows, sixteen instructions, sixteen memory words, eight registers, no syscalls",
-  "checks": "14/14 live checks in tools/execution-lane-live.js; 34/34 in the constraint matrix tools/execution-trace-tests.mjs"
- },
- "gate_vm_lane": {
-  "lane": "gate vm (register machine, in-circuit Poseidon, fold-committed program)",
-  "circuit": "circuits/gate_vm.circom",
-  "entrypoint": "submit_gate_vm_zk",
-  "registry_id": "CDWJWDJVCB72ZFVVYVTIY4ZQF2676CJWWKXOSJCC7KQCGS2EI5ZKXI6T",
-  "deployed_this_run": true,
-  "admin": "renounced in the same run, after the key bootstrap; the key is frozen like the other three",
-  "signer": "GAUJNOSC56E3PL6T3SJA5VRXLFQG7E6RYX4ZNQB5PBHFADBNVDCKZV3X",
-  "proof_transaction": "6d67f5f402fc954b6e3cbdc94234a649409cfd246c4a6f489c679acb5e26d7e8",
-  "ledger": 4765859,
-  "fee_stroops": 177143,
-  "checks": "14/14 (deployments/gate-vm-lane.json): honest accept, eight refusal classes, anchor untouched, key frozen after renounce",
-  "statement": "a committed eight-line program ran on an eight-register field machine for four in-circuit Poseidon steps within an eight-row window, from the published start and event roots to the published end root; the hash count is counted by the circuit, not declared by the submitter",
-  "note": "Ledger, fee and success read back from horizon-testnet for the transaction hash above. This lane proves a run of this repository's own machine; the settlement anchor is a different registry (CCXJDQMT...), and this run wrote nothing there."
- }
 }

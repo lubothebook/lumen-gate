@@ -543,12 +543,28 @@ functionality belongs in the off-chain surface, the facade and the docs.
 
 ### 4.0 Decisions taken this session (the operator answered; execute in order)
 
-- [ ] **Merged live registry.** One fresh registry carrying all lane slots
+- [x] **Merged live registry.** One fresh registry carrying all lane slots
       (settlement vk, step-chain, execution, gate-vm — and later the 32-line
       gate-vm key once it exists): bootstrap, probe every lane against it, then
       renounce. The per-lane registries stay as historical records; the merged
       one becomes the showcase. `tools/merge-lanes-live.js` is the intended
       vehicle, mirroring the per-lane live tools.
+      **Result:** live on `CBND4C3E…` — three full per-lane suites (11 step-
+      chain, 13 execution, 13 gate-vm checks) run *unmodified against the one
+      registry* with renounce deferred, the settlement slot installed from the
+      live showcase registry's own served bytes, four slots proven distinct and
+      byte-exact (the two 896s side by side), one renounce then freezing the
+      union with every setter contract-refused after. Receipt
+      `deployments/merged-registry.json`; audit check 14 re-proves it every
+      round (first round after landing: 14/14, round 19). The first attempt —
+      registry `CBVB2PCB…`, every lane check equally passed, equally frozen —
+      is recorded as superseded by an aggregator bug in the *reader*, not the
+      flow: the receipt of a run may not depend on the reader's luck. The
+      per-lane registries are re-labelled historical in `testnet.json`; the
+      merged one is now the showcase. The gate-vm32 slot joins when its
+      ceremony and committed vectors land; no contract edit was needed to merge
+      four lanes — the fifth needs the setter, which is exactly why the 32-row
+      vectors and the merged registry were sequenced this way.
 - [x] **Signature-gadget feasibility prototype.** A small circom experiment that
       *measures* — not imagines — what one BLS-style scalar-multiplication /
       pairing check costs inside a BN254 circuit: constraint counts for the

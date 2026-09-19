@@ -1,0 +1,109 @@
+{
+  "note": "one registry carrying all four lane slots: three full per-lane probe suites run against it, the settlement key copied from the live showcase registry, four slots proven distinct, then a single renounce freezes the union. This file is a receipt written by tools/merge-lanes-live.js; the lanes keep their own historical per-lane records beside it.",
+  "passed": true,
+  "registry": {
+    "contract_id": "CBND4C3EC2RTVF6H2JBL4FEB4BI6KT4JGZALBIMMNVAWCIMBZDNSRYKG",
+    "network": "testnet",
+    "deployed_by_flow": true
+  },
+  "run_note": "second attempt. The first (2026-09-19) proved the same live results — registry CBVB2PCB55ZNXBMVQEUSU2ZNSMGI3H5XQUFM54DRQ3DJ6SLT6CZ4LBEZ, three suites passed there, union frozen by its own renounce — but its aggregator mis-read the gate-vm record schema and reported a parsing FAIL it had not earned; the receipt of a run must not depend on the reader's luck, so the flow was re-run whole on a fresh registry with a schema-tolerant aggregator rather than hand-patched.",
+  "settlement_key_source": {
+    "registry": "CCXJDQMTJUGXKNFOQPC25IYVOAVWDMLJBNQYX75MAREHV7MZMU5OSEN4",
+    "sha256_of_hex": "0be39477c283d042b1c43943043a5a9a42a21845e1d3780b6d98d467c149f959"
+  },
+  "lane_suites": {
+    "step-chain": {
+      "checks": 11,
+      "passed": 11,
+      "honest_transaction": "e59c1894ca15df7411f2226c4e5d2bc023c8983063487831aa34dd3e28953c2f"
+    },
+    "execution": {
+      "checks": 13,
+      "passed": 13,
+      "honest_transaction": "c5bc16f589d50d06e5e7414d0509b83db57a97e3b9f070aee9fc647850ce6ab8"
+    },
+    "gate-vm": {
+      "checks": 13,
+      "passed": 13,
+      "honest_transaction": "9ccd2ec6486a03fa4e27c291052afab27670990429b11311b921d76627675fbd"
+    }
+  },
+  "merged_checks": [
+    {
+      "check": "step-chain-live.js_suite_on_shared_registry",
+      "passed": true,
+      "detail": "11/11 checks passed in the lane's own record",
+      "at": "2026-09-19T21:58:35.613Z"
+    },
+    {
+      "check": "execution-lane-live.js_suite_on_shared_registry",
+      "passed": true,
+      "detail": "13/13 checks passed in the lane's own record",
+      "at": "2026-09-19T21:58:57.738Z"
+    },
+    {
+      "check": "gate-vm-lane-live.js_suite_on_shared_registry",
+      "passed": true,
+      "detail": "13/13 checks passed in the lane's own record",
+      "at": "2026-09-19T21:59:21.664Z"
+    },
+    {
+      "check": "settlement_key_installed_from_the_live_registrys_bytes",
+      "passed": true,
+      "detail": "set_vk accepted the 768-byte key exactly as CCXJDQ... serves it (sha256 0be39477c283d042...)",
+      "at": "2026-09-19T21:59:28.593Z",
+      "transaction": "fcc3faed6be6889a151308e74d90019a9e21a15d3707568b001924f45b3dd601"
+    },
+    {
+      "check": "all_four_slots_serve_keys_of_their_own_sizes",
+      "passed": true,
+      "detail": "768, 896, 1920 and 896 bytes read back from four slots of one contract",
+      "at": "2026-09-19T21:59:30.796Z"
+    },
+    {
+      "check": "the_two_896_byte_keys_are_distinct_and_each_in_its_own_slot",
+      "passed": true,
+      "detail": "equal length, different bytes, both served by the contract that must never confuse them — this is the shape that makes \"no lane can impersonate another\" testable at all",
+      "at": "2026-09-19T21:59:30.796Z"
+    },
+    {
+      "check": "lanes_never_moved_the_settlement_anchor",
+      "passed": true,
+      "detail": "after three lanes wrote records to the same domain key, last_root is still zero: storage isolation holds where all four lanes coexist",
+      "at": "2026-09-19T21:59:31.748Z"
+    },
+    {
+      "check": "admin_renounced_over_all_slots",
+      "passed": true,
+      "detail": "the merged registry has no admin",
+      "at": "2026-09-19T21:59:38.662Z",
+      "transaction": "e77fc1d21cf94b8d9ac1f9cc2cfec8d90c822a02a3479d7b0b7c9867230aca55"
+    },
+    {
+      "check": "after_renounce_settlement_key_is_frozen",
+      "passed": true,
+      "detail": "set_vk traps and the stored bytes are unchanged (768 bytes still exact)",
+      "at": "2026-09-19T21:59:39.461Z"
+    },
+    {
+      "check": "after_renounce_step_chain_key_is_frozen",
+      "passed": true,
+      "detail": "set_step_chain_vk traps and the stored bytes are unchanged (896 bytes still exact)",
+      "at": "2026-09-19T21:59:40.319Z"
+    },
+    {
+      "check": "after_renounce_execution_key_is_frozen",
+      "passed": true,
+      "detail": "set_execution_vk traps and the stored bytes are unchanged (1920 bytes still exact)",
+      "at": "2026-09-19T21:59:41.156Z"
+    },
+    {
+      "check": "after_renounce_gate_vm_key_is_frozen",
+      "passed": true,
+      "detail": "set_gate_vm_vk traps and the stored bytes are unchanged (896 bytes still exact)",
+      "at": "2026-09-19T21:59:41.857Z"
+    }
+  ],
+  "started_at": "2026-09-19T21:57:54.733Z",
+  "finished_at": "2026-09-19T21:59:41.857Z"
+}

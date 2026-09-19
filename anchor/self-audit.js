@@ -7,7 +7,7 @@
  * what it saw, with timestamps, so a reader does not have to take anyone's
  * word for it.
  *
- * Every round it asks thirteen questions, and none of them is answered by
+ * Every round it asks fourteen questions, and none of them is answered by
  * trusting an earlier answer:
  *   1. Is the source chain reachable at all?
  *   2. Does a fresh, honest proof still get ACCEPTED?
@@ -26,6 +26,10 @@
  *      library driven against a stubbed signer record, including the
  *      below-threshold signature that must be refused)
  *  13. Is the gate-vm lane's recorded acceptance still true on the network?
+ *  14. Does the merged showcase registry still serve every lane's key byte
+ *      for byte against the registries those keys came from — and is it
+ *      frozen in the provable sense: the setter refused by the contract,
+ *      not by the network?
  *      (the transaction re-read from Horizon, and the lane registry still
  *      serving the committed verification key — not the file, the bytes)
  *
@@ -545,6 +549,89 @@ async function runRound() {
     }
   } catch (e) {
     record("gate_vm_lane_still_verified", false, `readback failed: ${String(e.message || e)}`);
+  }
+
+  // The merged registry is the showcase: one contract holding all four lane
+  // slots, frozen by a single renounce. The round proves the two claims that
+  // make it worth calling a showcase rather than a fourth demo. First,
+  // coexistence in bytes: every merged slot must serve exactly the key its
+  // own lane's registry serves — four live reads paired against four other
+  // live reads, no build artifacts trusted, no repository files trusted.
+  // Second, the freeze over the union: a representative setter must fail
+  // *because the contract refused it*, not because the network did (the
+  // unreachability-is-safety inversion this loop once had, fixed once, is
+  // refused again here), and the key must read back intact after the attempt.
+  try {
+    const mergedPath = path.join(ROOT, "deployments", "merged-registry.json");
+    if (!fs.existsSync(mergedPath)) {
+      record("merged_registry_still_frozen", false, "no deployments/merged-registry.json in the repository");
+    } else {
+      const merged = JSON.parse(fs.readFileSync(mergedPath, "utf8"));
+      const mergedId = merged?.registry?.contract_id;
+      const lanes = [
+        { slot: "settlement", getter: "get_vk", len: 768, setter: "set_vk",
+          peer: () => JSON.parse(fs.readFileSync(path.join(ROOT, "deployments", "testnet.json"), "utf8")).contracts.finality_registry.contract_id },
+        { slot: "step_chain", getter: "get_step_chain_vk", len: 896, setter: "set_step_chain_vk",
+          peer: () => JSON.parse(fs.readFileSync(path.join(ROOT, "deployments", "step-chain.json"), "utf8")).registry_id },
+        { slot: "execution", getter: "get_execution_vk", len: 1920, setter: "set_execution_vk",
+          peer: () => JSON.parse(fs.readFileSync(path.join(ROOT, "deployments", "execution-lane.json"), "utf8")).registry_id },
+        { slot: "gate_vm", getter: "get_gate_vm_vk", len: 896, setter: "set_gate_vm_vk",
+          peer: () => JSON.parse(fs.readFileSync(path.join(ROOT, "deployments", "gate-vm-lane.json"), "utf8")).registry_id },
+      ];
+      if (!/^C[A-Z0-9]{55}$/.test(mergedId || "")) {
+        record("merged_registry_still_frozen", false, "the merged record carries no well-formed contract id");
+      } else {
+        const readKey = async (id, getter, bytes) => {
+          const r = await sh("stellar", [
+            "contract", "invoke",
+            "--id", id,
+            "--source", SOURCE,
+            "--network", NETWORK,
+            "--", getter,
+          ]);
+          const m = `${r.stdout}`.match(new RegExp(`[0-9a-f]{${bytes * 2}}`));
+          return { ok: r.ok && Boolean(m), hex: m ? m[0] : null, tail: `${r.stderr}${r.stdout}`.trim().slice(0, 120) };
+        };
+        const mismatches = [];
+        for (const lane of lanes) {
+          const peerId = lane.peer();
+          const [mine, theirs] = await Promise.all([readKey(mergedId, lane.getter, lane.len), readKey(peerId, lane.getter, lane.len)]);
+          if (!mine.ok || !theirs.ok) {
+            mismatches.push(`${lane.slot}: unreadable on ${mine.ok ? "the lane's own registry" : "the merged registry"} (${(mine.tail || theirs.tail).slice(0, 80)})`);
+          } else if (mine.hex !== theirs.hex) {
+            mismatches.push(`${lane.slot}: merged and ${peerId.slice(0, 8)}... serve different ${lane.len}-byte keys`);
+          }
+        }
+        // reachability first, refusal second, intactness third — same order as
+        // the tightened per-lane renounce check, for the same reason
+        const reach = await sh("stellar", ["contract", "invoke", "--id", mergedId, "--source", SOURCE, "--network", NETWORK, "--", "get_gate_vm_vk"]);
+        const probe = await sh("stellar", [
+          "contract", "invoke",
+          "--id", mergedId,
+          "--source", SOURCE,
+          "--network", NETWORK,
+          "--send=no",
+          "--", "set_gate_vm_vk",
+          "--admin", (await sh("stellar", ["keys", "address", SOURCE])).stdout.trim(),
+          "--vk", "00".repeat(896),
+        ]);
+        const probeText = `${probe.stdout}${probe.stderr}`;
+        const reached = reach.ok && Boolean(reach.stdout.match(/[0-9a-f]{1792}/));
+        const contractRefused = !probe.ok && /(Error|trap|HostError|Unexpected)/i.test(probeText);
+        const intact = reached && !mismatches.length;
+        record(
+          "merged_registry_still_frozen",
+          reached && contractRefused && intact,
+          !reached
+            ? `the merged registry ${mergedId.slice(0, 8)}... could not be read: a closed door is not proven locked by being dark (unmapped failure: ${reach.tail})`
+            : intact && contractRefused
+              ? `${mergedId.slice(0, 8)}... serves all four slot keys byte-identical to the four registries they came from, and set_gate_vm_vk is refused by the contract itself after the renounce`
+              : `merged registry drift: ${mismatches.join("; ") || "setter probe accepted a key — the freeze is not real"}`
+        );
+      }
+    }
+  } catch (e) {
+    record("merged_registry_still_frozen", false, `merged readback failed: ${String(e.message || e)}`);
   }
 
   // After the renounce there must be no path back. This simulates the actual

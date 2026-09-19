@@ -96,6 +96,12 @@ A test suite proves the contract behaved correctly at the moment someone ran it.
     verification key, requiring the committed 896 bytes back intact — the
     "frozen after renounce" claim expressed as bytes on the network, not as a
     line in this file.
+14. **Is the merged showcase registry still the merged showcase registry?** All
+    four slot keys must read back byte-identical to the four registries they
+    were copied from — five live contracts compared pairwise, no build
+    artifacts or repository files taken on trust — and the post-renounce setter
+    probe must be refused *by the contract*, reachability proven first, so an
+    outage can never be miscounted as safety again.
 
 Results are timestamped and appended to [`deployments/self-audit.json`](deployments/self-audit.json), and served read-only at `/self-audit` on the anchor facade. Run it with:
 
@@ -106,7 +112,7 @@ REGISTRY_ID=CCXJDQMTJUGXKNFOQPC25IYVOAVWDMLJBNQYX75MAREHV7MZMU5OSEN4 \
 
 **It holds no mint authority.** It cannot approve anything, it cannot change the verifying key, and it is not a new trusted party in the settlement path — it only asks the contract questions and writes down the answers. If it stops running, nothing about settlement changes; you just stop getting fresh evidence.
 
-The latest recorded round is **13/13** (`deployments/self-audit.json`, round 18), and the checks that need no party's cooperation are the load-bearing ones: the gasless recipient's live balance (`1.5000000 XLM` held, `1.5000000 XLM` reserve, **`0.0000000 XLM` spendable**), the recorded gasless mint sitting on ledger `4,763,378` with a fee of 137,293 stroops, the post-renounce `set_vk` refusal attributed to the contract itself with the stored key read back unchanged, and the gate-vm lane's acceptance — transaction `6d67f5f4…` on ledger `4,765,859` for 177,143 stroops, its registry still serving the committed key byte for byte. The facade probe reported **26/26**. Both admin checks work by simulating the admin action and requiring the host to trap — a probe with no verdict is recorded as a failure, because a check that reports success on an empty output is worse than no check at all. The registry's admin capability was given up permanently with `renounce_admin`, which is the last setup step — after that nobody, including the deployer, can change the verifying key or add a domain.
+The latest recorded round is **14/14** (`deployments/self-audit.json`, round 19) — the fourteenth check is the merged-registry one, and it passed on its first live round — and the checks that need no party's cooperation are the load-bearing ones: the gasless recipient's live balance (`1.5000000 XLM` held, `1.5000000 XLM` reserve, **`0.0000000 XLM` spendable**), the recorded gasless mint sitting on ledger `4,763,378` with a fee of 137,293 stroops, the post-renounce `set_vk` refusal attributed to the contract itself with the stored key read back unchanged, and the gate-vm lane's acceptance — transaction `6d67f5f4…` on ledger `4,765,859` for 177,143 stroops, its registry still serving the committed key byte for byte. The facade probe reported **26/26**. Both admin checks work by simulating the admin action and requiring the host to trap — a probe with no verdict is recorded as a failure, because a check that reports success on an empty output is worse than no check at all. The registry's admin capability was given up permanently with `renounce_admin`, which is the last setup step — after that nobody, including the deployer, can change the verifying key or add a domain.
 
 ### What this round of work broke, and what that found
 
