@@ -18,7 +18,12 @@
 // signing, and the challenge transaction is never submitted anywhere.
 // ---------------------------------------------------------------------------
 
-const {Keypair, TransactionBuilder, Networks} = require('@stellar/stellar-sdk');
+const crypto = require('crypto');
+const {Account, Keypair, Networks, Operation, TransactionBuilder, StrKey} = require('@stellar/stellar-sdk');
+
+// The served stellar.toml is cached here so SEP-10 checks can compare what
+// discovery promises with what the auth surface actually does.
+let discoveryToml = null;
 
 const FACADE_URL = (process.env.FACADE_URL || 'http://127.0.0.1:8081').replace(/\/+$/, '');
 const AS_JSON = process.argv.includes('--json');
@@ -66,6 +71,12 @@ async function checkDiscovery() {
   // other people's software parses, so the probe must see the bytes it sees.
   const {status, text: body} = await fetchText('/.well-known/stellar.toml');
   if (status !== 200) return record('sep1_stellar_toml_served', false, `HTTP ${status}`);
+  discoveryToml = String(body);
+  record(
+    'sep1_signing_key_field',
+    /SIGNING_KEY="G[A-Z0-9]{55}"/.test(discoveryToml),
+    'SIGNING_KEY is a well-formed account id'
+  );
   const required = ['VERSION', 'NETWORK_PASSPHRASE', 'DOCUMENTATION', 'ORG_NAME', 'ORG_URL', 'CURRENCIES', 'code', 'issuer', 'display_decimals', 'is_asset_anchored'];
   const missing = required.filter((field) => !String(body).includes(field));
   record('sep1_stellar_toml_served', missing.length === 0, missing.length ? `missing: ${missing.join(', ')}` : `served, ${required.length} SEP-1 markers present`);
@@ -88,8 +99,10 @@ async function checkEnvelopeAndRouting() {
   const badMethod = await request('/v1/relay', {method: 'DELETE'});
   record('error_envelope_on_405', badMethod.status === 405 && isEnvelope(badMethod.body), `HTTP ${badMethod.status}, code ${badMethod.body.error ? badMethod.body.error.code : 'none'}`);
 
-  const badParam = await request('/v1/deposit?account=not-an-account');
-  record('error_envelope_on_bad_input', badParam.status === 400 && isEnvelope(badParam.body), `HTTP ${badParam.status}, code ${badParam.body.error ? badParam.body.error.code : 'none'}`);
+  // The SEP-10 route validates its account parameter before anything else,
+  // so this exercises input validation without needing a session first.
+  const badParam = await request('/v1/sep10/auth?account=not-an-account');
+  record('error_envelope_on_bad_input', badParam.status === 400 && isEnvelope(badParam.body) && badParam.body.error.code === 'invalid_account', `HTTP ${badParam.status}, code ${badParam.body.error ? badParam.body.error.code : 'none'}`);
 
   const alias = await request('/info');
   record('legacy_alias_still_answers', alias.status === 200 && Boolean(alias.body.anchor), `HTTP ${alias.status}`);
@@ -109,6 +122,42 @@ async function checkSep10() {
 
   const passphrase = challenge.body.network_passphrase;
   const tx = TransactionBuilder.fromXDR(challenge.body.transaction, passphrase);
+
+  // The challenge must look exactly like SEP-10 describes, not merely parse:
+  // sequence 0, one manageData operation named "<home domain> auth" sourced
+  // from the client, a 64-byte nonce, a timebox, and the anchor's key as the
+  // transaction source - the same key discovery publishes.
+  const op = tx.operations[0];
+  const nonceValue = op && op.value ? Buffer.from(op.value) : Buffer.alloc(0);
+  // SEP-10 (with the web_auth_domain extension) allows exactly one extra
+  // operation: a manageData named "<web auth domain> auth" sourced from the
+  // anchor itself. Anything else - a payment, a third op, a foreign source -
+  // fails this check.
+  const extraOpsAllowed = tx.operations
+    .slice(1)
+    .every((extra) => extra.type === 'manageData' && extra.source === tx.source);
+  record(
+    'sep10_challenge_structure',
+    tx.source === challenge.body.signing_key &&
+      tx.sequence === '0' &&
+      tx.operations.length >= 1 &&
+      tx.operations.length <= 2 &&
+      extraOpsAllowed &&
+      op.type === 'manageData' &&
+      op.name === `${challenge.body.home_domain} auth` &&
+      op.source === client.publicKey() &&
+      nonceValue.length === 64 &&
+      Boolean(tx.timeBounds) &&
+      Number(tx.timeBounds.maxTime) - Number(tx.timeBounds.minTime) <= 900,
+    `sequence ${tx.sequence}, ${tx.operations.length} manageData op(s) "${op && op.name}", nonce ${nonceValue.length} bytes, timeboxed`
+  );
+  const tomlKey = discoveryToml && discoveryToml.match(/SIGNING_KEY="(G[A-Z0-9]{55})"/);
+  record(
+    'sep1_discovery_matches_auth',
+    Boolean(tomlKey) && tomlKey[1] === challenge.body.signing_key,
+    tomlKey ? `stellar.toml signs with the same key the challenge is sourced from (${tomlKey[1].slice(0, 6)}...)` : 'no SIGNING_KEY line in the served toml'
+  );
+
   tx.sign(client);
   const signed = tx.toEnvelope().toXDR('base64');
 
@@ -131,7 +180,55 @@ async function checkSep10() {
   });
   record('sep10_wrong_signer_refused', refused.status === 401 && isEnvelope(refused.body), `HTTP ${refused.status}, code ${refused.body.error ? refused.body.error.code : 'none'}`);
 
-  return issued ? {token: verified.body.token, account: verified.body.account} : null;
+  // A well-formed HS256 token that was not issued by this anchor must not
+  // open anything: the structure passes, the signature does not.
+  const forgedHeader = Buffer.from(JSON.stringify({alg: 'HS256', typ: 'JWT'})).toString('base64url');
+  const forgedPayload = Buffer.from(JSON.stringify({
+    iss: 'lumen-gate.local',
+    sub: client.publicKey(),
+    iat: Math.floor(Date.now() / 1000),
+    exp: Math.floor(Date.now() / 1000) + 900,
+    jti: crypto.randomBytes(12).toString('hex'),
+  })).toString('base64url');
+  const forged = await request('/v1/transactions', {
+    headers: {Authorization: `Bearer ${forgedHeader}.${forgedPayload}.${Buffer.from(crypto.randomBytes(32)).toString('base64url')}`},
+  });
+  record('sep10_forged_jwt_refused', forged.status === 401 && isEnvelope(forged.body), `HTTP ${forged.status}, code ${forged.body.error ? forged.body.error.code : 'none'}`);
+
+  // An expired but correctly signed challenge stays refused. This needs the
+  // anchor secret to construct one, so it runs when the probe shares the
+  // operator's environment; otherwise the check is skipped, not passed.
+  const anchorSecret = (process.env.SEP10_SIGNING_SECRET || '').trim();
+  if (anchorSecret && StrKey.isValidEd25519SecretSeed(anchorSecret)) {
+    const serverKeypair = Keypair.fromSecret(anchorSecret);
+    const staleClient = Keypair.random();
+    const past = Math.floor(Date.now() / 1000) - 900;
+    const stale = new TransactionBuilder(new Account(serverKeypair.publicKey(), '-1'), {
+      fee: '100',
+      networkPassphrase: passphrase,
+      timebounds: {minTime: past, maxTime: past + 300},
+    })
+      .addOperation(Operation.manageData({
+        name: `${challenge.body.home_domain} auth`,
+        value: crypto.randomBytes(64),
+        source: staleClient.publicKey(),
+      }))
+      .build();
+    stale.sign(serverKeypair);
+    stale.sign(staleClient);
+    const expired = await request('/v1/sep10/auth', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({transaction: stale.toEnvelope().toXDR('base64')}),
+    });
+    record(
+      'sep10_expired_challenge_refused',
+      (expired.status === 400 || expired.status === 401) && isEnvelope(expired.body) && expired.body.error.code === 'invalid_transaction',
+      `a fully signed stale challenge got HTTP ${expired.status} (${expired.body.error ? expired.body.error.code : 'none'})`
+    );
+  }
+
+  return issued ? {token: verified.body.token, account: verified.body.account, signingKey: challenge.body.signing_key, homeDomain: challenge.body.home_domain} : null;
 }
 
 async function checkSep6(session) {
@@ -150,7 +247,18 @@ async function checkSep6(session) {
   );
 
   const account = session ? session.account : Keypair.random().publicKey();
-  const depositRequest = await request(`/v1/deposit?asset_code=wSRC&account=${account}&amount=10`);
+  const authHeaders = session ? {Authorization: `Bearer ${session.token}`} : {};
+
+  // Opening a record names an account, so it is never anonymous: without a
+  // session the route must refuse before it touches the store.
+  const anonymousDeposit = await request('/v1/deposit?asset_code=wSRC&amount=10');
+  record(
+    'sep6_deposit_requires_session',
+    anonymousDeposit.status === 401 && isEnvelope(anonymousDeposit.body),
+    `HTTP ${anonymousDeposit.status}, code ${anonymousDeposit.body.error ? anonymousDeposit.body.error.code : 'none'}`
+  );
+
+  const depositRequest = await request(`/v1/deposit?asset_code=wSRC&amount=10`, {headers: authHeaders});
   const depositFields = ['how', 'id', 'eta', 'min_amount', 'max_amount', 'fee_fixed'];
   const missingDeposit = depositFields.filter((field) => depositRequest.body[field] === undefined);
   record(
@@ -159,7 +267,19 @@ async function checkSep6(session) {
     missingDeposit.length ? `missing: ${missingDeposit.join(', ')}` : `record ${String(depositRequest.body.id).slice(0, 8)}... created with SEP-6 fields`
   );
 
-  const transactions = await request(`/v1/transactions?account=${account}`);
+  // A session may open a record for its own account only. Asking for someone
+  // else's G-address must be refused, not silently re-pointed.
+  if (session) {
+    const stranger = Keypair.random().publicKey();
+    const crossAccount = await request(`/v1/deposit?asset_code=wSRC&account=${stranger}&amount=10`, {headers: authHeaders});
+    record(
+      'sep6_cross_account_refused',
+      crossAccount.status === 403 && isEnvelope(crossAccount.body),
+      `deposit for a foreign account answered HTTP ${crossAccount.status} (${crossAccount.body.error ? crossAccount.body.error.code : 'no envelope'})`
+    );
+  }
+
+  const transactions = await request('/v1/transactions', {headers: authHeaders});
   const records = transactions.body.transactions || [];
   const first = records[0];
   const transactionFields = ['id', 'kind', 'status', 'amount_in', 'amount_out', 'amount_fee', 'started_at', 'stellar_transaction_id'];
@@ -170,7 +290,7 @@ async function checkSep6(session) {
     missingTransaction.length ? `missing: ${missingTransaction.join(', ')}` : `${records.length} record(s) in the SEP-6 transaction schema`
   );
 
-  const withdrawal = await request(`/v1/withdraw?asset_code=wSRC&account=${account}&amount=5`);
+  const withdrawal = await request(`/v1/withdraw?asset_code=wSRC&amount=5`, {headers: authHeaders});
   record('sep6_withdraw_instructions', withdrawal.status === 200 && typeof withdrawal.body.id === 'string', `HTTP ${withdrawal.status}`);
 
   // The withdrawal record must not advance on a client's word alone. The token
@@ -200,17 +320,21 @@ async function checkSep6(session) {
 async function checkRateLimit() {
   let limited = 0;
   let envelope = false;
+  let retryAfter = false;
   for (let index = 0; index < RATE_LIMIT_BURST; index += 1) {
     const response = await request('/v1/health');
     if (response.status === 429) {
       limited += 1;
       if (isEnvelope(response.body)) envelope = true;
+      // A refusal that does not say when to come back invites retry storms.
+      const value = Number(response.headers.get('retry-after'));
+      if (Number.isFinite(value) && value > 0) retryAfter = true;
     }
   }
   if (limited === 0) {
     record('rate_limit_enforced', false, `${RATE_LIMIT_BURST} rapid reads were all served: the limiter is off or set above the burst`);
   } else {
-    record('rate_limit_enforced', envelope, `burst of ${RATE_LIMIT_BURST} produced ${limited} rate-limited answer(s), envelope ${envelope ? 'intact' : 'missing'}`);
+    record('rate_limit_enforced', envelope && retryAfter, `burst of ${RATE_LIMIT_BURST} produced ${limited} rate-limited answer(s), envelope ${envelope ? 'intact' : 'missing'}, Retry-After ${retryAfter ? 'present' : 'missing'}`);
   }
 }
 

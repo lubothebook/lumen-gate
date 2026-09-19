@@ -1,3 +1,8 @@
+# Local runtime state: the demo SEP-10 signing secret, and the SEP-6 record
+# store the facade persists while it runs. Neither is product content.
+/.runtime/
+/deployments/sep6-transactions.json
+
 # Local build and dependency artifacts
 /frontend/node_modules/
 /frontend/dist/

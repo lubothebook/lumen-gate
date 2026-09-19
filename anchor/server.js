@@ -195,6 +195,40 @@ function requireSessionFor(req, res, account) {
   return verified.claims;
 }
 
+/**
+ * Read guard for the user-facing SEP-6 surface.
+ *
+ * Opening a deposit or withdraw record, and reading a transaction history, all
+ * name an account. The session proves which one: no token, no record; a token,
+ * and only the account it was issued to. An anonymous caller cannot plant
+ * pending records against somebody else's address, and cannot read someone
+ * else's history by guessing an account id.
+ */
+function requireSession(req, res) {
+  const token = jwt.fromRequest(req);
+  if (!token) {
+    json(res, 401, sep10.unauthenticated());
+    return null;
+  }
+  const verified = jwt.verify(token);
+  if (!verified.ok) {
+    json(res, 401, sep10.unauthenticated());
+    return null;
+  }
+  return verified.claims;
+}
+
+function sessionOwnsAccount(req, res, claims, requested) {
+  if (requested && requested !== claims.sub) {
+    fail(res, 403, 'unauthorized', 'a session acts for its own account only', {
+      session_account: claims.sub,
+      requested_account: requested,
+    });
+    return false;
+  }
+  return true;
+}
+
 /** Integers only, bounded, before anything is handed to the relayer. */
 function parseHeight(value) {
   if (value === null || value === undefined || value === '') return {ok: true, height: null};
@@ -381,10 +415,10 @@ const ROUTES = [
   'GET  /v1/sep10/auth?account=G...',
   'POST /v1/sep10/auth {transaction}',
   'GET  /v1/sep6/info',
-  'GET  /v1/deposit?asset_code=&account=&amount=',
-  'GET  /v1/withdraw?asset_code=&account=&amount=&dest=',
-  'GET  /v1/transactions?id=&account=',
-  'POST /v1/transactions/{id}/burn {stellar_transaction_id}',
+  'GET  /v1/deposit?asset_code=&amount=           (SEP-10 session; account = token subject)',
+  'GET  /v1/withdraw?asset_code=&amount=&dest=    (SEP-10 session; account = token subject)',
+  'GET  /v1/transactions[?id=]                    (SEP-10 session; history scoped to the token subject)',
+  'POST /v1/transactions/{id}/burn {stellar_transaction_id}  (SEP-10 session of the record owner)',
   'GET  /v1/sep12/customer  (not implemented, answers 501)',
   'POST /v1/relay?height=N  (operator token)',
   'POST /v1/reconcile       (operator token)',
@@ -535,8 +569,11 @@ async function handle(req, res, pathname, query) {
   }
 
   if (route === 'GET /v1/deposit') {
+    const claims = requireSession(req, res);
+    if (!claims) return undefined;
+    if (!sessionOwnsAccount(req, res, claims, query.get('account'))) return undefined;
     const result = sep6.depositInstructions({
-      account: query.get('account'),
+      account: claims.sub,
       assetCode: query.get('asset_code') || query.get('asset'),
       amount: query.get('amount') || null,
       sourceAddress: query.get('source_address') || null,
@@ -551,8 +588,11 @@ async function handle(req, res, pathname, query) {
   }
 
   if (route === 'GET /v1/withdraw') {
+    const claims = requireSession(req, res);
+    if (!claims) return undefined;
+    if (!sessionOwnsAccount(req, res, claims, query.get('account'))) return undefined;
     const result = sep6.withdrawInstructions({
-      account: query.get('account'),
+      account: claims.sub,
       assetCode: query.get('asset_code') || query.get('asset'),
       amount: query.get('amount') || null,
       dest: query.get('dest') || query.get('dest_address') || null,
@@ -562,6 +602,11 @@ async function handle(req, res, pathname, query) {
   }
 
   if (route === 'GET /v1/transactions') {
+    const claims = requireSession(req, res);
+    if (!claims) return undefined;
+    if (!sessionOwnsAccount(req, res, claims, query.get('account'))) return undefined;
+    // History is scoped to the session's own account, whatever was asked for.
+    query.set('account', claims.sub);
     return json(res, 200, sep6.transactions({query}));
   }
 
@@ -724,10 +769,10 @@ async function handle(req, res, pathname, query) {
         self_audit: '/v1/self-audit',
         sep10: '/v1/sep10/auth?account=G...',
         sep6_info: '/v1/sep6/info',
-        deposit: '/v1/deposit?asset_code=wSRC&account=G...&amount=10',
-        withdraw: '/v1/withdraw?asset_code=wSRC&account=G...&amount=10&dest=...',
-        transactions: '/v1/transactions?id=',
-        note: 'the unversioned paths (/info, /deposit, ...) remain as aliases of these /v1 routes',
+        deposit: '/v1/deposit?asset_code=wSRC&amount=10 (SEP-10 session; the record account is the token subject, never a caller-chosen one)',
+        withdraw: '/v1/withdraw?asset_code=wSRC&amount=10&dest=... (SEP-10 session; same rule)',
+        transactions: '/v1/transactions (SEP-10 session; history scoped to the token subject) or ?id= for one record',
+        note: 'the unversioned paths (/info, /deposit, ...) remain as aliases of these /v1 routes; opening records and reading history are never anonymous, because a record names an account',
       },
       hardening: {
         bls: 'real aggregate signature: demo 2-of-3 validators, H = hash_to_g1(height||state_root||event_root), public key pinned in the domain policy',
