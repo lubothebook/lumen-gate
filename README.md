@@ -74,7 +74,6 @@ flowchart TB
     class RAVEN innovation
 ```
 
-![Architecture](docs/architecture.png)
 
 ### 1.2 Trust Boundary — Machine vs Human
 
@@ -97,7 +96,6 @@ flowchart LR
     Traditional -.->|Replaced by| Ours
 ```
 
-![zkVM Innovation](docs/zkvm_innovation.png)
 
 ### 1.3 Container Deep Dive
 
@@ -384,7 +382,6 @@ migrate-to-stellar/
 ├── frontend (7 panels + gasless, Freighter, Horizon)
 ├── anchor (stellar.toml, server.js hardened)
 ├── scripts (deploy.sh hardened, raven_helper.js, demo.sh)
-├── docs (architecture.png, zkvm_innovation.png, RAVEN_INTEGRATION.md)
 ├── deployments/testnet.json (hardened notes)
 └── README.md (professional with Mermaid fixed)
 ```
