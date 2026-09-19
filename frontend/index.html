@@ -918,6 +918,18 @@
         </div>
         <dl class="kv" id="deploymentKv"><dt>Manifest</dt><dd>loading</dd></dl>
       </div>
+
+      <div class="card" style="margin-top:20px">
+        <div class="card-head">
+          <h3>What the receipts record</h3>
+          <span class="hint" id="lanesStamp">read-only; from the repository's own files, not a network call</span>
+        </div>
+        <dl class="kv" id="lanesKv"><dt>Receipts</dt><dd>the generated module has no lanes block yet</dd></dl>
+        <p class="note" style="margin-top:10px">An em-dash here means the receipts record nothing for that
+        slot — which is not the same as zero. This card reads only what <code>deployments/*.json</code>
+        says; ledger and fee figures are the ones the audit loop read from Horizon on its last round.
+        The card fetches nothing and changes nothing.</p>
+      </div>
     </div>
   </section>
 

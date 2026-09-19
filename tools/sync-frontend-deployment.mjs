@@ -49,6 +49,90 @@ if (missing.length > 0) {
   process.exit(1);
 }
 
+// The lanes block is what the status card is allowed to know: only what the
+// receipt files in deployments/ already say. It never fetches, never computes
+// a "0" where a receipt is silent, and names its own sources so the page can
+// be audited against the repository. Absent facts render as em-dashes, not
+// as zeroes dressed up as measurements.
+function readReceipt(name) {
+  try {
+    return JSON.parse(readFileSync(join(repoRoot, 'deployments', name), 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+const audit = readReceipt('self-audit.json');
+const merged = readReceipt('merged-registry.json');
+const lastAudit = audit?.latest
+  ? {
+      round: audit.latest.round ?? null,
+      passed: audit.latest.checks_passed ?? null,
+      total: audit.latest.checks_total ?? null,
+      all_passed: audit.latest.all_passed ?? true,
+      finished_at: audit.latest.finished_at ?? null,
+      registry: audit.latest.registry ?? null,
+    }
+  : null;
+
+// ledger and fee figures for a lane: the audit loop reads them from Horizon
+// every round, so the numbers the card shows were live when recorded. A lane
+// whose latest detail does not carry them shows null and renders an em-dash.
+function onLedger(detail) {
+  const ledger = String(detail || '').match(/ledger[\D]+([\d,]+)/);
+  const fee = String(detail || '').match(/\(?([\d,]+) stroops\)?/);
+  return { ledger: ledger ? ledger[1] : null, fee_stroops: fee ? fee[1] : null };
+}
+
+function laneReceipt(receiptName, auditCheck, { txFromHonest = true } = {}) {
+  const rec = readReceipt(receiptName);
+  if (!rec) return { recorded: false };
+  const checks = rec.checks || rec.records || [];
+  const honest = checks.find((c) => /honest_.*_accepted/.test(c.check || ''));
+  const auditDetail = (audit?.latest?.checks || []).find((c) => c.check === auditCheck)?.detail
+    ?? (audit?.latest?.records || []).find((r) => r.check === auditCheck)?.detail;
+  let ledgerFacts = auditDetail ? onLedger(auditDetail) : { ledger: null, fee_stroops: null };
+  // lanes whose facts live in the merged round's detail: "gate_vm ledger N (F stroops)"
+  const mergedDetail = (audit?.latest?.checks || []).find((c) => c.check === "merged_registry_still_frozen")?.detail || "";
+  const seg = String(receiptName).match(/^([a-z-]+?)(-lane)?\.json$/)?.[1]?.replace(/-/g, "_");
+  // (file names and audit-lane names differ by the -lane/-chain noise: the
+  // receipt is named execution-lane.json, the merged detail calls it execution;
+  // strip exactly that, nothing cleverer)
+  if ((!ledgerFacts.ledger || !ledgerFacts.fee_stroops) && seg) {
+    const m = mergedDetail.match(new RegExp(`${seg} ledger ([\\d,]+) \\(([\\d,]+) stroops\\)`));
+    if (m) ledgerFacts = { ledger: m[1], fee_stroops: m[2] };
+  }
+  return {
+    recorded: true,
+    registry: rec.registry_id ?? null,
+    honest_transaction: (txFromHonest ? honest?.transaction : null) ?? rec.honest_transaction ?? null,
+    checks: `${checks.filter((c) => c.passed).length}/${checks.length}`,
+    ...ledgerFacts,
+  };
+}
+
+const lanes = {
+  sources: ['deployments/self-audit.json', 'deployments/merged-registry.json', 'deployments/testnet.json', 'deployments/step-chain.json', 'deployments/execution-lane.json', 'deployments/gate-vm-lane.json'],
+  meaning_of_dash: 'the receipts record nothing here — which is not the same as zero',
+  last_audit: lastAudit,
+  merged_registry: merged
+    ? {
+        contract_id: merged.registry?.contract_id ?? null,
+        all_lanes_passed: merged.passed ?? false,
+        lane_suites: merged.lane_suites ?? {},
+        record: 'deployments/merged-registry.json',
+      }
+    : null,
+  settlement: {
+    registry: contractId('finality_registry'),
+    admin_state: manifest.contracts?.finality_registry?.admin ?? manifest.contracts?.finality_registry?.status ?? null,
+    last_finalized_height: manifest.registry_state?.last_finalized_height ?? manifest.finality?.last_finalized_height ?? null,
+  },
+  step_chain: laneReceipt('step-chain.json', 'honest_evidence_accepted'),
+  execution: laneReceipt('execution-lane.json', 'execution_lane_still_verified'),
+  gate_vm: laneReceipt('gate-vm-lane.json', 'gate_vm_lane_still_verified'),
+};
+
 const contents = `// GENERATED FILE - do not edit by hand.
 //
 // Source: deployments/testnet.json, written by tools/sync-frontend-deployment.mjs.
@@ -56,6 +140,9 @@ const contents = `// GENERATED FILE - do not edit by hand.
 // produced it. If a value looks wrong, fix the manifest and regenerate; do not
 // patch this file.
 export const deployment = ${JSON.stringify(deployment, null, 2)};
+
+// Lanes of this deployment, read from the receipts only at generation time.
+export const lanes = ${JSON.stringify(lanes, null, 2)};
 
 export default deployment;
 `;

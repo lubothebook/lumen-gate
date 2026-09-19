@@ -616,6 +616,24 @@ async function runRound() {
           "--vk", "00".repeat(896),
         ]);
         const probeText = `${probe.stdout}${probe.stderr}`;
+        // The three honest acceptances this registry holds — read from the
+        // receipt's own transaction list, against Horizon, every round: the
+        // merged showcase's lane numbers (ledger, fee) are re-derived here so
+        // any surface that reads this file reports fresh facts, not a copy
+        // of a copy.
+        const laneTx = [];
+        for (const [name, facts] of Object.entries(merged.lane_suites || {})) {
+          if (!facts?.honest_transaction) continue;
+          try {
+            const tx = await getJson(`${horizonUrl()}/transactions/${facts.honest_transaction}`);
+            laneTx.push(
+              `${name.replace(/-/g, "_")} ledger ${tx.ledger} (${tx.fee_charged} stroops)${tx.successful === false ? " FAILED ON LEDGER" : ""}`
+            );
+          } catch (e) {
+            laneTx.push(`${name.replace(/-/g, "_")} tx unreadable`);
+          }
+        }
+        const laneTail = laneTx.length ? `; lanes on one contract: ${laneTx.join("; ")}` : "";
         const reached = reach.ok && Boolean(reach.stdout.match(/[0-9a-f]{1792}/));
         const contractRefused = !probe.ok && /(Error|trap|HostError|Unexpected)/i.test(probeText);
         const intact = reached && !mismatches.length;
@@ -625,7 +643,7 @@ async function runRound() {
           !reached
             ? `the merged registry ${mergedId.slice(0, 8)}... could not be read: a closed door is not proven locked by being dark (unmapped failure: ${reach.tail})`
             : intact && contractRefused
-              ? `${mergedId.slice(0, 8)}... serves all four slot keys byte-identical to the four registries they came from, and set_gate_vm_vk is refused by the contract itself after the renounce`
+              ? `${mergedId.slice(0, 8)}... serves all four slot keys byte-identical to the four registries they came from, and set_gate_vm_vk is refused by the contract itself after the renounce${laneTail}`
               : `merged registry drift: ${mismatches.join("; ") || "setter probe accepted a key — the freeze is not real"}`
         );
       }

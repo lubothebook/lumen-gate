@@ -615,11 +615,23 @@ functionality belongs in the off-chain surface, the facade and the docs.
       unreachable, and the docs say exactly that instead of pretending either
       half away. `file:` mode proven end-to-end against a supplied transcript
       (verify + pin + groth16 setup + prove all ran on it).
-- [ ] **Read-only status surface.** The console gains one card fed exclusively
+- [x] **Read-only status surface.** The console gains one card fed exclusively
       from `deployments/*.json` (lane list, last audit round N/N with its
       timestamp, each live lane's ledger + fee): no signer, no new endpoint, no
       write path. The sibling agents own the surrounding UI; this card reads
       the records, it does not touch the lattice.
+      **Result:** the card exists and the acceptance wording holds exactly: no
+      new endpoint was needed because the existing build-time sync
+      (`tools/sync-frontend-deployment.mjs`) now embeds a `lanes` block generated
+      from the six receipts in deployments/, and the card renders from that
+      module only — an outage cannot change it, a live answer cannot flatter
+      it. Rows: last audit round (20, 14/14, timestamped), the merged showcase
+      with its per-suite counts, and each live lane with its registry link,
+      acceptance-tx link, ledger and fee — parsed from what the audit loop
+      itself read from Horizon, never recomputed here. Where a receipt is
+      silent the card shows an em-dash and says that null is not zero.
+      `check-console.js` still passes; `--check` keeps the module from
+      drifting, so the card cannot lag the receipts unnoticed.
 - [ ] **One 'is it a zkVM?' card.** The README's honest one-liner gets its
       interface counterpart: four lanes, two machines, and the three bounds
       (window, ceremony, anchor) in the same breath the card makes the claim.

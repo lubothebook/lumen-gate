@@ -1123,6 +1123,82 @@ function wire() {
   $('opClose').addEventListener('click', () => $('operatorDialog').close());
 }
 
+// --- the read-only receipts card ---------------------------------------------------
+// Rendered entirely from the generated deployment module, which is generated from
+// the receipts in deployments/*.json. No fetch, no signer, no network: the facts
+// this card can show are exactly the facts the repository wrote down, so an
+// outage cannot change it and a live answer cannot flatter it.
+async function renderLanes() {
+  const kv = $('lanesKv');
+  if (!kv) return;
+  kv.textContent = '';
+  let lanes = null;
+  try {
+    ({ lanes } = await import('./deployment.js'));
+  } catch {
+    /* the fallback row below is the honest state of a missing module */
+  }
+  if (!lanes) {
+    kv.append(el('dt', { text: 'Receipts' }), el('dd', { text: 'no lanes block in the generated module: run node tools/sync-frontend-deployment.mjs' }));
+    return;
+  }
+  const DASH = ' —';
+  const row = (label, nodes) => {
+    kv.append(el('dt', { text: label }));
+    kv.append(el('dd', {}, nodes));
+  };
+  const faint = (text) => el('span', { class: 'faint', text });
+  const contractLink = (id) =>
+    el('a', { class: 'explorer', href: EXPLORER_CONTRACT + id, target: '_blank', rel: 'noreferrer', text: `registry ${short(id, 6)}` });
+  const audit = lanes.last_audit;
+  row('Audit loop', [
+    document.createTextNode(
+      audit
+        ? `round ${audit.round}: ${audit.passed}/${audit.total} ${audit.all_passed ? 'passed' : 'FAILED — the record says so'}`
+        : 'no round recorded'
+    ),
+    audit?.finished_at ? faint(`  ·  ${audit.finished_at}`) : null,
+  ].filter(Boolean));
+  const merged = lanes.merged_registry;
+  if (merged?.contract_id) {
+    row('Merged registry', [
+      contractLink(merged.contract_id),
+      faint(
+        merged.all_lanes_passed
+          ? `   all lanes passed on one contract (${Object.entries(merged.lane_suites || {})
+              .map(([lane, facts]) => `${lane} ${facts.passed}/${facts.checks}`)
+              .join(', ')})`
+          : '   the merged receipt reports failures; open the record'
+      ),
+    ]);
+  }
+  const laneRows = [
+    ['Settlement lane', lanes.settlement, true],
+    ['Step-chain lane', lanes.step_chain, false],
+    ['Execution lane', lanes.execution, false],
+    ['Gate-vm lane', lanes.gate_vm, false],
+  ];
+  for (const [label, facts, isSettlement] of laneRows) {
+    if (!facts || (facts.recorded === false && !isSettlement)) continue;
+    const tail = [
+      facts.checks ? faint(`checks ${facts.checks}`) : null,
+      faint(
+        isSettlement
+          ? ` ·  admin ${facts.admin_state || 'state not recorded'}`
+          : ` ·  ledger ${facts.ledger || DASH.replace(' —', '—')} · ${facts.fee_stroops ? `${facts.fee_stroops} stroops` : '—'}`
+      ),
+    ].filter(Boolean);
+    row(label, [
+      facts.registry ? contractLink(facts.registry) : faint('no registry id'),
+      facts.honest_transaction
+        ? el('span', {}, [document.createTextNode('  ·  accepted by '), txLink(facts.honest_transaction)])
+        : null,
+      ...tail,
+    ].filter(Boolean));
+  }
+}
+
+renderLanes().catch(() => {});
 wire();
 watchSections();
 buildLattice();
