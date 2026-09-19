@@ -7,13 +7,14 @@
  * what it saw, with timestamps, so a reader does not have to take anyone's
  * word for it.
  *
- * Every round it asks six questions:
+ * Every round it asks seven questions:
  *   1. Is the source chain reachable at all?
  *   2. Does a fresh, honest proof still get ACCEPTED?
  *   3. Is a replay of the exact same evidence still REJECTED?
  *   4. Is a proof with one tampered signature still REJECTED?
- *   5. Has the admin capability actually been given up yet?
- *   6. Does the console still resolve every element it looks up?
+ *   5. Has the registry's admin capability actually been given up?
+ *   6. Has the gateway's admin capability actually been given up?
+ *   7. Does the console still resolve every element it looks up?
  *
  * It holds no mint authority and can approve nothing. It only submits probes
  * and records verdicts. If it dies, nothing in the settlement path changes.
@@ -37,6 +38,22 @@ const ROOT = path.join(__dirname, "..");
 const http = require("node:http");
 
 const REGISTRY_ID = process.env.REGISTRY_ID || "";
+
+// The gateway is where value moves, so the audit asks about its admin
+// capability too. It reads the id from the manifest when the environment does
+// not name one, because a check that silently skips is not a check.
+function gatewayIdFromManifest() {
+  try {
+    const manifest = JSON.parse(
+      fs.readFileSync(path.join(__dirname, "..", "deployments", "testnet.json"), "utf8")
+    );
+    const contracts = manifest.contracts || {};
+    return (contracts.settlement_gateway || contracts.gateway || "").trim();
+  } catch {
+    return "";
+  }
+}
+const GATEWAY_ID = (process.env.GATEWAY_ID || "").trim() || gatewayIdFromManifest();
 const NETWORK = process.env.NETWORK || "testnet";
 const SOURCE = process.env.STELLAR_SOURCE || "lumen-deployer";
 // A real testnet account, used as the source-chain sender and recipient of the
@@ -281,6 +298,40 @@ async function runRound() {
       ? "admin key is STILL LIVE -- bootstrap trust point has not been given up yet"
       : "admin capability has been permanently given up"
   );
+
+  // Probe 5 -- the gateway's admin capability. There is no getter for it, so
+  // the probe simulates the admin action itself: if the simulation still
+  // succeeds, the key is still live. `--send=no` changes no state. The verdict
+  // is only "gone" when the host actually traps; an inconclusive answer is
+  // recorded as a failure rather than as a pass, because a check that reports
+  // success on an empty output is worse than no check at all.
+  if (GATEWAY_ID) {
+    const admin = resolveSubmitter();
+    const probe = await sh("stellar", [
+      "contract", "invoke",
+      "--id", GATEWAY_ID,
+      "--source", SOURCE,
+      "--network", NETWORK,
+      "--send=no",
+      "--",
+      "renounce_admin",
+      "--admin", admin,
+    ]);
+    const text = `${probe.stdout || ""}${probe.stderr || ""}`;
+    const trapped = /UnreachableCodeReached|WasmVm/.test(text);
+    const stillSucceeds = /admin_renounced/.test(text) && !trapped;
+    record(
+      "gateway_admin_renounced",
+      trapped && !stillSucceeds,
+      trapped
+        ? "gateway admin capability is gone: a second renounce traps in the host"
+        : stillSucceeds
+          ? "gateway admin key is STILL LIVE -- the value-moving contract still has an owner"
+          : `no verdict from the gateway probe: ${outcome(probe).slice(0, 120)}`
+    );
+  } else {
+    record("gateway_admin_renounced", false, "no gateway id: set GATEWAY_ID or record contracts.settlement_gateway in the manifest");
+  }
 
   // The console is part of the product surface, so a broken selector is a
   // defect the loop should catch. tools/check-console.js resolves every element

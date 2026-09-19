@@ -28,7 +28,8 @@
         "CBFCPCX4ISXOQXCAUBFN5AS5AIDJNSE3BHY5ROSZJ7JS6SAKZ2IM45UZ": "v2, 18242 bytes - added the enum-free tooling entrypoints, and minted live at height 91; retired because the SAC admin had already been handed to it and set_admin cannot be called by anyone else",
         "CBOWN6KAURZI6YWBMP7TJKULDKLRLR6YMFU4KNM6E52VHE3XHFJCXDDE": "v3, 18303 bytes - first build with the burn footprint fix; retired because it was initialized against the old SAC"
       },
-      "what_v4_fixes": "burn_and_relay wrote a storage key derived from the live ledger sequence (message_id embeds source_height). Simulation and execution run at different ledger sequences, so the execution footprint no longer contained the key and the host rejected the write with Storage::ExceededLimit. The marker is now keyed on the outbound nonce, which is read from contract storage and is therefore identical in both phases."
+      "what_v4_fixes": "burn_and_relay wrote a storage key derived from the live ledger sequence (message_id embeds source_height). Simulation and execution run at different ledger sequences, so the execution footprint no longer contained the key and the host rejected the write with Storage::ExceededLimit. The marker is now keyed on the outbound nonce, which is read from contract storage and is therefore identical in both phases.",
+      "admin": "renounced - permanently given up; a second renounce_admin traps in the host. See receipts.gateway_renounce_admin"
     },
     "wrapped_asset_sac": {
       "contract_id": "CBPBDVLP7K436KEXOAJMPFFHEF5OXNN4KJIB2HDFDBRWOABQ6WBTURRV",
@@ -77,7 +78,11 @@
     "console_mint_1_of_3": "2091566f2d36c12132109e60508933e2966dba0d40dda380be10fbb554106769",
     "console_mint_2_of_3": "179d0ee59d15bcdea47569b254fc848c823a1992e557242373abbf54e5351b85",
     "console_mint_3_of_3": "2d5845626e59f9f49912422e11aeddea5a0ab73c24b6425b65906408f165cb40",
-    "relayer_trustline_change_trust": "a159f26765eeb003618a705b392ecd8ec2ceb5ba773fbe86ac11ea03de08ed5d"
+    "relayer_trustline_change_trust": "a159f26765eeb003618a705b392ecd8ec2ceb5ba773fbe86ac11ea03de08ed5d",
+    "gateway_renounce_admin": "f3396d449411843489ae3f209efe74af823633e20e45a9d86b70ec324c2bbf0b",
+    "post_renounce_mint_1_of_2": "c1f02301d26210e82b26262eeaf98f2f415fd1003e515adf27ae698f5cf24f3a",
+    "post_renounce_mint_2_of_2": "2c4eedacf7d9e3efa7fc439b898ec99c4c61f092d44cbcc7edc9a5666dddbf50",
+    "post_renounce_bls_anchor_height_36": "04a785cfb54cb6ea6be9a769f9ae49e6480650f9612ed75dd2603798e914a650"
   },
   "gasless": {
     "claim": "an account whose entire XLM balance equals its minimum reserve - zero spendable stroops - received wrapped tokens. It could not have paid for its own mint.",
@@ -279,5 +284,22 @@
     "relayer_wsrc_after": "0.3000000",
     "relayer_xlm_spent": "0.0746712",
     "note": "the recipient's XLM is identical before and after: the inbound direction is gasless for the user. The relayer paid every fee and was repaid 0.1 wSRC per message out of the locked amount. The arithmetic reconciles exactly: (13.7 + 13.7000001 + 13.7000002) - 3 x 0.1 = 40.8000003 wSRC received, 0.3 wSRC to the relayer."
+  },
+  "admin_state": {
+    "registry": "renounced on-chain, 8ca278c8...: the verifying key and the domain list are frozen for everyone, including the deployer",
+    "gateway": "renounced on-chain, f3396d44...: the value-moving contract has no owner. set_fee_config and set_target_domain are frozen",
+    "probe": "the audit loop simulates renounce_admin against both contracts every round and requires the host to trap. A simulation that still succeeds means the capability is still live, and is reported as a failure",
+    "verified_after_renounce": "after the gateway renounce, a lock of two events was created from the console and settled: one BLS anchor plus two gasless mints, with the recipient's XLM unchanged at 1.5000000 and wSRC 60.7000003 -> 77.9000004. Nothing in the settlement path needed an admin, which is the point of the renounce"
+  },
+  "post_renounce_round_trip": {
+    "source_height": 36,
+    "events": 2,
+    "merkle_depth": 1,
+    "recipient": "GCN65ER7FFAKQCECCWMUQVNGK5AQQIBON6KIJBO5FIYTHLXV4EFGVYGM",
+    "recipient_wsrc_before": "60.7000003",
+    "recipient_wsrc_after": "77.9000004",
+    "recipient_xlm_before": "1.5000000",
+    "recipient_xlm_after": "1.5000000",
+    "arithmetic": "(8.7 - 0.1) + (8.7000001 - 0.1) = 17.2000001 wSRC received, 0.2 wSRC to the relayer"
   }
 }

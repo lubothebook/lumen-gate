@@ -53,7 +53,9 @@ Concretely, the Registry computes `H = hash_to_curve(height || state_root || eve
 
 **Why this counts as "no human approval."** Both checks run inside the Soroban contract itself, using cryptographic operations built directly into the Stellar protocol, not a script on someone's laptop or a company server. The contract's only decision is whether the pairing equation holds. To make sure nobody can quietly change what "valid" means later, the verifying key and the BLS policy are set once through an admin-gated bootstrap, and `renounce_admin` exists to give that ability up permanently. After that point, there is no key left that could override what the math already decided.
 
-**Where a human still sits, honestly.** Admin-gated bootstrap is a real trust point during setup: whoever holds the admin key decides the initial verifying key and the initial BLS policy. That is why renounce is part of the product and not a footnote, and why the deployed registry has not yet renounced — the on-chain transaction is pending, and this file will not claim it until it is done.
+**Where a human still sits, honestly.** Admin-gated bootstrap is a real trust point during setup: whoever holds the admin key decides the initial verifying key and the initial BLS policy. That is why renounce is part of the product and not a footnote. **Both live contracts have now given the capability up on-chain**, with receipts below, and the audit loop probes for it every round instead of taking this paragraph's word for it.
+
+What the human *could* have done before the renounce, and no longer can: change the verifying key, add or admit a domain, lower the BLS policy, re-point the gateway's target domain, or change the relayer fee configuration. After the renounce there is no call that reaches any of it. The verification key is frozen in storage, the settlement rule is the pairing equation, and there is no owner left to ask.
 
 ## The same flow, driven from the console
 
@@ -92,7 +94,7 @@ REGISTRY_ID=CCXJDQMTJUGXKNFOQPC25IYVOAVWDMLJBNQYX75MAREHV7MZMU5OSEN4 \
 
 **It holds no mint authority.** It cannot approve anything, it cannot change the verifying key, and it is not a new trusted party in the settlement path — it only asks the contract questions and writes down the answers. If it stops running, nothing about settlement changes; you just stop getting fresh evidence.
 
-The latest recorded round is **6/6** (`deployments/self-audit.json`, round 3): source chain reachable, honest evidence accepted, replay rejected, tampered signature rejected, verifying key immutable, admin capability renounced, console wiring consistent. The registry's admin capability was given up permanently with `renounce_admin`, which is the last setup step — after that nobody, including the deployer, can change the verifying key or add a domain.
+The latest recorded round is **7/7** (`deployments/self-audit.json`, round 4): source chain reachable, honest evidence accepted, replay rejected, tampered signature rejected, registry admin renounced, **gateway admin renounced**, console wiring consistent. Both admin checks work by simulating the admin action and requiring the host to trap — a probe with no verdict is recorded as a failure, because a check that reports success on an empty output is worse than no check at all. The registry's admin capability was given up permanently with `renounce_admin`, which is the last setup step — after that nobody, including the deployer, can change the verifying key or add a domain.
 
 ### What this round of work broke, and what that found
 
@@ -112,7 +114,7 @@ This checkout is a **Testnet engineering snapshot**, not a completed production 
 | Contract | Address | Note |
 | --- | --- | --- |
 | `finality_registry` | `CCXJDQMTJUGXKNFOQPC25IYVOAVWDMLJBNQYX75MAREHV7MZMU5OSEN4` | admin **renounced on-chain**; verifier key set; one domain admitted |
-| `settlement_gateway` | `CBUKVNCPF5XRYJVAH2SRLTLUMZT6T677T5KAJADXZIQOQTCTSBITQVPA` | current build, 18,303 bytes |
+| `settlement_gateway` | `CBUKVNCPF5XRYJVAH2SRLTLUMZT6T677T5KAJADXZIQOQTCTSBITQVPA` | current build, 18,303 bytes, admin **renounced on-chain** |
 | `wSRC` (Stellar Asset Contract) | `CBPBDVLP7K436KEXOAJMPFFHEF5OXNN4KJIB2HDFDBRWOABQ6WBTURRV` | admin handed to the gateway, so mint and burn ride the gateway's own authorisation |
 
 Three earlier gateway deployments and one earlier asset contract are listed under `superseded` in [`deployments/testnet.json`](deployments/testnet.json) rather than deleted. They were replaced for concrete reasons, and the reasons are the interesting part: one could not be driven from the command line, one could not be re-pointed at a fixed gateway, and one predated a real footgun fix. Keeping them visible is cheaper than pretending the first attempt worked.
@@ -133,6 +135,9 @@ Three earlier gateway deployments and one earlier asset contract are listed unde
 | Tamper one byte of a Groth16 proof | rejected `#8 InvalidProof` | simulated, no fee burned |
 | **`renounce_admin`** | **success** | `8ca278c88a6ee375c21c09870b48320b953eea3ed3e7c35f55a03b87e03639b4` |
 | `set_vk` **after** renounce | rejected, VM call trapped | the capability is gone for everyone, including the deployer |
+| **Gateway `renounce_admin`** | **success**, event `machine_settlement_only` | `f3396d449411843489ae3f209efe74af823633e20e45a9d86b70ec324c2bbf0b` |
+| A second gateway `renounce_admin` | rejected, VM call trapped | there is no admin key left to authorise it |
+| **Two gasless mints after the renounce** | **success**, XLM unchanged, +17.2000001 wSRC | `c1f02301…`, `2c4eedac…` |
 | **Forward: lock → Merkle proof → mint** | **success**, balance 0 → 400,000,002 wSRC | `3d5d9936bf514b10423fe4ed4f39009899f02ae1f5cdb8b5fd16517258f57997` |
 | **Reverse: burn → source-chain unlock** | **success**, 150,000,000 released | `ca0a16605acb41c1dcb1e4db2dedaf4b45e98347b013e37d8e9906a559b83340` |
 | Replay the burn message on the source chain | rejected, HTTP 409 | — |
