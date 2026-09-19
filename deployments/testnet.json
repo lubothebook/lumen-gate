@@ -403,5 +403,30 @@
       ],
       "note": "the page reported each step from the response it received, not from a hard-coded state: the finality step reads the registry record back through /api/finality after the pass"
     }
-  ]
+  ],
+  "execution_lane": {
+    "lane": "execution trace",
+    "circuit": "circuits/execution_trace.circom",
+    "entrypoint": "submit_execution_zk",
+    "registry_id": "CAQ77OEKCHLLCE36MOHY6NO3YJU45FTRLY73REQW4DI5TQMFMZZ5G6LK",
+    "deployed_this_run": true,
+    "admin": "renounced in the same run, before the post-renounce key replacement was refused",
+    "signer": "GCWXGQO2UTLNHXHE7MZ6O6HMUS3AUJ3K2PTE4R2AJ47OLRHGS52A4GPI",
+    "record": "deployments/execution-lane.json",
+    "honest_transaction": "70cb914ad86535ed9a9ba6eefd57f7bade0011f45fe3fa5f2b1b3a26aadc0601",
+    "honest_ledger": 4765687,
+    "stroops_charged": 206052,
+    "steps_executed": 16,
+    "row_budget": 20,
+    "gas_used": 25,
+    "final_pc": 12,
+    "program_digest": "725aa389f603a7d2bd1eaf9a5318f8c31f19346b89011da238ff558a3abd3004",
+    "key_bytes": 1920,
+    "proof_bytes": 256,
+    "payload_bytes": 232,
+    "public_inputs": 22,
+    "what_it_proves": "there exists a run of the committed program, from the register file whose Poseidon root is published and from zeroed memory, ending halted at the published program counter after exactly the published number of steps at exactly the published cost, with the ending register file hashing to the published end root and every row following from the previous one by one legal instruction",
+    "what_it_does_not_prove": "it does not move the settlement anchor: the record is written with settlement_anchored false and nothing is written into the domain that minting reads. Nor is it a general-purpose VM: twenty rows, sixteen instructions, sixteen memory words, eight registers, no syscalls",
+    "checks": "14/14 live checks in tools/execution-lane-live.js; 34/34 in the constraint matrix tools/execution-trace-tests.mjs"
+  }
 }

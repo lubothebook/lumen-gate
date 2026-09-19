@@ -95,7 +95,10 @@ module.exports = async function handler(req, res) {
       capabilities: capabilities(),
       honesty: {
         source_chain: 'simulated locally; the Stellar side is not',
-        zk_lane: 'statement proof (quorum + root binding), not a zkVM and not a signature verifier',
+        zk_lane:
+          'three Groth16 lanes: a quorum statement, a chained state transition, and a bounded execution trace '
+          + '(20 rows, 16 instructions, 16 memory words, 8 registers). None of them is a general-purpose zkVM, '
+          + 'and none of them is a signature verifier',
         findings_recorded: Array.isArray(manifest.findings) ? manifest.findings.length : 0,
         known_simplifications: Array.isArray(manifest.known_simplifications) ? manifest.known_simplifications.length : 0,
       },

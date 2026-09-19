@@ -1357,13 +1357,19 @@ impl FinalityRegistry {
     // because this entrypoint is live in a registry whose admin has been
     // renounced, so the ABI cannot be renamed in place.
     //
-    // It is NOT a zkVM. Nothing here proves the execution of a program on a
-    // virtual machine: there is no instruction set, no memory model and no
-    // program commitment, and the statement is baked into the constraint
-    // system at compile time. The circuit proves that a quorum of a bitmap is
-    // set and that the submitted roots participate in one Poseidon relation.
-    // See docs/PROVING_SYSTEM.md, and note that the settlement path does not
-    // use this lane's event root precisely because no signature covers it.
+    // This entrypoint is a statement proof, not a VM proof: the statement is
+    // baked into the constraint system at compile time, and the circuit proves
+    // that a quorum of a bitmap is set and that the submitted roots participate
+    // in one Poseidon relation. There is no instruction set, no memory model and
+    // no program commitment behind *this* lane.
+    //
+    // The repository does carry a lane that proves a program ran -- the
+    // execution trace circuit in `submit_execution_zk`, with the machine in
+    // `crates/execution_vm` -- and the two are not interchangeable: that one
+    // proves a run on a small bounded machine and still does not anchor
+    // settlement. See docs/PROVING_SYSTEM.md sections 5c and 7, and note that
+    // the settlement path does not use this lane's event root precisely because
+    // no signature covers it.
     pub fn verify_via_zkvm(
         env: Env,
         evidence: RawEvidence,

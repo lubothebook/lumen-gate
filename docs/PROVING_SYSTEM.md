@@ -8,9 +8,9 @@ The short answer is at the top, the definitions are below it, and every number i
 
 ## 1. Short answer
 
-Lumen Gate does **not** run a zkVM. There is no virtual machine, no instruction set, no memory model, no program commitment and no execution trace anywhere in this system.
+Lumen Gate runs **three Groth16 lanes over BN254**, and one of them is a **bounded VM-execution proof**: a machine with eleven opcodes, eight registers, sixteen memory words and a twenty-row step budget, whose guest program is a public input and whose execution is proved step by step. It is described in section 5c, and its live record is [`deployments/execution-lane.json`](../deployments/execution-lane.json). What it is *not* is a general-purpose zkVM: the step budget is a constant in the circuit, there are no syscalls, and the guest is assembled from a short listing rather than compiled from a high-level language. Section 7 lists exactly what is still missing, in the same terms as before.
 
-What the ZK lane is: a **fixed-statement Groth16 SNARK over BN254**, compiled ahead of time from [`circuits/finality_statement.circom`](../circuits/finality_statement.circom), verified on-chain by a ~180-line verifier inside the registry contract using Stellar's native BN254 host functions (CAP-0074, Protocol 25+). The statement is fixed at compile time, so it cannot be changed without new keys and a new deployment.
+The first lane is a **fixed-statement Groth16 SNARK over BN254**, compiled ahead of time from [`circuits/finality_statement.circom`](../circuits/finality_statement.circom), verified on-chain by a ~180-line verifier inside the registry contract using Stellar's native BN254 host functions (CAP-0074, Protocol 25+). The statement is fixed at compile time, so it cannot be changed without new keys and a new deployment.
 
 | | |
 |---|---|
@@ -23,7 +23,9 @@ What the ZK lane is: a **fixed-statement Groth16 SNARK over BN254**, compiled ah
 | On-chain artifact sizes | verification key **768 bytes**, proof **256 bytes**, public inputs **4 × 32 bytes** |
 | Statement (one sentence) | "At least `threshold` approval bits are set, the threshold equals the registered policy, and `prev_state_root`, `state_root` and `event_root` participate in one Poseidon relation." |
 
-A second, machine-shaped lane now exists beside it: [`circuits/step_chain_statement.circom`](../circuits/step_chain_statement.circom) proves an **N-step chained state transition** rather than one fixed statement. It is described in section 5b, and it is what the "first honest step toward a machine-shaped proof" in earlier revisions of this document turned into. It is still not a VM, and section 7 says exactly why.
+A second lane sits beside it: [`circuits/step_chain_statement.circom`](../circuits/step_chain_statement.circom) proves an **N-step chained state transition** rather than one fixed statement. It is described in section 5b, and it is what the "first honest step toward a machine-shaped proof" in earlier revisions of this document turned into. A chain of state transitions is still not a VM — it has no instruction set — and section 5c describes the third lane, which does.
+
+The third lane is [`circuits/execution_trace.circom`](../circuits/execution_trace.circom) with its interpreter [`crates/execution_vm`](../crates/execution_vm): a **bounded machine**, proved step by step, live on testnet. Four things in section 7's list were missing before it and are present in it: an instruction set with semantics, a commitment to the guest program, a memory model, and a witness generator that replays an execution.
 
 The full Groth16 rule set — what a proof binds, what it hides, and how public inputs work — is the standard one. Lumen Gate reimplements only the verifier and the byte encoding; it does not invent a proving system.
 
@@ -34,7 +36,7 @@ The full Groth16 rule set — what a proof binds, what it hides, and how public 
 This is the part that most projects in this space get wrong, so it is stated in the strongest terms:
 
 - **It is not a signature verification proof.** The circuit proves a quorum of approvals exists over a bitmap. It does not prove that any particular validator, key or signature exists. A prover with the required number of set bits can satisfy it. Replacing the bitmap with a BLS or ed25519 signature gadget is the next research step, not something this snapshot claims.
-- **It is not a VM-execution proof.** A zkVM proves "program `P`, committed to as `cP`, executed on inputs `I`, produced output `O` and final state `S`". To claim that, a system needs (a) a program commitment and a verifier for that program, (b) an instruction set with semantics, (c) a memory model, (d) a witness generator that replays guest execution. Lumen Gate has none of these four things. It has one statement, hard-coded.
+- **The VM-execution claim is bounded, and the bound is a constant in the circuit.** The execution lane proves "program `P`, committed to as a public input, executed from the register file whose Poseidon root is published, produced the published end root and program counter after `n` steps at cost `g`" — the four things this bullet used to say were absent are in section 5c. What it does **not** prove is that a machine of *any* size could have run it: twenty rows, sixteen instructions, sixteen memory words, eight registers, no syscalls. A program that needs a twenty-first step has no proof in this circuit, and the registry refuses a payload claiming one. Nor does it prove anything about consensus, or about a source chain's state transition function — the guest is a program someone writes, and its correctness is theirs.
 - **It is not privacy-preserving.** All four public signals are, by design, public. This lane is about *succinctness and on-chain verifiability*, not about hiding anything.
 - **It does not authorize settlement.** Because the circuit does not cover an event root with signatures, the registry **does not persist** an event root from this lane: it stores zeroes in that slot. Minting reads an event root, so the settlement anchor for the live round trip comes from the **BLS** lane. This refusal is deliberate: persisting an unsigned root would make an unconstrained value the anchor for Merkle settlement proofs.
 
@@ -149,6 +151,42 @@ The order of steps is not a convention that a test checks after the fact; it is 
 
 ---
 
+## 5c. The execution lane: the machine, and what it cost to install
+
+The chained lane proves that steps are linked. The execution lane proves that a *program* ran: it is the difference between a chain of hashes and a machine.
+
+| | |
+|---|---|
+| Circuit | `ExecutionTrace(20, 16, 16, 8)` — 22 public inputs, 2224 private signals |
+| Constraints | **9996 non-linear, 2694 linear** |
+| Public inputs | `program[0..15]`, `initial_regs_root`, `final_regs_root`, `final_pc`, `steps_executed`, `gas_used`, `domain_tag` |
+| On-chain artifacts | verification key **1920 bytes**, proof **256 bytes**, payload **232 bytes**, public inputs **22 × 32 bytes** |
+| Domain tag | `lumen-gate-execution-v1` → `00cf562c45b7d43f…7db4`, distinct from both other lanes |
+| Machine | [`crates/execution_vm`](../crates/execution_vm): 11 opcodes, 8 registers (r0 pinned), 16 memory words, 16-instruction program, wrapping 64-bit arithmetic, per-opcode gas |
+| Live run | registry `CAQ77OEK…`, transaction `70cb914a…`, ledger **4,765,687**, **206,052 stroops**, 16 steps of 20 rows, 25 gas, final pc 12 |
+
+**The statement, and where it is written down.** The circuit header lists it in full and the crate's doc comment repeats it: there exists a run of the committed program, from the register file whose Poseidon root is published and from zeroed memory, ending halted at the published program counter after exactly the published number of steps at exactly the published cost, with the ending register file hashing to the published end root, and with every row following from the previous one by one legal instruction.
+
+**Program commitment without a Poseidon fold.** The guest program is sixteen packed 64-bit words held as *public inputs*, and each row's decode is one linear equation:
+
+```
+opcode + 2^8·rd + 2^13·rs1 + 2^18·rs2 + 2^23·imm  ===  program[pc]
+```
+
+with the row's program counter pinned by a one-hot selection over the sixteen slots, the opcode pinned to one of the eleven implemented bytes by a selector one-hot, the three register indices pinned by their own one-hots, and the immediate's width pinned by a 32-bit decomposition. The useful consequence: the deployer can change the program without redeploying the verifier, because the program is not baked into the key. The registry binds the same words to a sha256 program digest in the evidence payload, so a proof cannot be re-pointed at a different program, and it refuses a payload whose slots past the instruction count are not zero halts.
+
+**The memory argument, in the affordable direction.** A general-purpose memory argument commits the address space and proves read/write consistency with a permutation or a Merkle transcript. At this size there is a cheaper and equally sound shape: the trace *carries* the memory. Sixteen words per row, `mem[i+1] = mem[i] + store_gate·(written value − mem[i])` from `mem[0] = 0`, reads through a one-hot selection gated by `is_load_mem`, writes gated by the store selector, and the address pinned to `rs1 + signed immediate`. A read therefore returns the word the state carried in — there is no separate transcript to be inconsistent with, because the state is the transcript. That is why the address space is sixteen words and not a gigabyte: the carried form costs one column per word per row.
+
+**Wrapping arithmetic, and why the carries are signals.** The machine's arithmetic wraps modulo 2^64 rather than living in the field, which means the circuit cannot simply add two signals. Each addition carries a boolean carry, each subtraction a boolean borrow, and each multiplication a 64-bit quotient, and the destination value is range-checked to 64 bits — which is what pins the carry to the true one, since the alternative choice would put the result above 2^64. The multiplication identity `rs1·rs2 = q·2^64 + rd` with `q` and `rd` both range-checked is an integer equation, not a field equation that happens to have a solution.
+
+**Padding, in one sentence.** The circuit says: *row i is a halt unless it is an active row followed by another active row* — `is_halt[i] = 1 − is_active[i]·is_active[i+1]`, one constraint per row. That single sentence pins the halt to the last active row, makes every padding row a halt, makes the trace's last row a halt, and forces `steps_executed` to equal the number of active rows. A padding row is a halt, and a halt freezes the program counter, the register file and memory, so padded steps cannot contribute to the end state or the cost.
+
+**What the 34-check matrix establishes.** [`tools/execution-trace-tests.mjs`](../tools/execution-trace-tests.mjs) runs two honest inputs and twenty-seven mutations against the compiled witness generator, and requires each mutation to be refused **at the constraint it targets** — the harness matches the refusal against the pinned source line, because a mutation that trips a different constraint would otherwise read as coverage for a family nobody tested. It also runs five programs the machine itself refuses — an assertion on a zero operand, a step overrun, an address past the address space, an instruction outside the subset, a program longer than the committed slots — because a refusal is not a run and the circuit has nothing to prove about one. One of the twenty-seven is worth naming: `assertion_on_a_zero_operand` rewrites the run *consistently* all the way to the final root (the first comparison writes to r0 instead, so the value the assertion reads is zero) so that the only thing left violated is the assertion's semantics — the test distinguishes "the proof machinery noticed something" from "the machine's refusal is unprovable".
+
+**What this lane does not do.** It does not move the settlement anchor: `ExecutionRecord` carries `settlement_anchored: false`, and the registry writes nothing into the domain that minting reads. An execution proof currently establishes that a run happened as stated — not that value may move because of it. It also does not compile anything: the guest arrives as a listing for a small assembler in this repository.
+
+---
+
 ## 6. How the tests keep this honest
 
 Three tests in `contracts/finality_registry/src/lib.rs` replay the **exact byte strings** captured from the live lane (see [`src/test_vectors.rs`](../contracts/finality_registry/src/test_vectors.rs)):
@@ -159,22 +197,27 @@ Three tests in `contracts/finality_registry/src/lib.rs` replay the **exact byte 
 | `test_live_groth16_proof_is_rejected_when_the_proof_is_not_the_one` | swapping `A` and `C` — both still valid G1 points in valid encodings, so no length or format check can catch it — is rejected with `InvalidProof`. If the pairing check were a stub, this test would pass the swap |
 | `test_live_groth16_proof_does_not_cover_another_state_root` | a genuine proof is not evidence about another block: a mismatched declared root is rejected with `DeclaredMismatch` before a pairing is even attempted |
 
+The execution lane has its own three host tests in the same file: the 256-byte proof and 1920-byte key accepted by the live registry reproduce in the Soroban host (with the measured cost printed under `--nocapture`), a proof whose group elements are moved is rejected with `InvalidProof`, and a payload whose program word differs from the one the proof committed is rejected with `DeclaredMismatch` before a pairing is attempted. Twelve more cover the lane's own payload parser: the instruction words, the halt-padded slots, the step ceiling, the gas ceiling, the tag, the key length, the replay rule and the renounced-admin rule.
+
 **A finding from writing these tests.** Two pre-existing tests (`test_register_and_finalize_bls_rejects_bad_sig`, `test_wrong_vk_fake_proof_rejected`) were passing for the wrong reason: they registered a domain but never called `admit_domain`, so `submit_*` returned `NotAdmitted` (#12) and the signature and pairing checks were never reached. The suite was green while testing the guard clause, not the cryptography. Both tests now admit the domain first and assert the specific expected error variant (`InvalidSignature` and `InvalidProof` respectively). This is exactly the class of failure that a "how do you know your verifier works?" question is designed to expose, and it is recorded here rather than quietly fixed.
 
 ---
 
-## 7. What a real zkVM lane would require
+## 7. What the bounded machine installed, and what a general-purpose VM would still require
 
-If someone asks "why not just run a zkVM?", the honest engineering answer has four parts:
+This section used to list four things a VM proof needs. Three of them arrived in the execution lane; the fourth is still missing, and it is the one that matters most for a source-chain claim.
 
-1. **A program commitment.** A zkVM proves execution of *arbitrary* code; the verification key must therefore commit to the guest program (or to a universal machine), and the deployer must be able to change the program without redeploying the verifier. Today, changing one line of `finality_statement.circom` changes the verification key, and the live registry's admin is renounced — the statement is frozen by design.
-2. **An execution trace as witness.** The prover needs a guest program that replays source-chain execution (state transition function, signature checks, event emission). That is a source-chain VM reimplementation, exactly the kind of work this repository deliberately did not copy from anywhere.
-3. **A proof system that fits the host.** Stellar exposes BN254 and BLS12-381 host functions, which suits Groth16 and pairing-based schemes. General-purpose zkVMs (RISC-V style) produce STARK or folding proofs, which would need an on-chain verifier for a large field, recursion, or a STARK→Groth16 wrapper. A wrapper proof of that size is not aimed at a 64 KB contract and a per-transaction instruction budget in the 10^8 range; the entire registry contract — verifier included — is 22.5 KB of WASM, and the verifier costs ~29M instructions in the host model.
-4. **A validation story for the guest.** If the guest reimplements consensus, its correctness is the whole game: the circuit's soundness no longer covers the interesting part. Nothing in this snapshot does that, and claiming it would be a lie with extra steps.
+1. **A program commitment.** *Installed, in the shape that fits a verifier key.* The sixteen packed instruction words are public inputs, and each row's decode is a linear equation against the word its program counter selects, so a proof is about *that* program and the verifier key does not change when the program does. What that is not: a *universal* machine. The key commits to the machine (its ISA, its widths, its row budget), and the program is bounded by sixteen slots and twenty rows. A general-purpose guest — arbitrary length, arbitrary control flow — would need either a universal circuit with a fixed key over unbounded programs or recursion, and neither is here.
+2. **An execution trace as witness.** *Installed, bounded.* [`crates/execution_vm`](../crates/execution_vm) runs the program, exposes the trace (clock, program counter, opcode, the three register indices, both operand values, the result, the next program counter, the memory event, the immediate, the carried registers and memory), pads it to the circuit's rows, and re-checks it row by row with `check_trace` before it becomes witness data. What that is not: a replay of a *source chain's* state transition function. The guest is a program someone writes in this ISA; nothing here reimplements consensus, signature schemes on the guest side, or event emission.
+3. **A proof system that fits the host.** *Unchanged, and it is the reason the lane looks like this.* A 12,690-constraint Groth16 circuit with 22 public inputs verifies through Stellar's native BN254 pairing in **206,052 stroops** on testnet. A RISC-V-style STARK prover would still need an on-chain verifier for a large field, recursion, or a wrapper proof, and a wrapper of that size is not aimed at a 64 KB contract and a per-transaction instruction budget in the 10^8 range.
+4. **A validation story for the guest.** *Still the whole game, and still absent.* The circuit's soundness covers the *machine*: given the committed program and the published state roots, a proof cannot exist for a run that did not happen. It says nothing about whether the program does something sensible — a correct proof of a foolish program is still a correct proof. Nothing in this repository reimplements consensus, and claiming otherwise would be a lie with extra steps.
 
-Taken seriously, item 2 has a known shape, and naming its parts is the difference between "we did not have time" and "we know exactly what time is needed". The witness of a real VM is a **table, not a list**: one column per machine state worth tracking — program counter, register file, memory bus, read/write flags, a step counter — and one row per execution step. "The program ran correctly" is then two claims about that table. *Locally*, per-row checks called **transition constraints** enforce that each step obeys the instruction semantics, comparing row *i* against row *i+1* so the machine can never take an illegal step; *globally*, boundary conditions fix what the first and last rows must look like, so the trace is anchored to the claimed input and output. Prover cost grows linearly with the number of steps, which is what makes a fixed 628-constraint statement a constant-time verification in comparison. The hardest column family is memory: a guest that reads and writes arbitrary addresses must be *consistent* — a cell holding a value must return that value to every later reader — and that property is not free arithmetic. It is a separate argument, typically built by committing the memory transcript into a hash tree and constraining read and write lookups against it. None of the three parts — the wide table, the transition constraints, the memory argument — exists in this repository, and none is hinted at in its marketing. What exists is the part the settlement decision actually needs: one constrained Poseidon relation binding the roots, verified by a native pairing. If a zkVM lane arrives later, it is this machinery arriving, not a label.
+**The prediction this section made, checked against what was built.** It said the witness of a real VM is *a table, not a list* — one column per machine state worth tracking, one row per step — that the per-row **transition constraints** are the load-bearing part, and that the hardest column family is memory. That is what the circuit turned out to be: twenty rows of twenty-three columns, with each row's semantics, register carry and memory carry written as constraints against the row before it, and the boundary conditions fixing the first row (program counter zero, r0 zero, memory zeroed) and the last (a halt, the published end root). Two details are worth recording because they were not obvious in advance:
 
-So: what Lumen Gate does instead is the boring, verifiable version — a **fixed statement that is cheap to verify on-chain**, plus a **BLS aggregate signature lane** for the part that actually needs signatures (the event root that authorizes settlement). If a zkVM lane arrives later, it slots in as a third evidence version behind the same `submit_finality_evidence_*` interface, and it will be described accurately on the day it lands.
+- **The memory argument did not need a transcript.** A general-purpose design commits the address space and proves consistency with a permutation or a Merkle transcript, because the memory is too large to carry. Sixteen words are not: the trace carries the memory itself, `mem[i+1] = mem[i] + store_gate·(written value − mem[i])`, and a read is a one-hot selection over the state carried into the row. The consistency property — a cell holding a value returns that value to every later reader — falls out of the transition constraint rather than needing an argument of its own. The cost of that choice is the size of the address space, and it is stated where it applies rather than in a footnote.
+- **Range checks are what make the carries meaningful.** The machine wraps modulo 2^64, so the circuit cannot just add signals: each add carries a bit, each multiplication a quotient, and the destination value is range-checked to 64 bits — which is what forces the carry to be the true one rather than the permissive one. Without the range check the equation would have two solutions and the prover would pick the one that suits it.
+
+**What the settlement decision still rests on.** The execution lane is recorded accurately and deliberately does not move the anchor: `settlement_anchored: false`, nothing written into the domain that minting reads. The live round trip is still anchored by the **BLS aggregate lane**, whose signature covers the event root, plus the fixed-statement circuit for the quorum relation. Wiring an execution proof into the anchor is a contract and policy change — which programs may move it, who may submit them — and it has not been made.
 
 ---
 
@@ -187,8 +230,8 @@ npm install --no-audit --no-fund          # pinned circomlib 2.0.5 + snarkjs 0.7
 ```
 
 ```bash
-# 1. circuits -> r1cs + witness generators (circom 2.2.3; three circuits)
-./circuits/build.sh                       # all three, or name one
+# 1. circuits -> r1cs + witness generators (circom 2.2.3; four circuits)
+./circuits/build.sh                       # all four, or name one
 
 # 2. local trusted setup + honest proof  (stated as a local, non-production ceremony)
 node tools/step-chain-input.mjs --length 3 --out build/step_chain_statement_input.json
@@ -203,6 +246,22 @@ python3 circuits/convert_to_soroban.py build/step_chain_statement_vk.json \
     build/step_chain_statement --rust-out contracts/finality_registry/src/step_chain_vectors.rs
 cargo test -p finality_registry
 ```
+
+```bash
+# the execution lane, end to end. The powers-of-tau for this circuit is 2^14:
+# the trace circuit has 12,690 constraints, and circuits/setup.sh derives the
+# size from the r1cs rather than from a constant, so this needs no extra flag.
+node tools/execution-lane-input.mjs --out build/execution_trace_input.json
+./circuits/setup.sh execution_trace                       # compile, setup, prove, verify
+node tools/execution-trace-tests.mjs                      # 34 checks, one per constraint family
+python3 circuits/convert_to_soroban.py build/execution_trace_vk.json \
+    build/execution_trace_proof.json build/execution_trace_public.json \
+    circuits/execution_trace --rust-out contracts/finality_registry/src/execution_trace_vectors.rs
+cargo test -p finality_registry                            # replays the bytes in the Soroban host
+node tools/execution-lane-live.js                          # deploys a fresh registry and probes it live
+```
+
+The input for the execution lane is generated by the machine itself, not by a fixture: `tools/execution-lane-input.mjs` runs `cargo run -p execution_vm --bin execution-lane`, which assembles the program, executes it, pads the trace to twenty rows, checks it with `check_trace`, and prints the trace; the tool then computes the two Poseidon register roots with circomlibjs and writes the circuit input. A mutation that the circuit should refuse is produced by the same tool with `--mutate <name>`, and the harness runs it through the pinned `--mutate` names rather than editing JSON by hand.
 
 The same shape applies to the single-statement circuit (`./circuits/setup.sh finality_statement`), whose vectors live in [`src/test_vectors.rs`](../contracts/finality_registry/src/test_vectors.rs).
 
@@ -221,6 +280,10 @@ A locally generated powers-of-tau and a locally generated proving key are **not*
 | 158,961 stroops charged | accepted testnet transaction, receipt recorded in `deployments/testnet.json` |
 | 768 / 256 / 4×32 byte artifacts | `circuits/convert_to_soroban.py`, asserted lengths in `contracts/finality_registry/src/lib.rs` |
 | 896 / 256 / 6×32 / 112-byte artifacts | same converter and contract, chained lane constants |
+| 9996 non-linear / 2694 linear constraints, 2224 private signals | `./circuits/build.sh execution_trace` |
+| 1920 / 256 / 22×32 / 232-byte artifacts | same converter and contract, execution lane constants |
+| 206,052 stroops charged, ledger 4,765,687 | accepted testnet transaction `70cb914a…`, recorded in `deployments/execution-lane.json` |
+| 16 steps of 20 rows, 25 gas, final pc 12 | the same record, cross-read from the contract with `get_execution_record` |
 | ~12M instructions for a Groth16 verify | CAP-0074 discussion, cited for context only |
 | protocol-level host function availability | Stellar Protocol 25 (CAP-0074, BN254) and Protocol 22 (CAP-0059, BLS12-381) |
 | tag derivation `sha256(`lumen-gate-step-chain-v1`)[0..31] mod r` | computed in this repository and pinned by `test_step_chain_tag_matches_the_circuit_constant` |

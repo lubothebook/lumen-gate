@@ -265,7 +265,7 @@ function renderHonesty(status) {
   panel.textContent = '';
   const items = [
     ['The source chain is simulated in this deployment.', 'Its BLS signatures are real (RFC 9380 hash-to-curve, domain separator lumen-gate-finality-v1) but the validator keys are fixed demo values. A production deployment needs a key ceremony, not a constant.'],
-    ['The Groth16 lane is a statement proof.', 'It proves a quorum of approval bits and a Poseidon binding of three roots. It is not a signature verifier and not a zkVM, so settlement never anchors on it: the registry stores zeroes in the event-root slot for that lane.'],
+    ['The ZK lanes are one bounded machine and two statement proofs.', 'The execution lane proves the step-by-step run of a committed program on a machine with eleven opcodes, eight registers and sixteen memory words, inside a twenty-row budget, and its live record is in the deployment manifest. The other two prove a quorum of approval bits bound to three roots and a chained state transition. None of them verifies a signature, and none moves the settlement anchor: the registry stores zeroes in the event-root slot for the statement lanes.'],
     ['Gasless applies to inbound mints only.', 'The recipient pays nothing because the relayer signs and pays. Burning your own tokens still needs your key and your fee.'],
     ['No bonds, no slashing, no market fee.', 'A validator that signs a wrong root loses nothing here. The relayer fee is a fixed amount chosen at submission time, not a market.'],
   ];

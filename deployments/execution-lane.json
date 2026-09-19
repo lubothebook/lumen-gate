@@ -1,0 +1,159 @@
+{
+  "lane": "execution trace",
+  "circuit": "circuits/execution_trace.circom",
+  "entrypoint": "submit_execution_zk",
+  "network": "testnet",
+  "registry_id": "CAQ77OEKCHLLCE36MOHY6NO3YJU45FTRLY73REQW4DI5TQMFMZZ5G6LK",
+  "registry_deployed_this_run": true,
+  "signer": "GCWXGQO2UTLNHXHE7MZ6O6HMUS3AUJ3K2PTE4R2AJ47OLRHGS52A4GPI",
+  "adapter_id": "3dcbf6f582455337083d5f6d36721f6d63d47af0bef870a043c02aca7850dac9",
+  "domain_key": "4c00370b422dcf0f72234af78a49d2fafa5196c3ee6b19f2b6a8e815f587137e",
+  "circuit_public_inputs": [
+    "67109140",
+    "33554964",
+    "788",
+    "532738",
+    "558081",
+    "36028797002194961",
+    "1073173",
+    "26132",
+    "1099530",
+    "795914",
+    "1369859",
+    "57368",
+    "0",
+    "0",
+    "0",
+    "0",
+    "996190235789468696312569798316333898969902294260076503623868918971130531560",
+    "3114108872443888996188012318532722549549599074127569897796090689505826412779",
+    "12",
+    "16",
+    "25",
+    "366332086174773927684157067308717544951988300004818040487599723223305911732"
+  ],
+  "program_digest": "725aa389f603a7d2bd1eaf9a5318f8c31f19346b89011da238ff558a3abd3004",
+  "steps_executed": 16,
+  "gas_used": 25,
+  "final_pc": 12,
+  "domain_tag_expected": "366332086174773927684157067308717544951988300004818040487599723223305911732",
+  "key_bytes": 1920,
+  "proof_bytes": 256,
+  "payload_bytes": 232,
+  "honest_transaction": "70cb914ad86535ed9a9ba6eefd57f7bade0011f45fe3fa5f2b1b3a26aadc0601",
+  "started_at": "2026-09-19T21:06:27.828Z",
+  "finished_at": "2026-09-19T21:07:15.397Z",
+  "checks": [
+    {
+      "check": "execution_key_accepted_at_1920_bytes",
+      "passed": true,
+      "detail": "set_execution_vk stored the 1920-byte key (64 + 3x128 + 23x64) in its own slot",
+      "at": "2026-09-19T21:06:58.375Z",
+      "transaction": "490df73b93649785360957aff1c3fdab78d4bc23541f2675b1c6feb27339513f"
+    },
+    {
+      "check": "execution_key_of_the_wrong_length_refused",
+      "passed": true,
+      "detail": "a 1919-byte key was refused and the stored key is unchanged, so a short key cannot be sliced into coordinates",
+      "at": "2026-09-19T21:06:59.227Z",
+      "output": "❌ error: transaction simulation failed: HostError: Error(WasmVm, InvalidAction)\n\nEvent log (newest first):\n   0: [Diagnostic Event] contract:CAQ77OEKCHLLCE36MOHY6NO3YJU45FTRLY73REQW4DI5TQMFMZZ5G6LK, topics:[error, Error(WasmVm, InvalidAction)], data:[\"VM call trapped: UnreachableCodeReached\", set_execution_vk]\n   1: [Diagnostic Event] topics:[fn_call, CAQ77OEKCHLLCE36MOHY6NO3YJU45FTRLY73REQW4DI5TQ"
+    },
+    {
+      "check": "honest_execution_accepted",
+      "passed": true,
+      "detail": "the network accepted the execution proof and recorded the attestation (16 steps of 20 rows, final pc 12, 25 gas)",
+      "at": "2026-09-19T21:07:03.801Z",
+      "output": "{\"adapter_version\":1,\"domain\":\"4c00370b422dcf0f72234af78a49d2fafa5196c3ee6b19f2b6a8e815f587137e\",\"evidence_digest\":\"dc6255a45b89a9779cdefa8ebc56ecb28a33a9fb7f174b6ffd9a0019e4c71bad\",\"evidence_version\":1,\"gas_used\":25,\"height\":1,\"program_digest\":\"725aa389f603a7d2bd1eaf9a5318f8c31f19346b89011da238ff558a3abd3004\",\"security\":\"ZkProof\",\"state_root\":\"06e285edd5f66d753a5ea1a76ec13a1adab0e883dc7c6cad9f8834dbfe3398eb\",\"steps_executed\":16}\nℹ️  Simulating transaction…\nℹ️  Signing transaction: 70cb914ad86535ed9a9ba6eefd57f7bade0011f45fe3fa5f2b1b3a26aadc0601\n🌎 Sending transaction…\n✅ Transaction submitted successfully!\n🔗 https://stellar.expert/explorer/testnet/tx/70cb914ad86535ed9a9ba6eefd57f7bade0011f45fe3fa5f2b1b3a26aadc0601\n📅 CAQ77OEKCHLLCE36MOHY6NO3YJU45FTRLY73REQW4DI5TQMFMZZ5G6LK - Success - Event: [{\"symbol\":\"execution_verified\"},{\"bytes\":\"4c00370b422dcf0f72234af78a49d2fafa5196c3ee6b19f2b6a8e",
+      "transaction": "70cb914ad86535ed9a9ba6eefd57f7bade0011f45fe3fa5f2b1b3a26aadc0601"
+    },
+    {
+      "check": "recorded_execution_agrees_with_the_payload",
+      "passed": true,
+      "detail": "recorded 16 steps and 25 gas (the proof states 16 and 25), program digest 725aa389f603a7d2... matches sha256 of the sixteen words the circuit committed",
+      "at": "2026-09-19T21:07:04.102Z",
+      "output": "{\"domain\":\"4c00370b422dcf0f72234af78a49d2fafa5196c3ee6b19f2b6a8e815f587137e\",\"final_pc\":12,\"gas_used\":25,\"height\":1,\"initial_regs_root\":\"0233d2dd7f9a73ae6ab0472110373ed23f304a1ffae4168dad0ebd6909914ee8\",\"instruction_words\":12,\"program_digest\":\"725aa389f603a7d2bd1eaf9a5318f8c31f19346b89011da238ff558a3abd3004\",\"settlement_anchored\":false,\"state_root\":\"06e285edd5f66d753a5ea1a76ec13a1adab0e883dc7c6cad9f8834dbfe3398eb\",\"steps_executed\":16}",
+      "program_digest": "725aa389f603a7d2bd1eaf9a5318f8c31f19346b89011da238ff558a3abd3004"
+    },
+    {
+      "check": "a_different_program_under_the_same_proof_is_refused",
+      "passed": true,
+      "detail": "the statement is about the program it commits: swapping a word breaks the binding before a pairing is spent (refused with #5 DeclaredMismatch)",
+      "at": "2026-09-19T21:07:04.411Z",
+      "output": "❌ error: transaction simulation failed: HostError: Error(Contract, #5)\n\nEvent log (newest first):\n   0: [Diagnostic Event] contract:CAQ77OEKCHLLCE36MOHY6NO3YJU45FTRLY73REQW4DI5TQMFMZZ5G6LK, topics:[error, Error(Contract, #5)], data:\"escalating Ok(ScErrorType::Contract) frame-exit to Err\"\n   1: [Diagnostic Event] topics:[fn_call, CAQ77OEKCHLLCE36MOHY6NO3YJU45FTRLY73REQW4DI5TQMFMZZ5G6LK, submit_exec",
+      "error_code": 5
+    },
+    {
+      "check": "a_rewritten_step_count_is_refused",
+      "passed": true,
+      "detail": "the number of steps that ran is a public input, so a payload cannot claim fewer (refused with #5 DeclaredMismatch)",
+      "at": "2026-09-19T21:07:04.877Z",
+      "output": "❌ error: transaction simulation failed: HostError: Error(Contract, #5)\n\nEvent log (newest first):\n   0: [Diagnostic Event] contract:CAQ77OEKCHLLCE36MOHY6NO3YJU45FTRLY73REQW4DI5TQMFMZZ5G6LK, topics:[error, Error(Contract, #5)], data:\"escalating Ok(ScErrorType::Contract) frame-exit to Err\"\n   1: [Diagnostic Event] topics:[fn_call, CAQ77OEKCHLLCE36MOHY6NO3YJU45FTRLY73REQW4DI5TQMFMZZ5G6LK, submit_exec",
+      "error_code": 5
+    },
+    {
+      "check": "instructions_hidden_behind_the_halt_is_refused",
+      "passed": true,
+      "detail": "the slots past the code must be halt words; a payload that hides an instruction there describes no run the circuit could prove (refused with #6 InvalidPayload)",
+      "at": "2026-09-19T21:07:05.249Z",
+      "output": "❌ error: transaction simulation failed: HostError: Error(Contract, #6)\n\nEvent log (newest first):\n   0: [Diagnostic Event] contract:CAQ77OEKCHLLCE36MOHY6NO3YJU45FTRLY73REQW4DI5TQMFMZZ5G6LK, topics:[error, Error(Contract, #6)], data:\"escalating Ok(ScErrorType::Contract) frame-exit to Err\"\n   1: [Diagnostic Event] topics:[fn_call, CAQ77OEKCHLLCE36MOHY6NO3YJU45FTRLY73REQW4DI5TQMFMZZ5G6LK, submit_exec",
+      "error_code": 6
+    },
+    {
+      "check": "proof_one_byte_short_is_refused",
+      "passed": true,
+      "detail": "the length is checked before any decoding, so a short proof cannot be sliced into coordinates (refused with #8 InvalidProof)",
+      "at": "2026-09-19T21:07:05.541Z",
+      "output": "❌ error: transaction simulation failed: HostError: Error(Contract, #8)\n\nEvent log (newest first):\n   0: [Diagnostic Event] contract:CAQ77OEKCHLLCE36MOHY6NO3YJU45FTRLY73REQW4DI5TQMFMZZ5G6LK, topics:[error, Error(Contract, #8)], data:\"escalating Ok(ScErrorType::Contract) frame-exit to Err\"\n   1: [Diagnostic Event] topics:[fn_call, CAQ77OEKCHLLCE36MOHY6NO3YJU45FTRLY73REQW4DI5TQMFMZZ5G6LK, submit_exec",
+      "error_code": 8
+    },
+    {
+      "check": "proof_with_its_group_elements_swapped_is_refused",
+      "passed": true,
+      "detail": "both halves stay valid G1 and G2 points in the required encoding, so only the pairing equation can tell them apart (refused with #8 InvalidProof)",
+      "at": "2026-09-19T21:07:06.035Z",
+      "output": "❌ error: transaction simulation failed: HostError: Error(Contract, #8)\n\nEvent log (newest first):\n   0: [Diagnostic Event] contract:CAQ77OEKCHLLCE36MOHY6NO3YJU45FTRLY73REQW4DI5TQMFMZZ5G6LK, topics:[error, Error(Contract, #8)], data:\"escalating Ok(ScErrorType::Contract) frame-exit to Err\"\n   1: [Diagnostic Event] topics:[fn_call, CAQ77OEKCHLLCE36MOHY6NO3YJU45FTRLY73REQW4DI5TQMFMZZ5G6LK, submit_exec",
+      "error_code": 8
+    },
+    {
+      "check": "payload_one_byte_short_is_refused",
+      "passed": true,
+      "detail": "a payload of the wrong length is a format error, refused before anything is parsed out of it (refused with #11 BadPayloadLength)",
+      "at": "2026-09-19T21:07:06.509Z",
+      "output": "❌ error: transaction simulation failed: HostError: Error(Contract, #11)\n\nEvent log (newest first):\n   0: [Diagnostic Event] contract:CAQ77OEKCHLLCE36MOHY6NO3YJU45FTRLY73REQW4DI5TQMFMZZ5G6LK, topics:[error, Error(Contract, #11)], data:\"escalating Ok(ScErrorType::Contract) frame-exit to Err\"\n   1: [Diagnostic Event] topics:[fn_call, CAQ77OEKCHLLCE36MOHY6NO3YJU45FTRLY73REQW4DI5TQMFMZZ5G6LK, submit_ex",
+      "error_code": 11
+    },
+    {
+      "check": "the_same_evidence_cannot_be_submitted_twice",
+      "passed": true,
+      "detail": "the evidence digest has already been consumed (refused with #9 EvidenceAlreadyProcessed)",
+      "at": "2026-09-19T21:07:06.827Z",
+      "output": "❌ error: transaction simulation failed: HostError: Error(Contract, #9)\n\nEvent log (newest first):\n   0: [Diagnostic Event] contract:CAQ77OEKCHLLCE36MOHY6NO3YJU45FTRLY73REQW4DI5TQMFMZZ5G6LK, topics:[error, Error(Contract, #9)], data:\"escalating Ok(ScErrorType::Contract) frame-exit to Err\"\n   1: [Diag",
+      "error_code": 9
+    },
+    {
+      "check": "settlement_anchors_are_untouched",
+      "passed": true,
+      "detail": "the domain record still anchors on nothing and is_machine_approved is still false: an execution proof is not a chain root, and the contract keeps them apart",
+      "at": "2026-09-19T21:07:07.694Z",
+      "output": "{\"accepted_versions\":[1],\"adapter_id\":\"3dcbf6f582455337083d5f6d36721f6d63d47af0bef870a043c02aca7850dac9\",\"adapter_version\":1,\"last_event_root\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"last_height\":0,\"last_root\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"last_security\":\"None\",\"network\":\"source-testnet\",\"required_depth\":2,\"state\":1}"
+    },
+    {
+      "check": "admin_renounced",
+      "passed": true,
+      "detail": "the admin capability was given up, so no operator key can change any of the three verification keys",
+      "at": "2026-09-19T21:07:14.634Z",
+      "output": "ℹ️  Simulating transaction…\nℹ️  Signing transaction: 28d1589066ac5f38df26aad3dfb0f2128bfd5773c148ac1560b845d048834dbc\n🌎 Sending transaction…\n✅ Transaction submitted successfully!\n🔗 https://stellar.expert/explorer/testnet/tx/28d1589066ac5f38df26aad3dfb0f2128bfd5773c148ac1560b845d048834dbc\n📅 CAQ77OEKCHLLCE36MOHY6NO3YJU45FTRLY73REQW4DI5TQMFMZZ5G6LK - Success - Event: [{\"symbol\":\"admin_renounced\"},",
+      "transaction": "28d1589066ac5f38df26aad3dfb0f2128bfd5773c148ac1560b845d048834dbc"
+    },
+    {
+      "check": "key_cannot_be_replaced_after_renounce",
+      "passed": true,
+      "detail": "the execution lane's key is as frozen as the other two: the call traps and the stored key is unchanged",
+      "at": "2026-09-19T21:07:15.397Z",
+      "output": "❌ error: transaction simulation failed: HostError: Error(WasmVm, InvalidAction)\n\nEvent log (newest first):\n   0: [Diagnostic Event] contract:CAQ77OEKCHLLCE36MOHY6NO3YJU45FTRLY73REQW4DI5TQMFMZZ5G6LK, topics:[error, Error(WasmVm, InvalidAction)], data:[\"VM call trapped: UnreachableCodeReached\", set_execution_vk]\n   1: [Diagnostic Event] topics:[fn_call, CAQ77OEKCHLLCE36MOHY6NO3YJU45FTRLY73REQW4DI5TQ"
+    }
+  ],
+  "passed": 14,
+  "total": 14,
+  "all_passed": true
+}

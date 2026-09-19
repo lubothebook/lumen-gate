@@ -160,8 +160,11 @@ functionality belongs in the off-chain surface, the facade and the docs.
       pattern, with no borrowed name, because the section's point is that the
       gap is understood rather than merely admitted.
 - [x] README explains machine approval from first principles and draws the
-      honest boundary at "Is this a zkVM? No", now with what a real zkVM would
-      require (trace columns, transition constraints, a memory argument).
+      honest boundary around the VM claim: what a VM proof needs (trace columns,
+      transition constraints, a memory argument, a program commitment), which of
+      those the repository now has and in what shape, and which part of the
+      machine is a budget rather than a general-purpose design. The boundary
+      moved with the artifact rather than ahead of it — see §11.2.
 - [x] **The ZK lane is no longer a single fixed statement.** A second circuit,
       `circuits/step_chain_statement.circom`, proves an **N-step chained state
       transition**: `state_root_0 → … → state_root_3`, every link derived from
@@ -391,6 +394,58 @@ functionality belongs in the off-chain surface, the facade and the docs.
       rounded balances with exact titles, full renounce hashes, live audit
       badge), plus the refusal and no-extension paths.
 
+**This round: the execution lane — a bounded machine, proved step by step.**
+
+- [x] `crates/execution_vm`: an eleven-opcode register machine — halt, add, sub,
+      mul, eq, lt, jmp, jnz, load (immediate or memory form), store, assert — on
+      wrapping 64-bit words, eight registers with r0 pinned to zero, sixteen
+      memory words, a sixteen-instruction program and a twenty-row step budget.
+      The trace is a table (twenty rows by twenty-three columns), not a list, and
+      `check_trace` re-checks every row against the semantics: no partial rows,
+      an operand is read rather than chosen, memory is carried rather than
+      logged, and each row's cost is a function of the instruction that ran.
+      28 tests.
+- [x] `circuits/execution_trace.circom`, `ExecutionTrace(20,16,16,8)`: **9996
+      non-linear and 2694 linear constraints**, 22 public inputs, verification
+      key **1920 bytes**, proof 256 bytes, payload 232 bytes. The guest program
+      is the public input, not baked into the key: each row's decode is one
+      linear equation against the word its program counter selects, with the
+      opcode pinned by a selector one-hot, the indices by their own one-hots and
+      the immediate by a 32-bit decomposition. Own domain tag
+      `lumen-gate-execution-v1` (`00cf562c…7db4`).
+- [x] **The four things the directive said a VM proof needs are installed**:
+      an instruction set with semantics; a commitment to the guest program (the
+      packed words, bound on-chain to a sha256 program digest); a memory model
+      (sixteen carried words, `mem[i+1] = mem[i] + store_gate·(written − mem[i])`
+      from zero, read through a gated one-hot, so a read returns what the state
+      carried in); and a witness generator that replays the execution (the
+      interpreter's own trace, padded and re-checked before it becomes witness
+      data). Section 11.2 of this directive is updated accordingly.
+- [x] **Live on testnet**: fresh registry
+      `CAQ77OEKCHLLCE36MOHY6NO3YJU45FTRLY73REQW4DI5TQMFMZZ5G6LK`, 1920-byte key
+      accepted in its own slot, and a 16-step run of a twelve-instruction
+      program accepted in transaction `70cb914a…` (ledger 4,765,687, **206,052
+      stroops**): 16 steps of 20 rows, 25 gas, final pc 12, program digest
+      `725aa389…`. Refusals recorded in the same run: a different program under
+      the same proof (#5), a rewritten step count (#5), an instruction hidden
+      past the end of the code (#6), a one-byte-short proof (#8), a proof with
+      its group elements moved (#8), a one-byte-short payload (#11), a replayed
+      evidence (#9), and a post-renounce key replacement (trapped, key
+      unchanged). **14/14**, record in `deployments/execution-lane.json`.
+- [x] **`tools/execution-trace-tests.mjs`: 34 checks, one per constraint
+      family**, and the harness now requires each mutation to be refused *at the
+      constraint it targets* — the refusal is matched against the pinned source
+      line, so a mutation that trips a different constraint no longer reads as
+      coverage. Five more checks are programs the machine itself refuses (an
+      assertion on a zero operand, a step overrun, an address past the address
+      space, an instruction outside the subset, a program longer than the
+      committed slots), because a refusal is not a run.
+- [x] `circuits/build.sh` carries `execution_trace`, and the r1cs reproduces
+      byte for byte (`sha256` unchanged) from that script alone.
+      `circuits/setup.sh` now derives the powers-of-tau size from the circuit's
+      own constraint count, with a floor of 2^13 so the three earlier lanes keep
+      the keys their deployments were made with.
+
 ### Still missing (stated, not hidden)
 
 - [ ] Production validator set: the BLS lane runs 3 demo keys with a threshold
@@ -412,10 +467,21 @@ functionality belongs in the off-chain surface, the facade and the docs.
       it. Moving it to a per-domain policy without weakening the binding means
       committing to the threshold inside the circuit rather than trusting a
       storage read.
-- [ ] **A general-purpose execution lane.** An N-step special-purpose chain is
-      not a VM: no instruction set, no memory model, no program commitment, no
-      execution trace. Stated at the top of the circuit, in the README and in
-      `docs/PROVING_SYSTEM.md` §7.
+- [ ] **The execution lane's end state is not anchored.** The registry records
+      a run in its own slot — program digest, instruction count, step count,
+      gas, final program counter, end register root — and writes
+      `settlement_anchored: false`. An execution proof therefore establishes
+      that a run happened as stated; it does not move the root that minting
+      reads. Wiring the two is a contract change with a policy question attached
+      (which programs may move the anchor, and who may submit them), and it has
+      not been made.
+- [ ] **The machine has a budget, not a machine model.** Twenty rows per proof,
+      sixteen instructions per program, sixteen memory words, eight registers,
+      no syscalls, no unbounded execution — a program that needs a twenty-first
+      step has no proof in this circuit, and the registry refuses a payload that
+      claims one. Raising the budget is a parameter change plus a larger
+      ceremony. There is also no compiler: guests are assembled from a short
+      text listing, not compiled from a high-level language.
 - [ ] **A market for the exit bridge.** The wSRC→USDC swap falls back to a
       counterparty exchange at a configured rate because no order book route
       exists on Testnet in either direction. On a network with a market the same
@@ -640,21 +706,28 @@ rule. The relayer is repaid in the source asset out of the locked amount
 and after). The honest limitation to keep in the README: **the relayer fee is a
 fixed amount chosen at submission time, not real-time market pricing.**
 
-### 11.2 "Is this a zkVM? No" — keep the words, deepen the substance
+### 11.2 The zkVM answer, superseded by the artifact
 
-The statement is technically correct and stays. A fixed-statement Groth16
-circuit is not a virtual machine: there is no instruction set, no memory model,
-no commitment to a guest program and no witness that replays execution. Relabel
-it and a technical judge can pull the claim apart exactly where the project
-credits itself with honesty; that costs more than the label gains.
+This section used to say the answer was "no" and that the words should stay. The
+second path it named — *widen the circuit until the label changes because the
+engineering did* — has been taken, so the section changes with it.
 
-Preferred path: do not change the label, deepen the narrative. Explain what a
-real zkVM proof would require — a multi-column execution trace, per-step
-transition constraints, a memory argument with a permutation or Merkle-based
-commitment, and a commitment to the guest program — and state that this project
-made a deliberate MVP-scope choice instead. Second path, only if time allows:
-genuinely widen the circuit to prove a chained state transition over N
-consecutive headers. Then the label would change because the engineering did.
+What changed: `circuits/execution_trace.circom` with `crates/execution_vm`
+proves the step-by-step execution of a *committed program* on a machine with a
+defined instruction set, a carried memory model, a witness that replays the run,
+and a decode that ties every row to the packed program word its program counter
+selects. That is an execution-trace proof, and calling it nothing at all would
+now be the dishonest position.
+
+What did not change, and stays in the same sentence: this is a **bounded** VM,
+not a general-purpose zkVM. Twenty rows, sixteen instructions, sixteen memory
+words, eight registers, no syscalls, no unbounded execution; the guest is
+assembled from a listing rather than compiled; and its end root is deliberately
+not wired into the settlement anchor. The README, `docs/PROVING_SYSTEM.md` §5c
+and §7, and the circuit header all state the bound in the same breath as the
+claim, because a judge who finds the bound mis-stated will discount the whole
+file. The two fixed-statement lanes keep their own labels: they are statement
+proofs, and nothing about them is described as a VM.
 
 ---
 
