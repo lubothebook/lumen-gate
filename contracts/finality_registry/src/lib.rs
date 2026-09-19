@@ -11,6 +11,9 @@ mod groth16 {
     use soroban_sdk::TryFromVal;
     pub const G1_SIZE: u32 = 64;
     pub const G2_SIZE: u32 = 128;
+    /// A || B || C, fixed. Any other length is refused before decoding, so a
+    /// short proof cannot be read as a shift of the intended encoding.
+    pub const PROOF_SIZE: u32 = 2 * G1_SIZE + G2_SIZE;
 
     // BN254 Fr modulus, big-endian. Soroban's Bn254Fr::from_bytes reduces
     // modulo r, so the verifier must reject non-canonical public inputs before
@@ -233,6 +236,46 @@ pub enum DataKey {
     Vk,
     BlsPolicy(BytesN<32>),
     DomainList,
+    /// Verification key of the multi-step chained circuit. Deliberately a
+    /// different slot from `Vk`: the two circuits have different public-input
+    /// counts and therefore different key sizes, and a single slot would let one
+    /// lane's key be presented to the other.
+    StepChainVk,
+    /// Last accepted multi-step chain for a domain. Kept apart from the domain
+    /// record on purpose: see `submit_step_chain_zk`.
+    StepChain(BytesN<32>),
+}
+
+/// What the registry recorded for one accepted multi-step chain.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StepChainRecord {
+    pub domain: BytesN<32>,
+    pub height: u64,
+    pub chain_length: u64,
+    pub start_root: BytesN<32>,
+    pub end_root: BytesN<32>,
+    pub event_root: BytesN<32>,
+    pub threshold: u64,
+    /// True, and always true: this lane records a verified proof and never
+    /// touches the roots the settlement path anchors on.
+    pub settlement_anchored: bool,
+}
+
+/// An attestation for the multi-step lane.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StepChainAttestation {
+    pub domain: BytesN<32>,
+    pub height: u64,
+    pub chain_length: u64,
+    pub start_root: BytesN<32>,
+    pub end_root: BytesN<32>,
+    pub event_root: BytesN<32>,
+    pub security: SecurityBacking,
+    pub evidence_digest: BytesN<32>,
+    pub adapter_version: u32,
+    pub evidence_version: u32,
 }
 
 #[contracterror]
@@ -332,6 +375,20 @@ pub struct FinalityRegistry;
 
 #[contractimpl]
 impl FinalityRegistry {
+    // -- multi-step chained finality lane -----------------------------------
+    //
+    // Layout of the payload this lane reads (little-endian integers, fixed
+    // width, no padding and no optional trailing bytes):
+    //
+    //    0..8     height         u64
+    //    8..40    start_root     32 bytes   (state_root_0)
+    //   40..72    end_root       32 bytes   (state_root_N, the commitment)
+    //   72..104   event_root     32 bytes   (bound into every step digest)
+    //  104..112   chain_length   u64        (M, the number of active steps)
+    //
+    // The payload is re-parsed and the declared height and root are re-derived
+    // from it, exactly as the BLS lane does. There is no branch that trusts the
+    // envelope's declared values without checking them.
     pub fn initialize(env: Env, admin: Address) {
         admin.require_auth();
         if env.storage().instance().has(&DataKey::Admin) {
@@ -865,6 +922,197 @@ impl FinalityRegistry {
         Ok(att)
     }
 
+    // =====================================================================
+    // Multi-step chained finality lane
+    // =====================================================================
+    //
+    // A second, separate proof lane. It exists because the claim a single fixed
+    // statement supports is narrow: "a quorum exists over one bitmap and three
+    // roots share one Poseidon relation". A system that advances a state wants
+    // the stronger, machine-shaped claim: "starting from the published start
+    // root, M consecutive steps, each carrying a quorum, produce exactly the
+    // published end root".
+    //
+    // Three boundaries are deliberate, and every one of them is covered by a
+    // test:
+    //
+    //   1. It cannot influence settlement. The accepted chain is written to its
+    //      own storage slot and does NOT touch the domain's `last_root` or
+    //      `last_event_root`, which are what the settlement anchor is read from.
+    //      A quorum proof is not a signature proof, so it does not get to move
+    //      the anchor.
+    //   2. It cannot borrow the other lane's key. The step-chain key has its own
+    //      slot and its own fixed length, so a 768-byte key and an 896-byte key
+    //      cannot be substituted for one another.
+    //   3. It refuses to go backwards. A chain whose height is not above the last
+    //      accepted chain height for that domain is refused, so the recorded
+    //      trail can only move forward.
+
+    /// Bootstraps the step-chain verification key. Admin-gated exactly like
+    /// `set_vk`, and permanently refused after `renounce_admin`.
+    pub fn set_step_chain_vk(env: Env, admin: Address, vk: Bytes) {
+        if Self::is_admin_renounced(&env) {
+            panic!("admin renounced");
+        }
+        admin.require_auth();
+        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        if stored_admin != admin {
+            panic!("not admin");
+        }
+        // Explicit size limit: any other length is a format error, and decoding
+        // it would slice the wrong byte ranges.
+        if vk.len() != STEP_CHAIN_VK_LEN {
+            panic!("expected 896-byte step-chain verification key");
+        }
+        env.storage().instance().set(&DataKey::StepChainVk, &vk);
+    }
+
+    pub fn get_step_chain_vk(env: Env) -> Bytes {
+        env.storage()
+            .instance()
+            .get(&DataKey::StepChainVk)
+            .unwrap_or(Bytes::new(&env))
+    }
+
+    pub fn get_step_chain_record(env: Env, domain: BytesN<32>) -> Option<StepChainRecord> {
+        env.storage().persistent().get(&DataKey::StepChain(domain))
+    }
+
+    /// Verifies a multi-step chained proof and records it.
+    ///
+    /// Every public input is bound here, one by one, to a value this contract
+    /// derived itself from the evidence payload or from registered state. That
+    /// is the point of the entrypoint: a public input the contract does not bind
+    /// is a value the prover chooses.
+    pub fn submit_step_chain_zk(
+        env: Env,
+        evidence: RawEvidence,
+        proof: Bytes,
+        public_inputs: Vec<BytesN<32>>,
+    ) -> Result<StepChainAttestation, RegistryError> {
+        let domain_key = compute_domain_key(&env, &evidence.adapter_id, &evidence.network);
+        let record: DomainRecord = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Domain(domain_key.clone()))
+            .ok_or(RegistryError::DomainNotFound)?;
+        if record.state == 0 || record.state >= 3 {
+            return Err(RegistryError::NotAdmitted);
+        }
+        if !record
+            .accepted_versions
+            .contains(&evidence.evidence_version)
+        {
+            return Err(RegistryError::VersionNotAccepted);
+        }
+
+        let digest = compute_evidence_digest(&env, &evidence);
+        if env
+            .storage()
+            .persistent()
+            .has(&DataKey::Evidence(digest.clone()))
+        {
+            return Err(RegistryError::EvidenceAlreadyProcessed);
+        }
+
+        // -- parse the payload and re-derive the declared fields --------------
+        let decoded = parse_step_chain_payload(&env, &evidence.payload)?;
+        if decoded.height != evidence.declared_height || decoded.end_root != evidence.declared_root
+        {
+            return Err(RegistryError::DeclaredMismatch);
+        }
+        if decoded.chain_length == 0 || decoded.chain_length > STEP_CHAIN_MAX_STEPS {
+            return Err(RegistryError::InvalidPayload);
+        }
+        if decoded.start_root == decoded.end_root {
+            return Err(RegistryError::InvalidPayload);
+        }
+
+        // -- explicit size limits, before any arithmetic ----------------------
+        if proof.len() != groth16::PROOF_SIZE {
+            return Err(RegistryError::InvalidProof);
+        }
+        if public_inputs.len() != STEP_CHAIN_PUBLIC_INPUTS {
+            return Err(RegistryError::InvalidProof);
+        }
+        let vk: Bytes = env
+            .storage()
+            .instance()
+            .get(&DataKey::StepChainVk)
+            .unwrap_or(Bytes::new(&env));
+        if vk.len() != STEP_CHAIN_VK_LEN {
+            return Err(RegistryError::InvalidProof);
+        }
+
+        // -- bind every public input ------------------------------------------
+        // Order is fixed by the circuit and mirrored by the generated vectors:
+        //   0 chain_start_root  1 chain_end_root  2 event_root
+        //   3 threshold         4 chain_length    5 domain_tag
+        require_root_input(&public_inputs, 0, &decoded.start_root)?;
+        require_root_input(&public_inputs, 1, &decoded.end_root)?;
+        require_root_input(&public_inputs, 2, &decoded.event_root)?;
+        require_scalar_input(&public_inputs, 3, STEP_CHAIN_QUORUM)?;
+        require_scalar_input(&public_inputs, 4, decoded.chain_length)?;
+        if public_inputs.get(5).unwrap() != step_chain_tag(&env) {
+            return Err(RegistryError::DeclaredMismatch);
+        }
+
+        // -- the trail only moves forward --------------------------------------
+        if let Some(previous) = env
+            .storage()
+            .persistent()
+            .get::<DataKey, StepChainRecord>(&DataKey::StepChain(domain_key.clone()))
+        {
+            if decoded.height <= previous.height {
+                return Err(RegistryError::EvidenceAlreadyProcessed);
+            }
+        }
+
+        if !groth16::verify(&env, &vk, &proof, &public_inputs) {
+            return Err(RegistryError::InvalidProof);
+        }
+
+        let accepted = StepChainRecord {
+            domain: domain_key.clone(),
+            height: decoded.height,
+            chain_length: decoded.chain_length,
+            start_root: decoded.start_root.clone(),
+            end_root: decoded.end_root.clone(),
+            event_root: decoded.event_root.clone(),
+            threshold: STEP_CHAIN_QUORUM,
+            settlement_anchored: false,
+        };
+        env.storage()
+            .persistent()
+            .set(&DataKey::StepChain(domain_key.clone()), &accepted);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Evidence(digest.clone()), &true);
+
+        env.events().publish(
+            (Symbol::new(&env, "step_chain_verified"), domain_key.clone()),
+            (
+                decoded.height,
+                decoded.chain_length,
+                decoded.end_root.clone(),
+                decoded.event_root.clone(),
+            ),
+        );
+
+        Ok(StepChainAttestation {
+            domain: domain_key,
+            height: decoded.height,
+            chain_length: decoded.chain_length,
+            start_root: decoded.start_root,
+            end_root: decoded.end_root,
+            event_root: decoded.event_root,
+            security: SecurityBacking::ZkProof,
+            evidence_digest: digest,
+            adapter_version: record.adapter_version,
+            evidence_version: evidence.evidence_version,
+        })
+    }
+
     pub fn list_domains(env: Env) -> Vec<BytesN<32>> {
         env.storage()
             .instance()
@@ -915,11 +1163,165 @@ impl FinalityRegistry {
 mod test_vectors;
 
 #[cfg(test)]
+mod step_chain_vectors;
+
+// ---------------------------------------------------------------------------
+// Multi-step chained lane: payload parsing and public-input binding
+// ---------------------------------------------------------------------------
+
+/// Fixed capacities of the compiled circuit. The contract has to know them,
+/// because it refuses any payload describing a chain the circuit could not have
+/// produced.
+pub const STEP_CHAIN_PAYLOAD_LEN: u32 = 112;
+pub const STEP_CHAIN_PUBLIC_INPUTS: u32 = 6;
+pub const STEP_CHAIN_VK_LEN: u32 = 896;
+pub const STEP_CHAIN_MAX_STEPS: u64 = 4;
+
+/// The quorum the step-chain circuit compiled in.
+///
+/// This is deliberately NOT read from a per-domain policy record. The circuit's
+/// statement fixes the threshold as a constant and constrains the public input
+/// to it, so the contract binds the same constant: neither the prover nor an
+/// operator can choose a quorum for a given proof. A domain that wants a
+/// different quorum needs a different circuit, which is the honest consequence
+/// of compiling policy into the statement instead of carrying it as data.
+/// Moving it to a per-domain record is roadmap, and doing it while keeping the
+/// binding tight means committing to the threshold inside the circuit rather
+/// than trusting a storage read.
+pub const STEP_CHAIN_QUORUM: u64 = 2;
+
+/// The domain-separation tag compiled into the circuit, as a 32-byte big-endian
+/// field element. It differs from the label the single-statement lane and the
+/// BLS lane use, so a proof for one statement cannot be presented as another.
+/// `step_chain_tag_matches_the_circuit_constant` pins it against the value the
+/// circuit derives from the string.
+pub const STEP_CHAIN_TAG_BYTES: [u8; 32] = [
+    0x00, 0x95, 0x17, 0xe4, 0x43, 0xe8, 0x40, 0x62, 0xa6, 0x78, 0x1b, 0x2a, 0x92, 0x16, 0x0d, 0x0a,
+    0x32, 0x5f, 0x4c, 0x5a, 0x45, 0x82, 0x6a, 0x0c, 0x0b, 0x54, 0x64, 0x4e, 0x2e, 0xd5, 0x74, 0xf0,
+];
+
+fn step_chain_tag(env: &Env) -> BytesN<32> {
+    BytesN::from_array(env, &STEP_CHAIN_TAG_BYTES)
+}
+
+/// The fields this lane reads out of the payload.
+pub struct DecodedStepChain {
+    pub height: u64,
+    pub start_root: BytesN<32>,
+    pub end_root: BytesN<32>,
+    pub event_root: BytesN<32>,
+    pub chain_length: u64,
+}
+
+fn read_u64_le(bytes: &Bytes, offset: u32) -> u64 {
+    let mut raw = [0u8; 8];
+    for i in 0u32..8 {
+        raw[i as usize] = bytes.get(offset + i).unwrap_or(0);
+    }
+    u64::from_le_bytes(raw)
+}
+
+fn read_root(env: &Env, bytes: &Bytes, offset: u32) -> BytesN<32> {
+    let mut raw = [0u8; 32];
+    for i in 0u32..32 {
+        raw[i as usize] = bytes.get(offset + i).unwrap_or(0);
+    }
+    BytesN::from_array(env, &raw)
+}
+
+/// Parses the step-chain payload. Any other length is a format error, so a
+/// payload with trailing bytes is refused rather than partially read.
+fn parse_step_chain_payload(env: &Env, payload: &Bytes) -> Result<DecodedStepChain, RegistryError> {
+    if payload.len() != STEP_CHAIN_PAYLOAD_LEN {
+        return Err(RegistryError::BadPayloadLength);
+    }
+    let height = read_u64_le(payload, 0);
+    if height == 0 {
+        return Err(RegistryError::InvalidPayload);
+    }
+    Ok(DecodedStepChain {
+        height,
+        start_root: read_root(env, payload, 8),
+        end_root: read_root(env, payload, 40),
+        event_root: read_root(env, payload, 72),
+        chain_length: read_u64_le(payload, 104),
+    })
+}
+
+/// Requires a public input to be exactly the expected 32-byte root.
+fn require_root_input(
+    inputs: &Vec<BytesN<32>>,
+    index: u32,
+    expected: &BytesN<32>,
+) -> Result<(), RegistryError> {
+    if inputs.get(index).ok_or(RegistryError::InvalidProof)? != *expected {
+        return Err(RegistryError::DeclaredMismatch);
+    }
+    Ok(())
+}
+
+/// Requires a public input to be the field encoding of a small integer.
+///
+/// The circuit's public inputs arrive as 32-byte big-endian field elements, so
+/// the leading 24 bytes must be zero and the low 8 must carry the value.
+/// Comparing the decoded integer rather than the raw bytes is what makes this a
+/// binding instead of a formality: it also refuses a value that encodes the same
+/// integer through a non-canonical representation.
+fn require_scalar_input(
+    inputs: &Vec<BytesN<32>>,
+    index: u32,
+    expected: u64,
+) -> Result<(), RegistryError> {
+    let value = inputs.get(index).ok_or(RegistryError::InvalidProof)?;
+    for i in 0u32..24 {
+        if value.get(i).unwrap_or(1) != 0 {
+            return Err(RegistryError::DeclaredMismatch);
+        }
+    }
+    let mut raw = [0u8; 8];
+    for i in 0u32..8 {
+        raw[i as usize] = value.get(24 + i).unwrap_or(0);
+    }
+    if u64::from_be_bytes(raw) != expected {
+        return Err(RegistryError::DeclaredMismatch);
+    }
+    Ok(())
+}
+
+#[cfg(test)]
 mod test {
     use super::*;
+    use crate::step_chain_vectors as vsc;
     use crate::test_vectors as v;
     extern crate std;
     use soroban_sdk::{testutils::Address as _, Env};
+
+    /// Decodes a hex string of arbitrary length. The fixed-size `decode_hex` in
+    /// this module is used for keys and roots; proofs and vectors are large
+    /// enough that writing the length twice invites a typo.
+    fn decode_hex_var(text: &str) -> std::vec::Vec<u8> {
+        let bytes = text.as_bytes();
+        assert!(bytes.len() % 2 == 0, "hex string must have an even length");
+        let mut out = std::vec::Vec::with_capacity(bytes.len() / 2);
+        let digit = |c: u8| match c {
+            b'0'..=b'9' => c - b'0',
+            b'a'..=b'f' => c - b'a' + 10,
+            b'A'..=b'F' => c - b'A' + 10,
+            _ => panic!("not a hex digit"),
+        };
+        for pair in bytes.chunks(2) {
+            out.push((digit(pair[0]) << 4) | digit(pair[1]));
+        }
+        out
+    }
+
+    /// The 32-byte big-endian field encoding of a small integer, which is what
+    /// the circuit's public inputs look like on the wire.
+    fn scalar_input(env: &Env, value: u64) -> BytesN<32> {
+        let mut raw = [0u8; 32];
+        raw[24..32].copy_from_slice(&value.to_be_bytes());
+        BytesN::from_array(env, &raw)
+    }
 
     #[test]
     fn test_domain_key_stable() {
@@ -1346,6 +1748,461 @@ mod test {
         assert!(
             matches!(res, Err(Ok(RegistryError::DeclaredMismatch))),
             "expected DeclaredMismatch, got {:?}",
+            res
+        );
+    }
+    // =====================================================================
+    // Multi-step chained lane
+    // =====================================================================
+
+    /// Vector layout, so the tests and the generated file cannot drift apart.
+    const SC_START: usize = 0;
+    const SC_END: usize = 1;
+    const SC_EVENT: usize = 2;
+    const SC_THRESHOLD: usize = 3;
+    const SC_LENGTH: usize = 4;
+    const SC_TAG: usize = 5;
+
+    /// The adapter id and network the generated vectors were produced for.
+    fn sc_domain(env: &Env) -> (BytesN<32>, String) {
+        (
+            BytesN::from_array(env, &decode_hex::<32>(v::ADAPTER_HEX)),
+            String::from_str(env, v::NETWORK),
+        )
+    }
+
+    fn sc_vk(env: &Env) -> Bytes {
+        Bytes::from_slice(env, &decode_hex_var(&vsc::VK_HEX))
+    }
+
+    fn sc_proof(env: &Env) -> Bytes {
+        Bytes::from_slice(env, &decode_hex_var(&vsc::PROOF_HEX))
+    }
+
+    fn sc_inputs(env: &Env) -> Vec<BytesN<32>> {
+        let mut out = Vec::new(env);
+        for i in 0..vsc::PUBLIC_INPUTS_HEX.len() {
+            out.push_back(BytesN::from_array(
+                env,
+                &decode_hex::<32>(vsc::PUBLIC_INPUTS_HEX[i]),
+            ));
+        }
+        out
+    }
+
+    /// The payload the circuit's public inputs describe: height, start root,
+    /// end root, event root, chain length.
+    fn sc_payload(env: &Env, height: u64) -> Bytes {
+        let mut payload = Bytes::new(env);
+        payload.append(&Bytes::from_array(env, &height.to_le_bytes()));
+        payload.append(&Bytes::from_array(
+            env,
+            &decode_hex::<32>(vsc::PUBLIC_INPUTS_HEX[SC_START]),
+        ));
+        payload.append(&Bytes::from_array(
+            env,
+            &decode_hex::<32>(vsc::PUBLIC_INPUTS_HEX[SC_END]),
+        ));
+        payload.append(&Bytes::from_array(
+            env,
+            &decode_hex::<32>(vsc::PUBLIC_INPUTS_HEX[SC_EVENT]),
+        ));
+        payload.append(&Bytes::from_array(env, &3u64.to_le_bytes()));
+        payload
+    }
+
+    fn sc_evidence(env: &Env, height: u64) -> RawEvidence {
+        let (adapter, network) = sc_domain(env);
+        RawEvidence {
+            adapter_id: adapter,
+            evidence_version: 1,
+            network,
+            payload: sc_payload(env, height),
+            declared_height: height,
+            declared_root: BytesN::from_array(
+                env,
+                &decode_hex::<32>(vsc::PUBLIC_INPUTS_HEX[SC_END]),
+            ),
+            submitter: Address::generate(env),
+        }
+    }
+
+    /// A registry bootstrapped the way the deployment does it: register, admit,
+    /// policy, then the step-chain key.
+    fn sc_registry(env: &Env) -> (FinalityRegistryClient<'_>, Address, BytesN<32>) {
+        let contract_id = env.register(FinalityRegistry, ());
+        let client = FinalityRegistryClient::new(env, &contract_id);
+        let admin = Address::generate(env);
+        client.initialize(&admin);
+        let (adapter, network) = sc_domain(env);
+        let domain = client.register_domain(
+            &admin,
+            &adapter,
+            &network,
+            &10,
+            &1,
+            &Vec::from_array(env, [1u32]),
+        );
+        client.admit_domain(&admin, &domain);
+        // No BLS policy is registered: the step-chain lane binds the quorum to
+        // the constant compiled into the circuit, so it does not depend on the
+        // signature lane's policy at all.
+        client.set_step_chain_vk(&admin, &sc_vk(env));
+        (client, admin, domain)
+    }
+
+    #[test]
+    fn test_step_chain_vectors_are_the_layout_the_contract_expects() {
+        // 896 = 64 (alpha) + 3 x 128 (beta, gamma, delta) + 7 x 64 (IC[0..6]).
+        assert_eq!(vsc::VK_HEX.len(), (STEP_CHAIN_VK_LEN as usize) * 2);
+        assert_eq!(vsc::PROOF_HEX.len(), 256 * 2);
+        assert_eq!(
+            vsc::PUBLIC_INPUTS_HEX.len(),
+            STEP_CHAIN_PUBLIC_INPUTS as usize
+        );
+        // Written out rather than encoded at run time: the contract crate has no
+        // hex dependency, and a literal here is also a second, independent
+        // statement of the tag.
+        assert_eq!(
+            vsc::PUBLIC_INPUTS_HEX[SC_TAG],
+            "009517e443e84062a6781b2a92160d0a325f4c5a45826a0c0b54644e2ed574f0"
+        );
+    }
+
+    #[test]
+    fn test_step_chain_tag_matches_the_circuit_constant() {
+        // The tag is what stops a single-statement proof being presented as a
+        // chain proof. It is derived from "lumen-gate-step-chain-v1", which is a
+        // different label from the one the other lane and the BLS hash-to-curve
+        // path use.
+        let env = Env::default();
+        let expected =
+            decode_hex::<32>("009517e443e84062a6781b2a92160d0a325f4c5a45826a0c0b54644e2ed574f0");
+        assert_eq!(step_chain_tag(&env).to_array(), expected);
+    }
+
+    #[test]
+    fn test_step_chain_proof_verifies_in_host_and_is_recorded() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, _admin, domain) = sc_registry(&env);
+
+        let attestation =
+            client.submit_step_chain_zk(&sc_evidence(&env, 77), &sc_proof(&env), &sc_inputs(&env));
+        assert_eq!(attestation.height, 77);
+        assert_eq!(attestation.chain_length, 3);
+        assert_eq!(attestation.security, SecurityBacking::ZkProof);
+
+        let recorded = client
+            .get_step_chain_record(&domain)
+            .expect("an accepted chain must be recorded");
+        assert_eq!(recorded.chain_length, 3);
+        assert_eq!(recorded.height, 77);
+        assert_eq!(recorded.threshold, 2);
+    }
+
+    #[test]
+    fn test_step_chain_does_not_touch_what_settlement_anchors_on() {
+        // This is the boundary that makes the second lane safe to add: a quorum
+        // proof is not a signature proof, so it must not move the domain's
+        // last_root or last_event_root. Settlement reads those.
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, _admin, domain) = sc_registry(&env);
+
+        let before = client.get_domain(&domain).expect("domain exists");
+        client.submit_step_chain_zk(&sc_evidence(&env, 78), &sc_proof(&env), &sc_inputs(&env));
+        let after = client.get_domain(&domain).expect("domain exists");
+
+        assert_eq!(before.last_height, after.last_height);
+        assert_eq!(before.last_root, after.last_root);
+        assert_eq!(before.last_event_root, after.last_event_root);
+        assert_eq!(after.last_security, SecurityBacking::None);
+    }
+
+    #[test]
+    fn test_step_chain_rejects_a_mutated_proof() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, _admin, _domain) = sc_registry(&env);
+
+        // Swap the A and C group elements. Both halves stay valid G1 points in
+        // the required encoding, so this is not caught by a length or format
+        // check: only the pairing equation can tell it apart. If the pairing
+        // check were a stub, this call would succeed.
+        let proof = sc_proof(&env);
+        let mut swapped = Bytes::new(&env);
+        swapped.append(&proof.slice(192..256));
+        swapped.append(&proof.slice(64..192));
+        swapped.append(&proof.slice(0..64));
+        let res =
+            client.try_submit_step_chain_zk(&sc_evidence(&env, 79), &swapped, &sc_inputs(&env));
+        // Not just "some error": the pairing equation is what rejected this, so
+        // the reported variant has to be InvalidProof.
+        assert!(
+            matches!(res, Err(Ok(RegistryError::InvalidProof))),
+            "expected InvalidProof from the pairing check, got {:?}",
+            res
+        );
+    }
+
+    #[test]
+    fn test_step_chain_rejects_swapped_public_inputs() {
+        // Swapping the start and end roots is the attack the chaining exists to
+        // stop: presenting a chain backwards.
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, _admin, _domain) = sc_registry(&env);
+
+        let mut inputs = sc_inputs(&env);
+        let start = inputs.get(SC_START as u32).unwrap();
+        inputs.set(SC_START as u32, inputs.get(SC_END as u32).unwrap());
+        inputs.set(SC_END as u32, start);
+
+        let res = client.try_submit_step_chain_zk(&sc_evidence(&env, 80), &sc_proof(&env), &inputs);
+        assert!(
+            matches!(res, Err(Ok(RegistryError::DeclaredMismatch))),
+            "a reordered public vector must be refused, got {:?}",
+            res
+        );
+    }
+
+    #[test]
+    fn test_step_chain_rejects_wrong_threshold_and_wrong_length() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, _admin, _domain) = sc_registry(&env);
+
+        // threshold 1 instead of the registered 2
+        let mut inputs = sc_inputs(&env);
+        inputs.set(SC_THRESHOLD as u32, scalar_input(&env, 1));
+        let res = client.try_submit_step_chain_zk(&sc_evidence(&env, 81), &sc_proof(&env), &inputs);
+        assert!(
+            matches!(res, Err(Ok(RegistryError::DeclaredMismatch))),
+            "the quorum policy is bound by the contract, got {:?}",
+            res
+        );
+
+        // chain_length 4 in the proof while the payload says 3
+        let mut inputs = sc_inputs(&env);
+        inputs.set(SC_LENGTH as u32, scalar_input(&env, 4));
+        let res = client.try_submit_step_chain_zk(&sc_evidence(&env, 82), &sc_proof(&env), &inputs);
+        assert!(
+            matches!(res, Err(Ok(RegistryError::DeclaredMismatch))),
+            "the chain length is bound to the payload, got {:?}",
+            res
+        );
+    }
+
+    #[test]
+    fn test_step_chain_rejects_a_payload_that_disagrees_with_itself() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, _admin, _domain) = sc_registry(&env);
+
+        // The payload declares height 90 while the envelope says 91: the two
+        // must agree, because the envelope is what an index saw before the
+        // adapter ever ran.
+        let mut evidence = sc_evidence(&env, 91);
+        evidence.declared_height = 90;
+        let res = client.try_submit_step_chain_zk(&evidence, &sc_proof(&env), &sc_inputs(&env));
+        assert!(
+            matches!(res, Err(Ok(RegistryError::DeclaredMismatch))),
+            "a lying envelope must be refused, got {:?}",
+            res
+        );
+
+        // A payload with trailing bytes is a different format, not a longer one.
+        let mut evidence = sc_evidence(&env, 92);
+        let mut payload = evidence.payload.clone();
+        payload.push_back(0);
+        evidence.payload = payload;
+        let res = client.try_submit_step_chain_zk(&evidence, &sc_proof(&env), &sc_inputs(&env));
+        assert!(
+            matches!(res, Err(Ok(RegistryError::BadPayloadLength))),
+            "a payload with trailing bytes must be refused, got {:?}",
+            res
+        );
+    }
+
+    #[test]
+    fn test_step_chain_size_limits_are_explicit() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, _admin, _domain) = sc_registry(&env);
+
+        // proof one byte short and one byte long. Both are format errors: the
+        // length is checked before any decoding, so the refusal is a clean
+        // InvalidProof rather than a decoding panic.
+        let mut short_proof = decode_hex_var(&vsc::PROOF_HEX);
+        short_proof.pop();
+        let res = client.try_submit_step_chain_zk(
+            &sc_evidence(&env, 93),
+            &Bytes::from_slice(&env, &short_proof),
+            &sc_inputs(&env),
+        );
+        assert!(
+            matches!(res, Err(Ok(RegistryError::InvalidProof))),
+            "a 255-byte proof must be refused, got {:?}",
+            res
+        );
+
+        let mut long_proof = decode_hex_var(&vsc::PROOF_HEX);
+        long_proof.push(0);
+        let res = client.try_submit_step_chain_zk(
+            &sc_evidence(&env, 94),
+            &Bytes::from_slice(&env, &long_proof),
+            &sc_inputs(&env),
+        );
+        assert!(
+            matches!(res, Err(Ok(RegistryError::InvalidProof))),
+            "a 257-byte proof must be refused, got {:?}",
+            res
+        );
+
+        // five and seven public inputs
+        let mut short = sc_inputs(&env);
+        short.pop_back();
+        let res = client.try_submit_step_chain_zk(&sc_evidence(&env, 95), &sc_proof(&env), &short);
+        assert!(
+            matches!(res, Err(Ok(RegistryError::InvalidProof))),
+            "got {:?}",
+            res
+        );
+
+        let mut long = sc_inputs(&env);
+        long.push_back(BytesN::from_array(&env, &[0u8; 32]));
+        let res = client.try_submit_step_chain_zk(&sc_evidence(&env, 96), &sc_proof(&env), &long);
+        assert!(
+            matches!(res, Err(Ok(RegistryError::InvalidProof))),
+            "got {:?}",
+            res
+        );
+    }
+
+    #[test]
+    fn test_step_chain_key_length_is_enforced_at_bootstrap() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(FinalityRegistry, ());
+        let client = FinalityRegistryClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        client.initialize(&admin);
+
+        // 895 and 897 bytes are both wrong; the length is a format rule.
+        for length in [895usize, 897] {
+            let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let filler = std::vec![1u8; length];
+                client.set_step_chain_vk(&admin, &Bytes::from_slice(&env, &filler));
+            }));
+            assert!(
+                outcome.is_err(),
+                "a {}-byte step-chain key must be refused",
+                length
+            );
+        }
+
+        // The right length is accepted.
+        client.set_step_chain_vk(&admin, &sc_vk(&env));
+        assert_eq!(client.get_step_chain_vk().len(), STEP_CHAIN_VK_LEN);
+    }
+
+    #[test]
+    fn test_step_chain_refuses_to_go_backwards() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, _admin, _domain) = sc_registry(&env);
+
+        client.submit_step_chain_zk(&sc_evidence(&env, 100), &sc_proof(&env), &sc_inputs(&env));
+        // Same height again. Different payload bytes would be a different
+        // evidence digest, so this checks the lane's own monotonicity rather
+        // than the digest set.
+        let res = client.try_submit_step_chain_zk(
+            &sc_evidence(&env, 100),
+            &sc_proof(&env),
+            &sc_inputs(&env),
+        );
+        assert!(
+            matches!(res, Err(Ok(RegistryError::EvidenceAlreadyProcessed))),
+            "the recorded trail must only move forward, got {:?}",
+            res
+        );
+    }
+
+    #[test]
+    fn test_step_chain_vk_cannot_be_set_after_renounce_or_by_a_stranger() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, admin, _domain) = sc_registry(&env);
+
+        // a different account, with auth mocked: the stored admin check refuses it
+        let stranger = Address::generate(&env);
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            client.set_step_chain_vk(&stranger, &sc_vk(&env));
+        }));
+        assert!(
+            outcome.is_err(),
+            "a non-admin must not be able to replace the step-chain key"
+        );
+
+        client.renounce_admin(&admin);
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            client.set_step_chain_vk(&admin, &sc_vk(&env));
+        }));
+        assert!(
+            outcome.is_err(),
+            "after renounce there is no key left that can replace the verification key"
+        );
+    }
+
+    #[test]
+    fn test_step_chain_requires_an_admitted_domain() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(FinalityRegistry, ());
+        let client = FinalityRegistryClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        client.initialize(&admin);
+        let (adapter, network) = sc_domain(&env);
+        let domain = client.register_domain(
+            &admin,
+            &adapter,
+            &network,
+            &10,
+            &1,
+            &Vec::from_array(&env, [1u32]),
+        );
+        client.set_step_chain_vk(&admin, &sc_vk(&env));
+
+        // registered but not admitted
+        let res = client.try_submit_step_chain_zk(
+            &sc_evidence(&env, 120),
+            &sc_proof(&env),
+            &sc_inputs(&env),
+        );
+        assert!(
+            matches!(res, Err(Ok(RegistryError::NotAdmitted))),
+            "got {:?}",
+            res
+        );
+
+        // admitted: the same evidence is now a proof question, not a state
+        // question, and this registry has no step-chain key for this domain
+        // other than the one set above, so the honest proof is accepted
+        client.admit_domain(&admin, &domain);
+        let accepted =
+            client.submit_step_chain_zk(&sc_evidence(&env, 121), &sc_proof(&env), &sc_inputs(&env));
+        assert_eq!(accepted.height, 121);
+
+        // a domain that was never registered at all is refused before anything
+        // else is looked at
+        let unknown_adapter = BytesN::from_array(&env, &[9u8; 32]);
+        let mut evidence = sc_evidence(&env, 122);
+        evidence.adapter_id = unknown_adapter;
+        let res = client.try_submit_step_chain_zk(&evidence, &sc_proof(&env), &sc_inputs(&env));
+        assert!(
+            matches!(res, Err(Ok(RegistryError::DomainNotFound))),
+            "got {:?}",
             res
         );
     }
