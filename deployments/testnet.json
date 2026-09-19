@@ -8,7 +8,9 @@
   "note": "Every hash in this file was read back from Stellar testnet, not written from memory. Superseded contracts are kept rather than deleted so what was replaced, and why, stays visible. Re-verify with anchor/self-audit.js.",
   "accounts": {
     "deployer_and_relayer": "GBYFDKP4KLQ575HTJRDTHF4HUIVXAQLJNEZMWYJ5HBY3C3GDSPX5H4FR",
-    "end_user": "GD6Z33PJZXS4V75JRXHD6YQNCWDJKB72JGGSGVXQM4USF4SWVDBXG4E3"
+    "end_user": "GD6Z33PJZXS4V75JRXHD6YQNCWDJKB72JGGSGVXQM4USF4SWVDBXG4E3",
+    "relayer_only": "GBDJAEDH5KA4GFZQV3BAD54GN6GS3S3MS23R6SE2RUMHZBIYVMQJZTHD",
+    "gasless_recipient": "GCN65ER7FFAKQCECCWMUQVNGK5AQQIBON6KIJBO5FIYTHLXV4EFGVYGM"
   },
   "contracts": {
     "finality_registry": {
@@ -72,15 +74,95 @@
     "reverse_burn": "ca0a16605acb41c1dcb1e4db2dedaf4b45e98347b013e37d8e9906a559b83340",
     "gateway_wasm_v2_upload": "86d0e640fb4b747fdbb070ced33bd6db6a3d98ce6aa70cb9a54d6d3d7fa28ec7"
   },
+  "gasless": {
+    "claim": "an account whose entire XLM balance equals its minimum reserve - zero spendable stroops - received wrapped tokens. It could not have paid for its own mint.",
+    "source_height": 156,
+    "message_id": "e1b965d79f64f989ab61ba17eaca5076ac3be4d32a7e8724b0167efea4e50c33",
+    "merkle_proof_siblings": 0,
+    "merkle_note": "the block holds exactly one event, so the leaf is the root and the proof is empty. The CLI cannot express an empty --merkle_proof value; the relayer passes a zero-byte file with --merkle_proof-file-path instead",
+    "recipient": "GCN65ER7FFAKQCECCWMUQVNGK5AQQIBON6KIJBO5FIYTHLXV4EFGVYGM",
+    "recipient_xlm_before_stroops": 15000000,
+    "recipient_xlm_after_stroops": 15000000,
+    "recipient_minimum_reserve_stroops": 15000000,
+    "recipient_spendable_before_stroops": 0,
+    "recipient_spendable_after_stroops": 0,
+    "recipient_wrapped_before": 0,
+    "recipient_wrapped_after": 199000000,
+    "relayer": "GBDJAEDH5KA4GFZQV3BAD54GN6GS3S3MS23R6SE2RUMHZBIYVMQJZTHD",
+    "relayer_xlm_fee_paid_stroops": 137293,
+    "relayer_wrapped_fee_earned": 1000000,
+    "fee_amount": 1000000,
+    "transaction": "8b4e9bd59f405b8d3ecd11dcf1dee1e906ffcf16100cbcb1899cae7b42da88b4",
+    "ledger": 4763378,
+    "horizon_verified": true,
+    "rpc_status": "SUCCESS",
+    "finality_backing": "BLS12-381 aggregate signature over (height, state_root, event_root), 3 signers, 2 required, verified inside Soroban",
+    "how_it_was_run": "target/debug/relayer --height 156 --once with STELLAR_SOURCE_ACCOUNT=lumen-relayer and RELAYER_FEE=1000000; the relayer read the addresses from this manifest rather than from the environment"
+  },
+  "findings": [
+    {
+      "id": "gasless-issuer-cannot-hold-own-asset",
+      "found": "the first live gasless attempt failed: the Stellar Asset Contract rejects minting the token to the account that issues it, so the relayer-reward mint to the issuer account trapped with 'operation invalid on issuer' and the whole transaction rolled back",
+      "fix": "run the relayer from a separate account that holds a trustline for the wrapped asset, which is also the honest topology: the fee payer is not the issuer"
+    },
+    {
+      "id": "relayer-hash-parser",
+      "found": "the relayer reported 'transaction receipt' by taking the first 64-hex-character run in the CLI output. The CLI echoes the arguments, and the evidence payload contains a 64-hex adapter id, so the adapter id was reported as the transaction hash",
+      "fix": "collect every candidate and keep only one that Soroban RPC getTransaction confirms as SUCCESS"
+    },
+    {
+      "id": "relayer-would-not-resume",
+      "found": "if the finality evidence for a height had already been accepted (registry error #9), the relayer treated it as a failure and skipped the mint, stranding every message that was anchored before a restart",
+      "fix": "error #9 on the registry call and error #4 on the gateway call are now treated as the desired end state"
+    },
+    {
+      "id": "tests-passing-for-the-wrong-reason",
+      "found": "two registry unit tests asserted only that a call failed. They registered a domain but never admitted it, so the call failed with NotAdmitted before any signature or pairing check ran",
+      "fix": "both tests now admit the domain and assert the specific expected error variant (InvalidSignature, InvalidProof)"
+    }
+  ],
   "negative_probes": {
-    "replay_same_bls_evidence": { "outcome": "rejected", "contract_error": 9, "error_name": "EvidenceAlreadyProcessed" },
-    "replay_same_zk_evidence": { "outcome": "rejected", "contract_error": 9, "error_name": "EvidenceAlreadyProcessed" },
-    "tampered_bls_signature": { "outcome": "rejected", "contract_error": 7, "error_name": "InvalidSignature" },
-    "tampered_groth16_proof": { "outcome": "rejected", "contract_error": 8, "error_name": "InvalidProof", "detail": "one byte flipped in proof element A, submitted against a fresh height" },
-    "submit_before_admit_domain": { "outcome": "rejected", "contract_error": 12, "error_name": "NotAdmitted" },
-    "admin_action_after_renounce": { "outcome": "rejected", "error_name": "WasmVm InvalidAction, VM call trapped", "detail": "set_vk and register_domain both trap. The admin capability is gone for everyone, including the deployer." },
-    "mint_replay_through_tooling_entrypoint": { "outcome": "rejected", "contract_error": 4, "error_name": "AlreadyProcessed" },
-    "source_chain_burn_replay": { "outcome": "rejected", "http_status": 409, "detail": "burn message already unlocked" }
+    "replay_same_bls_evidence": {
+      "outcome": "rejected",
+      "contract_error": 9,
+      "error_name": "EvidenceAlreadyProcessed"
+    },
+    "replay_same_zk_evidence": {
+      "outcome": "rejected",
+      "contract_error": 9,
+      "error_name": "EvidenceAlreadyProcessed"
+    },
+    "tampered_bls_signature": {
+      "outcome": "rejected",
+      "contract_error": 7,
+      "error_name": "InvalidSignature"
+    },
+    "tampered_groth16_proof": {
+      "outcome": "rejected",
+      "contract_error": 8,
+      "error_name": "InvalidProof",
+      "detail": "one byte flipped in proof element A, submitted against a fresh height"
+    },
+    "submit_before_admit_domain": {
+      "outcome": "rejected",
+      "contract_error": 12,
+      "error_name": "NotAdmitted"
+    },
+    "admin_action_after_renounce": {
+      "outcome": "rejected",
+      "error_name": "WasmVm InvalidAction, VM call trapped",
+      "detail": "set_vk and register_domain both trap. The admin capability is gone for everyone, including the deployer."
+    },
+    "mint_replay_through_tooling_entrypoint": {
+      "outcome": "rejected",
+      "contract_error": 4,
+      "error_name": "AlreadyProcessed"
+    },
+    "source_chain_burn_replay": {
+      "outcome": "rejected",
+      "http_status": 409,
+      "detail": "burn message already unlocked"
+    }
   },
   "domain": {
     "name": "source-testnet",
@@ -89,8 +171,15 @@
     "adapter_id": "3dcbf6f582455337083d5f6d36721f6d63d47af0bef870a043c02aca7850dac9",
     "state": 2,
     "machine_approved": true,
-    "bls_policy": { "signer_count": 3, "required": 2, "slashable": false }
+    "bls_policy": {
+      "signer_count": 3,
+      "required": 2,
+      "slashable": false
+    }
   },
+  "gasless_recipient_note": "a Stellar account must exist and hold a trustline to receive a Stellar asset, so 'gasless' here means zero spendable XLM, not zero account setup",
+  "target_domain": "30e4a8e86c86dd7efbf8e589bc2055dd42f3f6e18569103e44eccc1e01cf8ef1",
+  "target_domain_source": "read back from the gateway with get_target_domain on testnet, not copied from config",
   "end_to_end": {
     "forward": {
       "path": "user locks on the source chain, the block is finalised, the gateway verifies a Merkle proof of the lock event against the finalised event root, the wrapped asset is minted",
@@ -120,7 +209,12 @@
     "curve": "bn254",
     "proving_system": "groth16",
     "circuit": "circuits/finality_statement.circom",
-    "public_input_order": ["prev_state_root", "event_root", "threshold", "state_root"],
+    "public_input_order": [
+      "prev_state_root",
+      "event_root",
+      "threshold",
+      "state_root"
+    ],
     "vk_bytes": 768,
     "proof_bytes": 256,
     "toolchain": "circom 2.2.3, snarkjs 0.7.6, Powers-of-Tau generated locally",

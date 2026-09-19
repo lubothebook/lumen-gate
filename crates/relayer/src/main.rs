@@ -63,14 +63,47 @@ struct SorobanRpcRequest {
     params: serde_json::Value,
 }
 
+/// The deployment manifest (`deployments/testnet.json`) is the source of truth
+/// for addresses, so the relayer reads it instead of trusting the operator's
+/// environment. Contract entries are objects carrying a `contract_id`; a bare
+/// string is accepted as well so hand-written manifests keep working.
 #[derive(Deserialize, Debug)]
 struct Deployment {
     network: String,
     rpc_url: String,
-    contracts: HashMap<String, String>,
+    #[serde(default)]
+    contracts: HashMap<String, serde_json::Value>,
+    #[serde(default)]
+    accounts: HashMap<String, String>,
+    #[serde(default)]
+    domain: Option<ManifestDomain>,
+    #[serde(default)]
     issuer: Option<String>,
-    domain_key: Option<String>,
+    #[serde(default)]
     target_domain: Option<String>,
+}
+
+#[derive(Deserialize, Debug)]
+struct ManifestDomain {
+    domain_key: Option<String>,
+}
+
+impl Deployment {
+    /// First key that resolves to a contract id wins, so renaming an entry in
+    /// the manifest cannot silently leave the relayer pointing at nothing.
+    fn contract(&self, keys: &[&str]) -> Option<String> {
+        for key in keys {
+            if let Some(value) = self.contracts.get(*key) {
+                if let Some(id) = value.as_str() {
+                    return Some(id.to_string());
+                }
+                if let Some(id) = value.get("contract_id").and_then(|value| value.as_str()) {
+                    return Some(id.to_string());
+                }
+            }
+        }
+        None
+    }
 }
 
 fn is_placeholder(value: &str) -> bool {
@@ -308,25 +341,87 @@ async fn run_stellar_cli(args: &[String]) -> Result<String, String> {
     Ok(format!("{}{}", stdout, stderr))
 }
 
-fn extract_transaction_hash(receipt: &str) -> Option<String> {
-    // Current Stellar CLI releases print either a bare hash or a JSON/text
-    // receipt containing `hash`. Keep this parser format-tolerant, but never
-    // call a submission successful without finding the 32-byte transaction
-    // hash in the CLI output.
+/// A contract error code, as printed by the CLI (`Error(Contract, #N)`).
+/// Each contract numbers its own errors, so the check is applied to the result
+/// of a known call and never shared between the registry and the gateway.
+fn contract_error_is(output: &str, code: u32) -> bool {
+    output.contains(&format!("Error(Contract, #{code})"))
+}
+
+/// Every 64-hex-character run in the CLI output, in order.
+///
+/// The CLI echoes the arguments it was given, and those arguments contain hex
+/// (adapter ids, payload hashes, merkle siblings). A naive "first hash-looking
+/// string" parser therefore reports the *adapter id* as a transaction hash -
+/// which is exactly what an earlier revision of this relayer did. Candidates
+/// are collected here and then confirmed against the RPC before any of them is
+/// reported as a receipt.
+fn hash_candidates(receipt: &str) -> Vec<String> {
     let bytes = receipt.as_bytes();
-    for start in 0..bytes.len() {
-        if start + 64 > bytes.len() {
-            break;
-        }
+    let mut found: Vec<String> = Vec::new();
+    let mut start = 0usize;
+    while start + 64 <= bytes.len() {
         let candidate = &bytes[start..start + 64];
-        if candidate.iter().all(u8::is_ascii_hexdigit)
-            && (start == 0 || !bytes[start - 1].is_ascii_hexdigit())
-            && (start + 64 == bytes.len() || !bytes[start + 64].is_ascii_hexdigit())
-        {
-            return Some(String::from_utf8_lossy(candidate).to_ascii_lowercase());
+        let bounded_left = start == 0 || !bytes[start - 1].is_ascii_hexdigit();
+        let bounded_right = start + 64 == bytes.len() || !bytes[start + 64].is_ascii_hexdigit();
+        if bounded_left && bounded_right && candidate.iter().all(u8::is_ascii_hexdigit) {
+            let value = String::from_utf8_lossy(candidate).to_ascii_lowercase();
+            if !found.contains(&value) {
+                found.push(value);
+            }
+            start += 64;
+            continue;
+        }
+        start += 1;
+    }
+    found
+}
+
+/// Ask the RPC whether this hash is a real, successful transaction. A hash the
+/// network has never seen is never a receipt.
+async fn confirm_transaction(client: &reqwest::Client, rpc_url: &str, hash: &str) -> bool {
+    let body = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "getTransaction",
+        "params": { "hash": hash },
+    });
+    let response = match client.post(rpc_url).json(&body).send().await {
+        Ok(response) => response,
+        Err(_) => return false,
+    };
+    let value: serde_json::Value = match response.json().await {
+        Ok(value) => value,
+        Err(_) => return false,
+    };
+    matches!(
+        value
+            .pointer("/result/status")
+            .and_then(|status| status.as_str()),
+        Some("SUCCESS")
+    )
+}
+
+/// The first hash in the output that the network confirms as a successful
+/// transaction. Anything else is a number that merely looks like a hash.
+async fn confirmed_transaction_hash(
+    client: &reqwest::Client,
+    rpc_url: &str,
+    receipt: &str,
+) -> Result<String, String> {
+    let candidates = hash_candidates(receipt);
+    if candidates.is_empty() {
+        return Err("stellar CLI returned success without a transaction hash".to_string());
+    }
+    for candidate in &candidates {
+        if confirm_transaction(client, rpc_url, candidate).await {
+            return Ok(candidate.clone());
         }
     }
-    None
+    Err(format!(
+        "stellar CLI reported success but none of the {} hash-shaped strings in its output is a confirmed transaction",
+        candidates.len()
+    ))
 }
 
 fn evidence_json(proof: &ProofResponse, relayer_address: &str) -> String {
@@ -343,6 +438,8 @@ fn evidence_json(proof: &ProofResponse, relayer_address: &str) -> String {
 }
 
 async fn submit_bls(
+    client: &reqwest::Client,
+    rpc_url: &str,
     proof: &ProofResponse,
     registry_id: &str,
     network: &str,
@@ -369,14 +466,26 @@ async fn submit_bls(
         println!("    dry-run: stellar {}", args.join(" "));
         return Ok(());
     }
-    let receipt = run_stellar_cli(&args).await?;
-    let tx_hash = extract_transaction_hash(&receipt)
-        .ok_or_else(|| "stellar CLI returned success without a transaction hash".to_string())?;
+    let receipt = match run_stellar_cli(&args).await {
+        Ok(receipt) => receipt,
+        // Registry error #9 is EvidenceAlreadyProcessed: this height is already
+        // anchored by an earlier run. That is the desired end state, and
+        // refusing to continue would strand every message that was anchored
+        // before a relayer restart, so it is not an error here.
+        Err(error) if contract_error_is(&error, 9) => {
+            println!("    registry BLS evidence for this height was already accepted, continuing");
+            return Ok(());
+        }
+        Err(error) => return Err(error),
+    };
+    let tx_hash = confirmed_transaction_hash(client, rpc_url, &receipt).await?;
     println!("    registry BLS transaction receipt: {tx_hash}");
     Ok(())
 }
 
 async fn submit_zk(
+    client: &reqwest::Client,
+    rpc_url: &str,
     proof: &ProofResponse,
     registry_id: &str,
     network: &str,
@@ -416,13 +525,14 @@ async fn submit_zk(
         return Ok(());
     }
     let receipt = run_stellar_cli(&args).await?;
-    let tx_hash = extract_transaction_hash(&receipt)
-        .ok_or_else(|| "stellar CLI returned success without a transaction hash".to_string())?;
+    let tx_hash = confirmed_transaction_hash(client, rpc_url, &receipt).await?;
     println!("    registry ZK transaction receipt: {tx_hash}");
     Ok(())
 }
 
 async fn submit_gateway(
+    client: &reqwest::Client,
+    rpc_url: &str,
     event: &LockEvent,
     merkle_proof: &[String],
     domain_key: &str,
@@ -436,7 +546,24 @@ async fn submit_gateway(
     dry_run: bool,
 ) -> Result<(), String> {
     let proof_bytes = merkle_proof.join("");
-    let message = serde_json::json!({
+    // An empty proof is the correct proof for a single-event block: the leaf is
+    // the root. The CLI cannot accept an empty `--merkle_proof` value, so the
+    // empty case goes through the file form with a zero-byte file.
+    let (proof_flag, proof_value) = if proof_bytes.is_empty() {
+        let path = std::env::temp_dir().join("lumen-gate-empty-merkle-proof.hex");
+        std::fs::write(&path, b"").map_err(|error| format!("cannot write {path:?}: {error}"))?;
+        (
+            "--merkle_proof-file-path".to_string(),
+            path.to_string_lossy().to_string(),
+        )
+    } else {
+        ("--merkle_proof".to_string(), proof_bytes)
+    };
+    // The relay arguments travel as the flat `InboundRelayArgs` struct. The
+    // enum form (`finalize_inbound --message`) cannot be built by the current
+    // CLI, which is why the gateway exposes `*_tooling` entrypoints carrying an
+    // explicit `kind_code` instead: 1 = Lock, 2 = Mint.
+    let relay_args = serde_json::json!({
         "message_id": event.message_id,
         "source_domain": domain_key,
         "target_domain": target_domain,
@@ -446,9 +573,7 @@ async fn submit_gateway(
         "sender": event.sender_on_source,
         "recipient": event.recipient_on_source,
         "payload_hash": event.payload_hash,
-        // Stellar CLI JSON uses the Soroban enum spec form: a vec containing
-        // the unit-variant symbol, not a Rust/Serde tagged object.
-        "kind": ["Lock"],
+        "kind_code": 1,
         "expiry_height": event.expiry_height,
     })
     .to_string();
@@ -462,13 +587,16 @@ async fn submit_gateway(
         "--network".to_string(),
         network.to_string(),
         "--".to_string(),
-        "finalize_inbound_gasless".to_string(),
+        // Gasless lane: the relayer signs and pays the transaction fee, and
+        // `fee_amount` is minted back to the relayer out of the transferred
+        // amount. The recipient never needs XLM and never signs anything.
+        "finalize_inbound_gasless_tooling".to_string(),
         "--relayer".to_string(),
         relayer_address.to_string(),
-        "--message".to_string(),
-        message,
-        "--merkle_proof".to_string(),
-        proof_bytes,
+        "--args".to_string(),
+        relay_args,
+        proof_flag,
+        proof_value,
         "--payload_asset".to_string(),
         token_id.to_string(),
         "--payload_amount".to_string(),
@@ -482,9 +610,18 @@ async fn submit_gateway(
         println!("    dry-run: stellar {}", args.join(" "));
         return Ok(());
     }
-    let receipt = run_stellar_cli(&args).await?;
-    let tx_hash = extract_transaction_hash(&receipt)
-        .ok_or_else(|| "stellar CLI returned success without a transaction hash".to_string())?;
+    let receipt = match run_stellar_cli(&args).await {
+        Ok(receipt) => receipt,
+        // Gateway error #4 is AlreadyProcessed: the nonce high-water mark or the
+        // message id says this message was already minted. Same reasoning as
+        // above - report it and let the run finish.
+        Err(error) if contract_error_is(&error, 4) => {
+            println!("    this message was already minted on Stellar, nothing to do");
+            return Ok(());
+        }
+        Err(error) => return Err(error),
+    };
+    let tx_hash = confirmed_transaction_hash(client, rpc_url, &receipt).await?;
     println!("    gateway mint transaction receipt: {tx_hash}");
     Ok(())
 }
@@ -506,6 +643,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or_else(|_| "relayer".to_string());
     let relayer_address = std::env::var("STELLAR_RELAYER_ADDRESS")
         .unwrap_or_else(|_| "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF".to_string());
+    // Backfill support: the daemon normally follows the newest source block, but
+    // a specific height can be pinned (for a replay, an audit, or a demo where
+    // empty blocks keep arriving faster than a human can act). `--once` exits
+    // after a single pass, which makes the run reproducible in CI.
+    let pinned_height: Option<u64> = option_after(&args, "--height")
+        .or_else(|| std::env::var("RELAYER_HEIGHT").ok())
+        .map(|value| {
+            value
+                .parse::<u64>()
+                .map_err(|_| std::io::Error::other("RELAYER_HEIGHT must be a block height"))
+        })
+        .transpose()?;
+    let once = args.iter().any(|arg| arg == "--once")
+        || std::env::var("RELAYER_ONCE").as_deref() == Ok("1");
     let fee_amount: i128 = std::env::var("RELAYER_FEE")
         .unwrap_or_else(|_| "0".to_string())
         .parse()
@@ -538,25 +689,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .and_then(|contents| serde_json::from_str(&contents).ok());
     let registry_id = deployment
         .as_ref()
-        .and_then(|deployment| deployment.contracts.get("finality_registry"))
-        .cloned()
+        .and_then(|deployment| deployment.contract(&["finality_registry", "registry"]))
         .or_else(|| std::env::var("REGISTRY_ID").ok())
         .ok_or_else(|| std::io::Error::other("REGISTRY_ID is required"))?;
     let gateway_id = deployment
         .as_ref()
-        .and_then(|deployment| deployment.contracts.get("settlement_gateway"))
-        .cloned()
+        .and_then(|deployment| deployment.contract(&["settlement_gateway", "gateway"]))
         .or_else(|| std::env::var("GATEWAY_ID").ok())
         .ok_or_else(|| std::io::Error::other("GATEWAY_ID is required"))?;
     let token_id = deployment
         .as_ref()
-        .and_then(|deployment| deployment.contracts.get("token_sac"))
-        .cloned()
+        .and_then(|deployment| deployment.contract(&["wrapped_asset_sac", "token_sac", "token"]))
         .or_else(|| std::env::var("TOKEN_ID").ok())
         .ok_or_else(|| std::io::Error::other("TOKEN_ID is required"))?;
     let domain_key = deployment
         .as_ref()
-        .and_then(|deployment| deployment.domain_key.clone())
+        .and_then(|deployment| deployment.domain.as_ref())
+        .and_then(|domain| domain.domain_key.clone())
         .or_else(|| std::env::var("DOMAIN_KEY").ok())
         .unwrap_or_else(|| "DOMAIN-KEY-PLACEHOLDER".to_string());
     let target_domain = deployment
@@ -606,6 +755,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("  registry: {registry_id}");
     println!("  gateway: {gateway_id}");
+    match pinned_height {
+        Some(height) => println!("  pinned source height: {height}"),
+        None => println!("  following the newest source block"),
+    }
     println!("  burn event cursor: ledger {burn_cursor}");
     if let Some(deployment) = &deployment {
         println!("  deployment network: {}", deployment.network);
@@ -636,8 +789,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
+        let block_url = match pinned_height {
+            Some(height) => format!("{sim_url}/blocks/{height}"),
+            None => format!("{sim_url}/blocks/latest"),
+        };
         let block = match client
-            .get(format!("{sim_url}/blocks/latest"))
+            .get(block_url)
             .send()
             .await
         {
@@ -708,9 +865,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let result = if submitted.contains(&key) {
                     Ok(())
                 } else if kind == "bls" {
-                    submit_bls(&proof, &registry_id, &network, &relayer_account, &relayer_address, dry_run).await
+                    submit_bls(&client, &rpc_url, &proof, &registry_id, &network, &relayer_account, &relayer_address, dry_run).await
                 } else {
-                    submit_zk(&proof, &registry_id, &network, &relayer_account, &relayer_address, dry_run).await
+                    submit_zk(&client, &rpc_url, &proof, &registry_id, &network, &relayer_account, &relayer_address, dry_run).await
                 };
                 match result {
                     Ok(()) => {
@@ -745,6 +902,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     }
                                 };
                                 match submit_gateway(
+                                    &client,
+                                    &rpc_url,
                                     event,
                                     &proof_siblings,
                                     &domain_key,
@@ -771,8 +930,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
+        if once {
+            break;
+        }
         tokio::time::sleep(Duration::from_secs(5)).await;
     }
+    if once {
+        println!("single pass complete");
+    }
+    Ok(())
 }
 
 fn option_after(args: &[String], flag: &str) -> Option<String> {
