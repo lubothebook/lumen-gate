@@ -140,6 +140,19 @@ functionality belongs in the off-chain surface, the facade and the docs.
       content-derived message ids, per-direction nonce high-water marks.
 - [x] `cargo test --workspace` → 46 passed (12 registry, 11 gateway, 3
       simulator, 20 adapter). README states the same number.
+- [x] The lattice is the submitted 60x60 cube tile painted at exactly 60x60
+      with a 4px inset white frame snapping to the cube under the pointer;
+      verified pixel-for-pixel that the shipped tile is the submitted asset
+      (the file bytes differ from the submitted PNG only in encoding, not in
+      any pixel).
+- [x] Behavioural coverage for that surface: `tools/check-grid-fx.js` drives
+      `watchGrid()` with synthetic pointer events against a stub DOM (snap to
+      the right cube, one paint per frame, scroll compensation, suppression
+      over interactive surfaces, hiding on leave/scroll/blur) and asserts the
+      static lattice contract in the markup; it runs inside the self-audit's
+      `console_wiring_consistent` record, so a silent lattice fails the round.
+      Verified: `node tools/check-grid-fx.js`, `node tools/check-console.js`
+      (74 ids, 50 lookups, 4/4 embedded assets).
 
 ### Still missing (stated, not hidden)
 

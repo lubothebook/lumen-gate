@@ -302,7 +302,7 @@ The wallet sits below the overview and the explanation of how settlement works, 
 | No API layer at all (a static build) | the page says it is offline and falls back to the addresses in the generated module |
 | Relay pass takes tens of seconds | the button reports that it is running, because the pass signs, submits and waits for confirmation |
 
-All of that is checked mechanically: [`tools/check-console.js`](tools/check-console.js) resolves every element the module looks up against the markup, verifies the module parses, and confirms the images embedded in the page are still the images in `frontend/public`. It runs in the self-audit loop, so a selector typo is a failed audit round rather than an interface that loads and silently does nothing.
+All of that is checked mechanically: [`tools/check-console.js`](tools/check-console.js) resolves every element the module looks up against the markup, verifies the module parses, and confirms the images embedded in the page are still the images in `frontend/public`; [`tools/check-grid-fx.js`](tools/check-grid-fx.js) extracts `watchGrid()` from the module, drives synthetic pointer events through it against a stub DOM, and insists the frame snaps to the cube under the pointer, compensates for the scrolled lattice, paints at most once per animation frame, keeps off interactive surfaces, and hides on leave, scroll and blur — plus that the tile in `frontend/public` really is 60x60 and the frame really is a four-pixel inset white border. Both run in the self-audit loop as one console-surface record, so a selector typo — or a lattice that has quietly gone silent — is a failed audit round rather than an interface that loads and does nothing.
 
 ## The anchor facade: what it is for
 

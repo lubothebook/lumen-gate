@@ -18,7 +18,8 @@
  *   7. Can anybody still replace the verifying key after the renounce? (no)
  *   8. Does the recorded gasless recipient still hold zero spendable XLM?
  *   9. Is the recorded gasless mint still on the ledger?
- *  10. Does the console still resolve every element it looks up?
+ *  10. Does the console still resolve every element it looks up, embed the
+ *      assets it serves, and still frame the lattice cube under the pointer?
  *  11. Does the anchor facade still satisfy its SEP surface? (SEP-1, SEP-10,
  *      SEP-6, the error envelope and the rate limiter, probed as a client)
  *
@@ -373,13 +374,21 @@ async function runRound() {
 
   // The console is part of the product surface, so a broken selector is a
   // defect the loop should catch. tools/check-console.js resolves every element
-  // the module looks up against the markup.
+  // the module looks up against the markup, and tools/check-grid-fx.js drives
+  // the lattice pointer frame behind the page background and insists on its math.
   try {
     const { execFileSync } = require("node:child_process");
-    const output = execFileSync(process.execPath, [path.join(ROOT, "tools", "check-console.js")], {
+    const wired = execFileSync(process.execPath, [path.join(ROOT, "tools", "check-console.js")], {
       encoding: "utf8",
     });
-    record("console_wiring_consistent", true, output.trim().split("\n").pop());
+    const framed = execFileSync(process.execPath, [path.join(ROOT, "tools", "check-grid-fx.js")], {
+      encoding: "utf8",
+    });
+    record(
+      "console_wiring_consistent",
+      true,
+      `${wired.trim().split("\n").pop()} | ${framed.trim().split("\n").pop()}`
+    );
   } catch (e) {
     record("console_wiring_consistent", false, String((e.stdout || e.message || e)).trim().split("\n").pop());
   }
