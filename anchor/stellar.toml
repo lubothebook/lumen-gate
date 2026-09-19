@@ -1,18 +1,33 @@
 # Lumen Gate - SEP-1 stellar.toml
 #
 # This file is read by other people's software, so every value in it has to be
-# a fact and not an intention. It describes a testnet deployment built for a
-# hackathon: it is not a financial anchor, it holds no customer funds, and it
-# issues nothing of value.
+# a fact and not an intention. It describes a testnet deployment: this is not a
+# financial anchor, it holds no customer funds and it issues nothing of value.
+#
+# Two values cannot exist before a deployment does, so they are render tokens
+# that the facade fills in from its environment when it serves this file:
+#
+#   * the anchor account that signs SEP-10 challenges -> set SEP10_SIGNING_SECRET
+#   * the public origin of this facade               -> set PUBLIC_FACADE_URL
+#
+# The tokens themselves are written once, on the two value lines below.
+#
+# When either is undefined the line is omitted and replaced by a comment saying
+# so, because a placeholder that looks like an address is worse than a missing
+# field: another system would try to use it.
 VERSION="2.0.0"
 NETWORK_PASSPHRASE="Test SDF Network ; September 2015"
+HORIZON_URL="https://horizon-testnet.stellar.org"
+
+SIGNING_KEY="__SEP10_SIGNING_KEY__"
+WEB_AUTH_ENDPOINT="__FACADE_BASE_URL__/v1/sep10/auth"
 
 ACCOUNTS=["GBYFDKP4KLQ575HTJRDTHF4HUIVXAQLJNEZMWYJ5HBY3C3GDSPX5H4FR"]
 
 [DOCUMENTATION]
 ORG_NAME="Lumen Gate"
 ORG_URL="https://github.com/lubothebook/lumen-gate"
-ORG_DESCRIPTION="Proof-driven settlement for Stellar Soroban. Finality of a source chain is verified on-chain by BLS12-381 aggregate signatures or a fixed-statement Groth16/BN254 proof, and the gateway releases the wrapped asset only against a verified Merkle proof of the specific source event. Testnet deployment; not an audited bridge and not a financial anchor."
+ORG_DESCRIPTION="Anchor-attached finality settlement for Stellar/Soroban. The finality of a source chain is verified on-chain by a BLS12-381 aggregate signature or a fixed-statement Groth16/BN254 proof, the settlement gateway releases the wrapped asset only against a verified Merkle proof of the specific source event, and the accounts that could have changed the verification configuration have permanently given that capability up. Testnet engineering demo: not an audited bridge, not a financial anchor, no reserves, no fiat rails."
 
 [[PRINCIPALS]]
 name="Lumen Gate Team"
@@ -23,13 +38,14 @@ code="wSRC"
 issuer="GBYFDKP4KLQ575HTJRDTHF4HUIVXAQLJNEZMWYJ5HBY3C3GDSPX5H4FR"
 display_decimals=7
 name="Wrapped Source Asset"
-desc="Minted only after on-chain finality verification plus a per-message Merkle proof. The Stellar Asset Contract's admin is the settlement gateway contract, so mint authority is code, not a key held by this service."
+desc="Minted only after on-chain finality verification plus a per-message Merkle proof of the source event. The Stellar Asset Contract admin is the settlement gateway contract, so mint authority is code rather than a key held by this service. The depositor locks the amount plus the relayer fee on the source chain, and the relayer is repaid out of that lock, which is what makes the inbound direction gasless for the recipient."
 anchor_asset_type="crypto"
-is_asset_anchored=true
+is_asset_anchored=false
 attestation_of_reserve=false
 status="test"
-conditions="Testnet demonstration asset. It is not redeemable for anything of value and carries no reserve attestation."
+conditions="Testnet demonstration asset. It is not redeemable for anything of value, carries no reserve attestation and is not a claim on any issuer's fiat or crypto reserves."
 
-# Deliberately absent: any currency this deployment does not actually issue.
-# A stellar.toml that advertises assets the service cannot deliver is worse
-# than an empty one, because other people's software acts on it.
+# Deliberately absent: any currency this deployment does not actually issue, any
+# SEP-24 transfer server, any SEP-12 customer endpoint. A stellar.toml that
+# advertises a capability the service cannot deliver is worse than an empty one,
+# because other people's software acts on it without asking.
