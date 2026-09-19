@@ -3,45 +3,44 @@ include "circomlib/poseidon.circom";
 include "circomlib/comparators.circom";
 
 /*
-M-of-N finality circuit for Lumen Gate
-Proves: at least M of N EdDSA signatures over a state root are valid
-Simplified for hackathon: we use Poseidon hash and range check as placeholder
-Public inputs: state_root, threshold
-Private: signers bitmap, etc.
+  Small demo circuit for a source-chain finality statement.
 
-For demo we use range_proof circuit from stellar-zkstream as working example:
-- Proves a value is in [0, 1e9) without revealing it
-- Commitment = Poseidon(value, salt)
-- This pattern can be extended to M-of-N: commitment = hash(state_root), value = threshold met
+  Public inputs: state_root and threshold.
+  Private inputs: enabled validator bitmap.
+
+  This circuit proves a threshold bitmap, not a production signature scheme.
+  The production ZK path must replace the bitmap with a real signature or
+  commitment verification circuit before it is used for value-bearing assets.
 */
-
 template MOfN(n, m) {
     signal input state_root;
     signal input threshold;
-    signal input pubkeys[n][2];
-    signal input signatures[n][3];
     signal input enabled[n];
-
     signal output valid;
 
-    // Simplified: count enabled signers >= threshold
-    component sum = 0;
-    var count = 0;
-    for (var i=0; i<n; i++) {
-        count += enabled[i];
-    }
-    // Check count >= m
-    component ge = GreaterEqThan(8);
-    ge.in[0] <== count;
-    ge.in[1] <== m;
-    ge.out === 1;
+    signal count;
+    count <== enabled[0] + enabled[1] + enabled[2] + enabled[3] + enabled[4];
 
-    // Dummy Poseidon to bind state_root
-    component poseidon = Poseidon(2);
-    poseidon.inputs[0] <== state_root;
-    poseidon.inputs[1] <== threshold;
-    
-    valid <== ge.out;
+    for (var i = 0; i < n; i++) {
+        enabled[i] * (enabled[i] - 1) === 0;
+    }
+
+    component threshold_check = GreaterEqThan(8);
+    threshold_check.in[0] <== count;
+    threshold_check.in[1] <== threshold;
+
+    component policy_check = IsEqual();
+    policy_check.in[0] <== threshold;
+    policy_check.in[1] <== m;
+
+    // Keep the root in the proving relation. The output is intentionally not
+    // revealed; the verifier binds it through the public input vector.
+    component root_binding = Poseidon(2);
+    root_binding.inputs[0] <== state_root;
+    root_binding.inputs[1] <== threshold;
+
+    valid <== threshold_check.out * policy_check.out;
+    valid === 1;
 }
 
 component main {public [state_root, threshold]} = MOfN(5, 3);

@@ -44,7 +44,7 @@
       <div>Registry: <span id="registryId">-</span></div>
       <div>Gateway: <span id="gatewayId">-</span></div>
       <div>wSRC SAC: <span id="tokenId">-</span></div>
-      <div>Source Simulator: <span id="simUrl">http://localhost:3001</span> <span id="simDot" class="dot red"></span></div>
+      <div>Source Simulator: <span id="simUrl">/source-api</span> <span id="simDot" class="dot red"></span></div>
     </div>
   </div>
 
@@ -112,7 +112,7 @@
     <h2>How it works (for jury)</h2>
     <p style="font-size:13px; line-height:1.5; color:#aaa;">
       Anchor creates issuer, deploys SAC for wSRC, calls set_admin(gateway). Gateway only mints after finality_registry verifies BLS12-381 or Groth16 BN254 proof via native host functions. 
-      Source chain is simulated (3-of-5 test keys, G1/G2 generator as valid points, real Groth16 range proof from stellar-zkstream). Stellar side is real testnet.
+      Source chain is simulated (2-of-3 deterministic demo keys, valid G1/G2 points, and a development Groth16 fixture). Stellar-side controls require configured Testnet contracts; this checkout is not deployed.
       Lock → proof → mint, burn → unlock, plus 4 fault probes. High-water-mark nonce prevents replay with one row per sender.
     </p>
     <p style="font-size:12px; color:#666;">
@@ -125,7 +125,7 @@
 <script type="module">
 import * as StellarSdk from '@stellar/stellar-sdk';
 
-const SIM_URL = localStorage.getItem('simUrl') || 'http://localhost:3001';
+const SIM_URL = localStorage.getItem('simUrl') || import.meta.env.VITE_SIM_URL || '/source-api';
 document.getElementById('simUrl').textContent = SIM_URL;
 
 const REGISTRY_ID = localStorage.getItem('registryId') || 'CD... (set after deploy)';
@@ -203,7 +203,7 @@ document.getElementById('lockBtn').onclick = async () => {
     const res = await fetch(`${SIM_URL}/lock`, {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({amount, recipient, sender: 'demo-user'})
+      body: JSON.stringify({amount, recipient, sender: recipient})
     });
     const data = await res.json();
     lastMessage = data;
@@ -281,14 +281,14 @@ document.getElementById('replayBtn').onclick = async () => {
 document.getElementById('profileBtn').onclick = async () => {
   document.getElementById('profileLog').textContent = JSON.stringify({
     domain: "source-testnet",
-    adapter_id: "hash(source-chain-bls-v1)",
+    adapter_id: "3dcbf6f582455337083d5f6d36721f6d63d47af0bef870a043c02aca7850dac9",
     network: "source-testnet",
-    consensus_kind: "BFT-like (3-of-5)",
+    consensus_kind: "Deterministic 2-of-3 demo validators",
     finality_kind: "EconomicFinality",
-    trust_model: "HonestMajority { set_size: 5 }",
+    trust_model: "DemoOnly { set_size: 3, threshold: 2 }",
     required_depth: 2,
     security_backing: "SignatureSet { signers: 3, required: 2, slashable: false } or ZkProof { system: groth16-bn254 }",
-    state: "Active",
+    state: "ConfiguredOnly; verify Testnet receipts",
     last_height: "from /blocks/latest",
     bond: "none (hackathon)",
     history: ["Registered", "Admitted (selftest passed)", "Active"],

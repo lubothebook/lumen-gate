@@ -105,7 +105,7 @@ Yeni deployment için canonical domain separation string:
 lumen-gate-finality-v1
 ```
 
-BLS public key payload'dan seçilip güvenilir kabul edilmemelidir; domain kaydındaki beklenen aggregate public key ile eşleşmelidir. Test validator kümesi 3-of-5 olabilir, fakat production key yönetimi değildir. Güvenlik iddiası yalnızca curve/subgroup kontrolüne değil, full native pairing'e dayanır.
+BLS public key payload'dan seçilip güvenilir kabul edilmemelidir; domain kaydındaki beklenen aggregate public key ile eşleşmelidir. Test validator kümesi deterministik 2-of-3 fixture’dır; production key yönetimi değildir. Güvenlik iddiası yalnızca curve/subgroup kontrolüne değil, full native pairing'e dayanır.
 
 ### Groth16 / BN254
 
@@ -128,12 +128,12 @@ Mevcut statik fixture, dynamic source-root finality kanıtı sayılmaz. Submissi
 ### Submission'dan önce zorunlu işler
 
 - registry, gateway ve SAC'ı Testnet'e deploy etmek;
-- gerçek ID, explorer linki, setup tx ve admin-renounce tx hash'lerini yazmak;
-- register/admit/VK authorization boşluklarını kapatmak;
+- gerçek ID, explorer linki, setup tx ve registry/gateway admin-renounce tx hash'lerini yazmak;
+- register/admit/VK authorization kodunu Rust build ve Testnet receipt'leriyle doğrulamak;
 - BLS key binding ve hash-to-curve fixture'larını eşleştirmek;
 - root-bound Groth16 proof üretmek;
-- relayer'ın gerçekten sign, submit ve confirm yapmasını sağlamak;
-- burn sonrası kaynak unlock endpoint'ini ve event tüketimini tamamlamak;
+- relayer'ın gerçek CLI encoding, sign, submit ve receipt confirmation'ını doğrulamak;
+- burn sonrası kaynak unlock endpoint'i mevcut olsa da relayer event tüketimini tamamlamak;
 - taze, hiç XLM fonlanmamış keypair ile gasless akışı kanıtlamak; kanıtlanamazsa
   bu iddiayı kaldırmak;
 - tüm test, build, frontend preview ve fault-probe komutlarını çalıştırmak.
@@ -159,7 +159,7 @@ stellar contract build
 ### Kaynak simülatörü
 
 ```bash
-cargo run -p source_simulator -- --port 3001
+SOURCE_ASSET_ID=<real-sac-contract-id> cargo run -p source_simulator -- --port 3001
 ```
 
 Endpoint'ler:
@@ -168,6 +168,7 @@ Endpoint'ler:
 GET  /info
 GET  /blocks/latest
 POST /lock
+POST /unlock
 GET  /events?height=<height>
 GET  /proof?height=<height>&kind=bls
 GET  /proof?height=<height>&kind=zk
@@ -177,15 +178,20 @@ GET  /proof?height=<height>&kind=zk
 
 ```bash
 RPC_URL=https://soroban-testnet.stellar.org \
+STELLAR_SOURCE_ACCOUNT=relayer \
+STELLAR_RELAYER_ADDRESS=<funded-relayer-address> \
 REGISTRY_ID=<real-contract-id> \
 GATEWAY_ID=<real-contract-id> \
 cargo run -p relayer -- --sim-url http://localhost:3001 --rpc "$RPC_URL"
+
+# Yalnızca lokal inceleme; transaction göndermez.
+cargo run -p relayer -- --dry-run --sim-url http://localhost:3001
 
 cd frontend && npm install && npm run dev
 cd ../anchor && npm install && PORT=8081 SIM_URL=http://localhost:3001 npm start
 ```
 
-Browser tarafı sandbox'ın localhost'una güvenmemelidir. Preview için relative URL/Vite proxy veya public simulator URL kullanılacaktır.
+Browser tarafı sandbox'ın localhost'una güvenmemelidir. Preview için relative URL/Vite proxy veya public simulator URL kullanılır. Relayer BLS registry kanıtı sonrası gateway çağrısı için kod içerir; ZK fixture dynamic source-root bağlı olmadığı için yalnızca development registry probe'u olarak kalır.
 
 ## Güvenlik ve kapsam sınırları
 

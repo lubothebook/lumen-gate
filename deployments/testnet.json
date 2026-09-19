@@ -1,7 +1,7 @@
 {
   "network": "testnet",
   "rpc_url": "https://soroban-testnet.stellar.org",
-  "note": "Placeholder - replace with real contract IDs after stellar CLI deploy. Hardened version includes real BLS aggregate, Merkle tree, HWM, Groth16 BN254",
+  "note": "Local manifest only. Replace every placeholder with receipts from a real Stellar Testnet deployment; do not use this file as a live configuration.",
   "contracts": {
     "finality_registry": "CD-REGISTRY-PLACEHOLDER-REPLACE-ME",
     "settlement_gateway": "CD-GATEWAY-PLACEHOLDER-REPLACE-ME",
@@ -11,28 +11,45 @@
   "admin": "GC-ADMIN-PLACEHOLDER",
   "domains": {
     "source-testnet": {
-      "adapter_id": "hash(source-chain-bls-v1)",
+      "adapter_id": "3dcbf6f582455337083d5f6d36721f6d63d47af0bef870a043c02aca7850dac9",
       "network": "source-testnet",
       "domain_key": "sha256(adapter_id || network)",
-      "consensus_kind": "bft-like-3-of-5",
+      "consensus_kind": "deterministic-2-of-3-demo",
       "finality_kind": "Economic",
-      "trust_model": "HonestMajority(5)",
+      "trust_model": "DemoOnly(3; threshold 2)",
+      "required_depth": 2
+    },
+    "source-testnet-zk": {
+      "adapter_id": "18754df73edb3539920e0d1e280bcfa3243d39337e9f8cce01503ac1bb671b4d",
+      "network": "source-testnet",
+      "domain_key": "ZK-DOMAIN-PLACEHOLDER",
+      "consensus_kind": "proof-bound-development-fixture",
+      "finality_kind": "Proven only after root-bound circuit verification",
+      "trust_model": "Trustless verifier after live fixture validation",
       "required_depth": 2
     }
   },
   "vk": {
-    "source": "circuits/range_proof_vk.hex (768 bytes, real Groth16 BN254 VK, Apache-2.0 from stellar-zkstream)",
-    "proof": "circuits/range_proof_proof.hex (256 bytes)",
+    "source": "circuits/range_proof_vk.hex (768-byte development Groth16 BN254 VK fixture, Apache-2.0 source)",
+    "proof": "circuits/range_proof_proof.hex (256-byte development fixture)",
     "public_inputs": "circuits/range_proof_public_inputs.json (4 x 32 bytes)",
     "note": "VK length 768 = G1 64 + 3*G2 128 + (4+1)*G1 64 = 64+384+320=768, matches groth16 verifier expected"
   },
   "hardening": {
-    "bls": "Real BLS aggregate: 3 validators, sk=1,2,3, H=hash(height||state_root||event_root) via G1 generator * hash_scalar, sig=agg(sk_i*H), pubkey=agg(sk_i*G2). On-chain: g1_is_on_curve, g1_is_in_subgroup, g2_is_on_curve, g2_is_in_subgroup, hash_to_g1 DST lumen-gate-finality-v1, optional full pairing e(sig,G2_gen)*e(-H,pubkey)==1 in submit_bls_hardened",
+    "bls": "Target: RFC 9380 BLS aggregate with domain-pinned policy and full native pairing; local source fixture uses test-only keys.",
     "merkle": "Binary Merkle tree for event_root, leaf=sha256(message_id||payload_hash), sorted hashing, proof verification in gateway finalize_inbound",
     "hwm": "High-water-mark (source_domain,target_domain,sender)->highest_nonce, plus ProcessedMessage(message_id) set to prevent replay",
     "gateway": "lock_and_relay: transfer token to gateway, payload_hash=sha256(asset||amount||recipient_on_source), nonce from OutboundNonceFull, message_id=sha256(source_domain||target_domain||height||event_index||nonce||payload_hash||expiry||kind||sender||recipient)",
-    "zk": "Groth16 BN254 verifier via native bn254_multi_pairing_check, 4 pairings e(A,B)*e(-alpha,beta)*e(-vk_x,gamma)*e(-C,delta)==1",
+    "zk": "Target: root-bound Groth16 BN254 proof via native pairing; checked-in fixture requires circuit regeneration before live use.",
     "sac": "SAC set_admin to gateway, gateway only mints after finality proof, no custodial bridge",
     "anchor": "stellar.toml with wSRC, issuer sets SAC admin to gateway, anchor server provides /info, /health, /deposit, /withdraw, /sep6/info, no validator keys"
-  }
+  },
+  "status": "not_deployed",
+  "admin_renounced": false,
+  "bls_policy": null,
+  "domain_key": "DOMAIN-KEY-PLACEHOLDER",
+  "target_domain": "TARGET-DOMAIN-PLACEHOLDER",
+  "gateway_admin_renounced": false,
+  "gateway_admin_renounce_receipt": null,
+  "zk_domain_key": "ZK-DOMAIN-PLACEHOLDER"
 }

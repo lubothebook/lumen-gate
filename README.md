@@ -16,7 +16,7 @@ An anchor that does not want to operate a separate bridge per source chain shoul
 4. mint or release the anchor's wrapped asset only after verification;
 5. burn the asset and emit a reverse message without keeping validator keys in the anchor.
 
-The source chain is intentionally simulated for the hackathon. The Stellar side is not simulated: the target is a real Soroban Testnet deployment, real Soroban RPC/Horizon calls and explorer-verifiable transactions.
+The source chain is intentionally simulated for the hackathon. The Stellar-side code is written for a real Soroban Testnet deployment and real Soroban RPC/Horizon calls, but this checkout is not deployed until `deployments/testnet.json` is replaced with receipts.
 
 ## Demo story
 
@@ -75,7 +75,7 @@ Evidence carries an adapter ID, version, network, opaque payload, declared heigh
 
 ### Message envelope and replay protection
 
-A cross-domain message contains the source and target domains, source height, event index, nonce, sender, recipient, payload hash, message kind and expiry. Its ID is derived from those fields.
+A cross-domain message contains the source and target domains, source height, event index, nonce, sender, recipient, payload hash, message kind and expiry. Its ID is derived from those fields. Expiry is checked in the source height space; Stellar's unrelated ledger sequence is not used for source-domain expiry. The gateway pins its Stellar target domain at initialization as `sha256("lumen-gate-stellar-testnet")`; the source simulator and relayer use the same 32-byte value.
 
 Inbound processing uses one high-water mark per `(source_domain, target_domain, sender)`:
 
@@ -89,7 +89,7 @@ A nonce at or below the mark is rejected and only a higher nonce advances the ma
 
 ### BLS12-381
 
-The intended live path is a real aggregate BLS verification using Soroban native curve, subgroup and pairing hosts. The demo validator set may be a deterministic 3-of-5 test fixture, but it is not a production validator set.
+The intended live path is a real aggregate BLS verification using Soroban native curve, subgroup and pairing hosts. The demo validator set is a deterministic 2-of-3 test fixture, and its keys are not a production validator set.
 
 The domain record must bind the expected aggregate public key and quorum. The payload must not be allowed to choose its own trusted key. The canonical domain separation string for a new deployment is:
 
@@ -134,10 +134,12 @@ An anchor must not be described as operating source-chain validators. It only co
 
 - deploy the registry, gateway and SAC to Stellar Testnet;
 - record contract IDs, explorer links and setup transaction hashes;
-- close the admin authorization gaps and prove admin renounce;
+- call `register_domain(admin, ...)`, `set_bls_policy(admin, ...)` and
+  `admit_domain(admin, ...)` for the BLS and ZK domains, then prove registry
+  and gateway admin renounce;
 - bind BLS verification to the registered domain key and align the signer with
   the exact on-chain hash-to-curve scheme;
-- replace the static ZK example with a root-bound finality statement;
+- replace the static ZK example with a root-bound finality statement and then connect its finalized event root to gateway minting;
 - make the relayer sign, submit and confirm real transactions;
 - implement source unlock and reverse-flow event consumption;
 - prove the zero-XLM recipient path with a fresh testnet keypair, or remove the
@@ -170,7 +172,7 @@ stellar contract build
 ### Source simulator
 
 ```bash
-cargo run -p source_simulator -- --port 3001
+SOURCE_ASSET_ID=<real-sac-contract-id> cargo run -p source_simulator -- --port 3001
 ```
 
 Useful endpoints:
@@ -179,6 +181,7 @@ Useful endpoints:
 GET  /info
 GET  /blocks/latest
 POST /lock
+POST /unlock
 GET  /events?height=<height>
 GET  /proof?height=<height>&kind=bls
 GET  /proof?height=<height>&kind=zk
@@ -188,12 +191,17 @@ GET  /proof?height=<height>&kind=zk
 
 ```bash
 RPC_URL=https://soroban-testnet.stellar.org \
+STELLAR_SOURCE_ACCOUNT=relayer \
+STELLAR_RELAYER_ADDRESS=<funded-relayer-address> \
 REGISTRY_ID=<real-contract-id> \
 GATEWAY_ID=<real-contract-id> \
 cargo run -p relayer -- --sim-url http://localhost:3001 --rpc "$RPC_URL"
+
+# Local inspection only; this never submits a transaction.
+cargo run -p relayer -- --dry-run --sim-url http://localhost:3001
 ```
 
-The relayer must fail loudly when the deployment manifest still contains a placeholder. A dry-run log is not a successful bridge transaction.
+The relayer must fail loudly when the deployment manifest still contains a placeholder. It submits BLS registry evidence and then the source lock Merkle proof to the live gateway; the ZK submission path is separate and currently stops at registry verification because the checked-in ZK fixture is not source-root bound. A dry-run log is not a successful bridge transaction.
 
 ### Frontend and anchor facade
 
@@ -219,7 +227,8 @@ This is a hackathon system, not an audit-grade bridge. The following are deliber
 - post-quantum signatures, slashing, bonds, validator rotation and fraud proofs
   are future work;
 - the relayer may be operationally centralized, but it must not be the
-  cryptographic authority for minting;
+  cryptographic authority for minting; its live gateway path currently uses
+  the BLS finality record and is not a substitute for the ZK fixture work;
 - anchor reserves and compliance remain off-chain;
 - Testnet assets have no production value.
 

@@ -123,30 +123,29 @@ oturumda çalıştırılmamıştır.
 
 - [ ] `deployments/testnet.json` halen placeholder ID'ler içeriyor; canlı
       registry, gateway ve SAC deployment kanıtı yok.
-- [ ] `relayer` gerçek signed Soroban transaction submit etmek yerine bazı
-      adımları log/simulate seviyesinde bırakıyor.
-- [ ] `register_domain` ve `admit_domain` akışlarında admin authorization
-      boşlukları var; bootstrap sonrası kalıcı renounce akışı tamamlanmalı.
-- [ ] BLS payload içinde gelen public key domain'e sabitlenmeden kabul ediliyor;
-      tam pairing yolu ile gerçek kaynak simülatörünün hash-to-curve üretimi
-      aynı canonical şemaya getirilmeli.
-- [ ] Varsayılan BLS yolu yalnızca eğri/subgroup kontrolü ile yetinmemeli;
-      demo yolu tam pairing ve sabit domain validator key ile çalışmalı.
-- [ ] Mevcut Groth16 fixture'ı statik bir range-proof örneği gibi duruyor ve
-      state root ile bağlama kontrolü yorum içinde bırakılmış. Kanıt, on-chain
-      kabul edilen height/root/message id iddiasına bağlanmadan finality kanıtı
-      sayılmayacak.
+- [ ] `relayer` için gerçek signed Soroban CLI ve gateway çağrısı kodu yazıldı;
+      ancak CLI'nin RawEvidence/struct/BytesN encoding'i ve receipt parsing'i
+      bu ortamda doğrulanmadı.
+- [ ] Registry ve gateway mutation yolları admin authorization ve kalıcı
+      renounce kontrolleri içeriyor; Rust derleme ve Testnet renounce receipt'i
+      henüz yok.
+- [ ] BLS payload public key'i domain policy'ye sabitleniyor ve kaynak
+      simülatörü RFC 9380/hash-to-curve + full pairing canonical şemayı üretiyor;
+      contract build ve canlı pairing receipt'i henüz yok.
+- [ ] Mevcut Groth16 fixture'ı statik development range-proof örneğidir;
+      registry public root mismatch'i reddeder, fakat fixture henüz dinamik
+      source root ve gateway event root'una bağlı finality kanıtı değildir.
 - [ ] Gateway'deki Merkle doğrulaması, finalized event root ile doğru leaf ve
-      sibling yönlerini canlı uçtan uca göstermeli; boş proof yalnızca tek leaf
-      durumunda kabul edilmeli.
-- [ ] `burn_and_relay` sonrası kaynak simülatörde gerçek tek-seferlik unlock
-      endpoint'i ve relayer event tüketimi tamamlanmalı.
-- [ ] Browser kodunda sabit `localhost` kullanımı canlı preview için relative
-      URL veya Vite proxy ile değiştirilmelidir.
+      sibling yönlerini kodda kontrol ediyor; canlı uçtan uca mint receipt'i ve
+      çok-leaf Testnet kanıtı henüz yok.
+- [ ] `burn_and_relay` sonrası relayer'ın gerçek gateway burn event'ini okuyup
+      kaynak simülatöründeki tek-seferlik `/unlock` çağrısını yapması tamamlanmalı.
+- [x] Browser kodunda sabit `localhost` kullanımı canlı preview için relative
+      URL ve Vite proxy ile değiştirildi.
 - [ ] Taze, hiç fonlanmamış testnet keypair ile gasless mint kanıtı henüz canlı
       çekim olarak kabul edilmemelidir.
-- [ ] README'de canlı deployment, test sayısı ve dış servis istatistikleri
-      doğrulanmadan kesin başarı rozeti kullanılmayacak.
+- [x] README'de canlı deployment, test sayısı ve dış servis istatistikleri
+      doğrulanmadan kesin başarı rozeti kullanılmıyor.
 
 ---
 
@@ -178,7 +177,7 @@ valid kabul etmez.
 
 BLS yolu:
 
-- Demo validator kümesi 3-of-5 olarak açıkça test-only işaretlenir.
+- Demo validator kümesi 2-of-3 olarak açıkça test-only işaretlenir.
 - Signer secret key'leri repoya konmaz; local demo fixture üretimi dışında canlı
   key yönetimi dokümante edilir.
 - Aggregate public key domain kaydındaki beklenen key ile eşleştirilir.
@@ -263,9 +262,10 @@ Anchor facade çalışmayan SEP endpoint'lerini çalışıyormuş gibi ilan etme
 - `source_simulator`: deterministic block/event/Merkle üretir, BLS ve ZK fixture
   sağlar, lock ve unlock state machine'i tutar.
 - `relayer`: simulator event'lerini izler; gerçek Soroban RPC'de
-  `getLatestLedger`, `simulateTransaction`, resource assembly, signing,
-  `sendTransaction` ve confirmation adımlarını yürütür. Private key yalnızca
-  environment/secret store'dan gelir.
+  `getLatestLedger` kontrolü yapar ve kurulu Stellar CLI'nin imzalı contract
+  invoke yoluyla registry/gateway işlemlerini gönderir. CLI encoding, receipt
+  confirmation ve burn-event tüketimi bu snapshot'ta ayrıca doğrulanmalıdır.
+  Private key yalnızca environment/secret store'dan gelir.
 - `frontend`: Freighter ile kullanıcı cüzdanını bağlar, kanıt türünü seçer,
   gerçek explorer/RPC linklerini gösterir, BLS/ZK fault probe'larını görünür
   kılar. Preview ortamında browser'dan `localhost` çağrısı yapmaz.
@@ -374,7 +374,7 @@ olarak yazılamaz.
 Bu hackathon sürümü audit-grade değildir:
 
 - Kaynak zincir simülatördür; dış zincir consensus'ı gerçek değildir.
-- Validator seti ve secret key yönetimi demo amaçlıdır; 3-of-5 production quorum
+- Validator seti ve secret key yönetimi demo amaçlıdır; 2-of-3 production quorum
   değildir.
 - Groth16 trusted setup kısa ve test amaçlı olabilir.
 - ML-DSA veya başka post-quantum imza katmanı bu sürümde yoktur.

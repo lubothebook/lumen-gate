@@ -3,7 +3,7 @@ NETWORK_PASSPHRASE="Test SDF Network ; September 2015"
 
 [DOCUMENTATION]
 ORG_NAME="Lumen Gate Anchor"
-ORG_URL="https://github.com/lubothebook/migrate-to-stellar"
+ORG_URL="https://github.com/lubothebook/lumen-gate"
 ORG_DESCRIPTION="Anchor-attached settlement layer — neutral finality-proof infrastructure for anchors that don't want to run their own bridges. Issues wSRC backed by cryptographic finality proofs verified on Soroban."
 
 [[CURRENCIES]]
