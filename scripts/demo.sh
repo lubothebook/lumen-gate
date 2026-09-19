@@ -39,6 +39,10 @@ echo "  Should be rejected with InvalidSignature in contract"
 echo "  - Bad root (mismatch)"
 curl -s "$SIM_URL/proof?height=$HEIGHT&kind=bls&tamper=root" | jq .declared_root
 echo "  Should be rejected with DeclaredMismatch"
+echo ""
+echo "  - Groth16 bad root (mismatch)"
+curl -s "$SIM_URL/proof?height=$HEIGHT&kind=zk&tamper=root" | jq .declared_root
+echo "  Should be rejected with DeclaredMismatch before pairing"
 
 echo ""
 echo "[7] Soroban testnet RPC check (real Stellar connection)"

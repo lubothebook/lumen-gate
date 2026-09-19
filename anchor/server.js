@@ -228,12 +228,12 @@ const server = http.createServer(async (req, res) => {
       steps: [
         `Call settlement_gateway.burn_and_relay(from, amount, recipient_on_source, target_domain, expiry) via Freighter`,
         `Gateway burns wSRC, emits Burn event with message_id derived from content (source_domain,target_domain,nonce,payload_hash)`,
-        `Relayer watches Burn event, submits proof to source chain (simulator POST /unlock)`,
+        `Relayer watches the live Burn event Bytes payload through Soroban RPC and submits it to the source simulator (POST /burn-unlock)`,
         `Source chain releases locked asset`,
       ],
       gateway: GATEWAY_ID,
       registry: REGISTRY_ID,
-      status: "documented_flow_only; burn-event consumption is not live in this snapshot",
+      status: "requires a running live relayer; it consumes gateway burn events through Soroban RPC and posts one-time /burn-unlock to the source simulator",
     });
     return;
   }

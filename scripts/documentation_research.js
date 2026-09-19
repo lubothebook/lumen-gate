@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Optional documentation helper for Lumen Gate.
-// Raven is a research aid, not a runtime dependency or mint authority.
+// The assistant is a research aid, not a runtime dependency or mint authority.
 
-const RAVEN_MCP_ENDPOINT = "https://raven.stellar.org/mcp";
+const DOCUMENTATION_ENDPOINT = "https://developers.stellar.org/";
 const QUERIES = [
   "Soroban BLS12-381 host functions list",
   "Soroban BN254 Groth16 verifier example",
@@ -13,7 +13,7 @@ const QUERIES = [
 
 function printUsage() {
   console.log("=== Lumen Gate documentation research ===\n");
-  console.log(`Raven MCP endpoint: ${RAVEN_MCP_ENDPOINT}`);
+  console.log(`Documentation endpoint: ${DOCUMENTATION_ENDPOINT}`);
   console.log("\nAsk for primary sources and verify every answer against the target network:\n");
   for (const [index, query] of QUERIES.entries()) {
     console.log(`${index + 1}. search({query: "${query}", limit: 5})`);
@@ -28,4 +28,4 @@ function printUsage() {
 
 if (require.main === module) printUsage();
 
-module.exports = { RAVEN_MCP_ENDPOINT, QUERIES };
+module.exports = { DOCUMENTATION_ENDPOINT, QUERIES };

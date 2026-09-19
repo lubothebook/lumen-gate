@@ -57,15 +57,22 @@ echo "Token SAC: $TOKEN_ID"
 echo "Setting SAC admin to gateway (anchor does NOT run custodial bridge)..."
 stellar contract invoke --id $TOKEN_ID --source issuer --network $NETWORK -- set_admin --new_admin $GATEWAY_ID
 
-echo "Setting VK for ZK (768-byte development Groth16 BN254 VK)..."
 VK_HEX=$(cat circuits/range_proof_vk.hex | tr -d '\n' | tr -d ' ')
-stellar contract invoke --id $REGISTRY_ID --source admin --network $NETWORK -- set_vk --admin $ADMIN_ADDR --vk $VK_HEX
+if [ "${ALLOW_DEVELOPMENT_ZK_FIXTURE:-0}" = "1" ]; then
+  echo "Setting VK for explicitly enabled development-only ZK fixture..."
+  stellar contract invoke --id $REGISTRY_ID --source admin --network $NETWORK -- set_vk --admin $ADMIN_ADDR --vk $VK_HEX
+else
+  echo "Quarantining the static Groth16 fixture; BLS is the only live proof path in this deployment."
+fi
 
-echo "Registering BLS and ZK source-testnet domains..."
+echo "Registering BLS source-testnet domain..."
 ADAPTER_ID=$(printf "source-chain-bls-v1" | sha256sum | cut -d" " -f1)
 ZK_ADAPTER_ID=$(printf "source-chain-zk-v1" | sha256sum | cut -d" " -f1)
 stellar contract invoke --id $REGISTRY_ID --source admin --network $NETWORK -- register_domain --admin $ADMIN_ADDR --adapter_id $ADAPTER_ID --network source-testnet --required_depth 2 --adapter_version 1 --accepted_versions "[1]"
-stellar contract invoke --id $REGISTRY_ID --source admin --network $NETWORK -- register_domain --admin $ADMIN_ADDR --adapter_id $ZK_ADAPTER_ID --network source-testnet --required_depth 2 --adapter_version 1 --accepted_versions "[1]"
+if [ "${ALLOW_DEVELOPMENT_ZK_FIXTURE:-0}" = "1" ]; then
+  echo "Registering the development-only ZK domain..."
+  stellar contract invoke --id $REGISTRY_ID --source admin --network $NETWORK -- register_domain --admin $ADMIN_ADDR --adapter_id $ZK_ADAPTER_ID --network source-testnet --required_depth 2 --adapter_version 1 --accepted_versions "[1]"
+fi
 
 echo "Computing domain keys..."
 DOMAIN_KEY=$(echo -n "${ADAPTER_ID}source-testnet" | python3 -c "import hashlib, sys; data=sys.stdin.read(); print(hashlib.sha256(bytes.fromhex('$ADAPTER_ID') + b'source-testnet').hexdigest())" 2>/dev/null || echo "domain-key-placeholder")
@@ -84,9 +91,11 @@ fi
 
 echo "Pinning domain BLS policy..."
 stellar contract invoke --id $REGISTRY_ID --source admin --network $NETWORK -- set_bls_policy --admin $ADMIN_ADDR --domain $DOMAIN_KEY --aggregate_pubkey $BLS_PUBKEY_HEX --signer_count 3 --required 2 --slashable false
-echo "Admitting BLS and ZK domains after policy setup..."
+echo "Admitting BLS domain after policy setup (ZK only when explicitly enabled)..."
 stellar contract invoke --id $REGISTRY_ID --source admin --network $NETWORK -- admit_domain --admin $ADMIN_ADDR --domain $DOMAIN_KEY
-stellar contract invoke --id $REGISTRY_ID --source admin --network $NETWORK -- admit_domain --admin $ADMIN_ADDR --domain $ZK_DOMAIN_KEY
+if [ "${ALLOW_DEVELOPMENT_ZK_FIXTURE:-0}" = "1" ]; then
+  stellar contract invoke --id $REGISTRY_ID --source admin --network $NETWORK -- admit_domain --admin $ADMIN_ADDR --domain $ZK_DOMAIN_KEY
+fi
 
 echo "Initializing gateway..."
 stellar contract invoke --id $GATEWAY_ID --source admin --network $NETWORK -- initialize --admin $ADMIN_ADDR --registry $REGISTRY_ID --token $TOKEN_ID

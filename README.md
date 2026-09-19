@@ -181,7 +181,8 @@ Useful endpoints:
 GET  /info
 GET  /blocks/latest
 POST /lock
-POST /unlock
+POST /unlock                 # consume an inbound lock once
+POST /burn-unlock            # consume a live Stellar burn event once
 GET  /events?height=<height>
 GET  /proof?height=<height>&kind=bls
 GET  /proof?height=<height>&kind=zk
@@ -201,7 +202,7 @@ cargo run -p relayer -- --sim-url http://localhost:3001 --rpc "$RPC_URL"
 cargo run -p relayer -- --dry-run --sim-url http://localhost:3001
 ```
 
-The relayer must fail loudly when the deployment manifest still contains a placeholder. It submits BLS registry evidence and then the source lock Merkle proof to the live gateway; the ZK submission path is separate and currently stops at registry verification because the checked-in ZK fixture is not source-root bound. A dry-run log is not a successful bridge transaction.
+The relayer must fail loudly when the deployment manifest still contains a placeholder. It submits BLS registry evidence and then the source lock Merkle proof to the live gateway. It also polls the real gateway `burn` event through Soroban RPC, decodes the documented Bytes payload, and posts the one-time `/burn-unlock` request to the local source simulator. The checked-in Groth16 fixture is quarantined as described in `circuits/DEVELOPMENT_FIXTURE.md` and is never submitted unless `ALLOW_DEVELOPMENT_ZK_FIXTURE=1` is explicitly set for a development demonstration; it is not source-root bound and cannot support a live trustless claim. A dry-run log is not a successful settlement transaction.
 
 ### Frontend and anchor facade
 

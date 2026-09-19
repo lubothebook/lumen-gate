@@ -1,4 +1,6 @@
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use serde::{Deserialize, Serialize};
+use std::convert::TryInto;
 use std::{
     collections::{HashMap, HashSet},
     process::Stdio,
@@ -75,7 +77,191 @@ fn is_placeholder(value: &str) -> bool {
     value.contains("PLACEHOLDER") || value.contains("REPLACE-ME") || value.starts_with("CD-")
 }
 
-async fn check_rpc(client: &reqwest::Client, rpc_url: &str) -> Result<(), String> {
+#[derive(Debug, Clone, Serialize)]
+struct BurnUnlockRequest {
+    burn_message_id: String,
+    amount: u64,
+    source_height: u64,
+    nonce: u64,
+    expiry_height: u64,
+    recipient_on_source: String,
+    payload_hash: String,
+    target_domain: String,
+}
+
+#[derive(Debug, Clone)]
+struct BurnEvent {
+    burn_message_id: String,
+    amount: u64,
+    source_height: u64,
+    nonce: u64,
+    expiry_height: u64,
+    recipient_on_source: String,
+    payload_hash: String,
+    target_domain: String,
+}
+
+fn decode_scval_bytes(encoded: &str) -> Result<Vec<u8>, String> {
+    // SCVal::Bytes XDR: enum tag SCV_BYTES (13), uint32 length, then padded bytes.
+    let raw = BASE64
+        .decode(encoded)
+        .map_err(|error| format!("invalid event XDR base64: {error}"))?;
+    if raw.len() < 8 || u32::from_be_bytes(raw[0..4].try_into().unwrap()) != 13 {
+        return Err("event value is not SCV_BYTES".to_string());
+    }
+    let len = u32::from_be_bytes(raw[4..8].try_into().unwrap()) as usize;
+    let end = 8usize
+        .checked_add(len)
+        .ok_or_else(|| "event byte length overflow".to_string())?;
+    if end > raw.len() {
+        return Err("event byte value is truncated".to_string());
+    }
+    Ok(raw[8..end].to_vec())
+}
+
+fn decode_burn_event(
+    burn_message_id: String,
+    encoded_value: &str,
+) -> Result<BurnEvent, String> {
+    // Must match settlement_gateway::encode_burn_event exactly.
+    let bytes = decode_scval_bytes(encoded_value)?;
+    if bytes.len() < 108 {
+        return Err("burn event payload is too short".to_string());
+    }
+    let amount_i128 = i128::from_le_bytes(bytes[0..16].try_into().unwrap());
+    if amount_i128 <= 0 || amount_i128 > u64::MAX as i128 {
+        return Err("burn event amount is outside source simulator range".to_string());
+    }
+    let source_height = u64::from_le_bytes(bytes[16..24].try_into().unwrap());
+    let nonce = u64::from_le_bytes(bytes[24..32].try_into().unwrap());
+    let expiry_height = u64::from_le_bytes(bytes[32..40].try_into().unwrap());
+    if source_height > expiry_height {
+        return Err("burn event is expired".to_string());
+    }
+    let target_domain = hex::encode(&bytes[40..72]);
+    let payload_hash = hex::encode(&bytes[72..104]);
+    let recipient_len = u32::from_le_bytes(bytes[104..108].try_into().unwrap()) as usize;
+    let end = 108usize
+        .checked_add(recipient_len)
+        .ok_or_else(|| "burn recipient length overflow".to_string())?;
+    if end != bytes.len() {
+        return Err("burn event recipient length does not match payload".to_string());
+    }
+    let recipient_on_source = String::from_utf8(bytes[108..end].to_vec())
+        .map_err(|error| format!("burn recipient is not UTF-8: {error}"))?;
+    Ok(BurnEvent {
+        burn_message_id,
+        amount: amount_i128 as u64,
+        source_height,
+        nonce,
+        expiry_height,
+        recipient_on_source,
+        payload_hash,
+        target_domain,
+    })
+}
+
+#[derive(Deserialize)]
+struct RpcEvent {
+    #[serde(default)]
+    topic: Vec<String>,
+    value: String,
+}
+
+async fn poll_burn_events(
+    client: &reqwest::Client,
+    rpc_url: &str,
+    gateway_id: &str,
+    cursor: &mut u64,
+) -> Result<Vec<BurnEvent>, String> {
+    let request = SorobanRpcRequest {
+        jsonrpc: "2.0".to_string(),
+        id: 42,
+        method: "getEvents".to_string(),
+        params: serde_json::json!({
+            "startLedger": *cursor,
+            "filters": [{
+                "type": "contract",
+                "contractIds": [gateway_id],
+                "topics": [["AAAADwAAAARidXJu", "*"]]
+            }],
+            "pagination": {"limit": 100}
+        }),
+    };
+    let response = client
+        .post(rpc_url)
+        .json(&request)
+        .send()
+        .await
+        .map_err(|error| format!("burn event RPC request failed: {error}"))?;
+    if !response.status().is_success() {
+        return Err(format!("burn event RPC returned {}", response.status()));
+    }
+    let value: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|error| format!("invalid burn event RPC JSON: {error}"))?;
+    if let Some(error) = value.get("error") {
+        return Err(format!("burn event RPC error: {error}"));
+    }
+    let result = value
+        .get("result")
+        .ok_or_else(|| "burn event RPC response has no result".to_string())?;
+    if let Some(latest) = result.get("latestLedger").and_then(|v| v.as_u64()) {
+        *cursor = latest.saturating_add(1);
+    }
+    let events: Vec<RpcEvent> = serde_json::from_value(
+        result
+            .get("events")
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!([])),
+    )
+    .map_err(|error| format!("invalid burn event list: {error}"))?;
+    let mut burns = Vec::new();
+    for event in events {
+        if event.topic.len() < 2 {
+            continue;
+        }
+        let topic = decode_scval_bytes(&event.topic[1])?;
+        if topic.len() != 32 {
+            return Err("burn event message id is not 32 bytes".to_string());
+        }
+        burns.push(decode_burn_event(hex::encode(topic), &event.value)?);
+    }
+    Ok(burns)
+}
+
+async fn unlock_source_from_burn(
+    client: &reqwest::Client,
+    sim_url: &str,
+    burn: &BurnEvent,
+) -> Result<(), String> {
+    let request = BurnUnlockRequest {
+        burn_message_id: burn.burn_message_id.clone(),
+        amount: burn.amount,
+        source_height: burn.source_height,
+        nonce: burn.nonce,
+        expiry_height: burn.expiry_height,
+        recipient_on_source: burn.recipient_on_source.clone(),
+        payload_hash: burn.payload_hash.clone(),
+        target_domain: burn.target_domain.clone(),
+    };
+    let response = client
+        .post(format!("{sim_url}/burn-unlock"))
+        .json(&request)
+        .send()
+        .await
+        .map_err(|error| format!("source burn unlock request failed: {error}"))?;
+    let status = response.status();
+    let body = response.text().await.unwrap_or_default();
+    if !status.is_success() {
+        return Err(format!("source burn unlock returned {status}: {body}"));
+    }
+    println!("  source unlock receipt for burn {}: {}", burn.burn_message_id, body);
+    Ok(())
+}
+
+async fn check_rpc(client: &reqwest::Client, rpc_url: &str) -> Result<u64, String> {
     let request = SorobanRpcRequest {
         jsonrpc: "2.0".to_string(),
         id: 1,
@@ -98,8 +284,13 @@ async fn check_rpc(client: &reqwest::Client, rpc_url: &str) -> Result<(), String
     if value.get("error").is_some() {
         return Err(format!("Soroban RPC error: {value}"));
     }
-    println!("  Soroban RPC getLatestLedger OK");
-    Ok(())
+    let latest = value
+        .get("result")
+        .and_then(|result| result.get("sequence"))
+        .and_then(serde_json::Value::as_u64)
+        .ok_or_else(|| "Soroban RPC getLatestLedger omitted result.sequence".to_string())?;
+    println!("  Soroban RPC getLatestLedger OK (ledger {latest})");
+    Ok(latest)
 }
 
 async fn run_stellar_cli(args: &[String]) -> Result<String, String> {
@@ -115,6 +306,27 @@ async fn run_stellar_cli(args: &[String]) -> Result<String, String> {
         return Err(format!("stellar CLI failed: {}{}", stdout, stderr));
     }
     Ok(format!("{}{}", stdout, stderr))
+}
+
+fn extract_transaction_hash(receipt: &str) -> Option<String> {
+    // Current Stellar CLI releases print either a bare hash or a JSON/text
+    // receipt containing `hash`. Keep this parser format-tolerant, but never
+    // call a submission successful without finding the 32-byte transaction
+    // hash in the CLI output.
+    let bytes = receipt.as_bytes();
+    for start in 0..bytes.len() {
+        if start + 64 > bytes.len() {
+            break;
+        }
+        let candidate = &bytes[start..start + 64];
+        if candidate.iter().all(u8::is_ascii_hexdigit)
+            && (start == 0 || !bytes[start - 1].is_ascii_hexdigit())
+            && (start + 64 == bytes.len() || !bytes[start + 64].is_ascii_hexdigit())
+        {
+            return Some(String::from_utf8_lossy(candidate).to_ascii_lowercase());
+        }
+    }
+    None
 }
 
 fn evidence_json(proof: &ProofResponse, relayer_address: &str) -> String {
@@ -158,7 +370,9 @@ async fn submit_bls(
         return Ok(());
     }
     let receipt = run_stellar_cli(&args).await?;
-    println!("    registry BLS receipt: {}", receipt.trim());
+    let tx_hash = extract_transaction_hash(&receipt)
+        .ok_or_else(|| "stellar CLI returned success without a transaction hash".to_string())?;
+    println!("    registry BLS transaction receipt: {tx_hash}");
     Ok(())
 }
 
@@ -202,7 +416,9 @@ async fn submit_zk(
         return Ok(());
     }
     let receipt = run_stellar_cli(&args).await?;
-    println!("    registry ZK receipt: {}", receipt.trim());
+    let tx_hash = extract_transaction_hash(&receipt)
+        .ok_or_else(|| "stellar CLI returned success without a transaction hash".to_string())?;
+    println!("    registry ZK transaction receipt: {tx_hash}");
     Ok(())
 }
 
@@ -267,7 +483,9 @@ async fn submit_gateway(
         return Ok(());
     }
     let receipt = run_stellar_cli(&args).await?;
-    println!("    gateway mint receipt: {}", receipt.trim());
+    let tx_hash = extract_transaction_hash(&receipt)
+        .ok_or_else(|| "stellar CLI returned success without a transaction hash".to_string())?;
+    println!("    gateway mint transaction receipt: {tx_hash}");
     Ok(())
 }
 
@@ -276,6 +494,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
     let dry_run = args.iter().any(|arg| arg == "--dry-run")
         || std::env::var("RELAYER_DRY_RUN").as_deref() == Ok("1");
+    let allow_development_zk = std::env::var("ALLOW_DEVELOPMENT_ZK_FIXTURE").as_deref() == Ok("1");
     let sim_url = option_after(&args, "--sim-url")
         .or_else(|| std::env::var("SIM_URL").ok())
         .unwrap_or_else(|| "http://localhost:3001".to_string());
@@ -299,14 +518,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  simulator: {sim_url}");
     println!("  Soroban RPC: {rpc_url}");
     println!("  mode: {}", if dry_run { "dry-run" } else { "live signed CLI" });
+    println!(
+        "  development Groth16 fixture: {}",
+        if allow_development_zk { "explicitly enabled" } else { "quarantined" }
+    );
 
     let client = reqwest::Client::new();
-    if let Err(error) = check_rpc(&client, &rpc_url).await {
-        if !dry_run {
-            return Err(std::io::Error::other(error).into());
+    let rpc_latest_ledger = match check_rpc(&client, &rpc_url).await {
+        Ok(latest) => Some(latest),
+        Err(error) if dry_run => {
+            println!("  dry-run RPC warning: {error}");
+            None
         }
-        println!("  dry-run RPC warning: {error}");
-    }
+        Err(error) => return Err(std::io::Error::other(error).into()),
+    };
 
     let deployment: Option<Deployment> = std::fs::read_to_string("deployments/testnet.json")
         .ok()
@@ -372,8 +597,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err(std::io::Error::other("source simulator /info is required in live mode").into());
     }
 
+    let mut burn_cursor = std::env::var("BURN_START_LEDGER")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .or_else(|| rpc_latest_ledger.map(|ledger| ledger.saturating_sub(120)))
+        .unwrap_or(1);
+    let mut source_unlocks: HashSet<String> = HashSet::new();
+
     println!("  registry: {registry_id}");
     println!("  gateway: {gateway_id}");
+    println!("  burn event cursor: ledger {burn_cursor}");
     if let Some(deployment) = &deployment {
         println!("  deployment network: {}", deployment.network);
         if let Some(issuer) = &deployment.issuer {
@@ -384,6 +617,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut submitted: HashSet<(u64, String)> = HashSet::new();
     let mut gateway_submitted: HashSet<String> = HashSet::new();
     loop {
+        if !dry_run && !is_placeholder(&gateway_id) {
+            match poll_burn_events(&client, &rpc_url, &gateway_id, &mut burn_cursor).await {
+                Ok(burns) => {
+                    for burn in burns {
+                        if source_unlocks.contains(&burn.burn_message_id) {
+                            continue;
+                        }
+                        match unlock_source_from_burn(&client, &sim_url, &burn).await {
+                            Ok(()) => {
+                                source_unlocks.insert(burn.burn_message_id);
+                            }
+                            Err(error) => eprintln!("  source unlock failed: {error}"),
+                        }
+                    }
+                }
+                Err(error) => eprintln!("  burn event polling failed: {error}"),
+            }
+        }
+
         let block = match client
             .get(format!("{sim_url}/blocks/latest"))
             .send()
@@ -399,6 +651,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         if let Some(block) = block {
             println!("block {} state={} events={}", block.height, block.state_root, block.event_root);
             for kind in ["bls", "zk"] {
+                if kind == "zk" && !allow_development_zk {
+                    if block.height == 1 {
+                        eprintln!("  zk evidence is quarantined: set ALLOW_DEVELOPMENT_ZK_FIXTURE=1 only for local fixture demonstrations");
+                    }
+                    continue;
+                }
                 let key = (block.height, kind.to_string());
                 if submitted.contains(&key) && kind == "zk" {
                     continue;

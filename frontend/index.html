@@ -30,7 +30,7 @@
 <body>
 <header>
   <h1>Lumen Gate — Anchor Settlement Demo</h1>
-  <div class="badge">Genesis Track • Testnet • BLS + Groth16 BN254 • zkVM Machine Approval • Gasless</div>
+  <div class="badge">Genesis Track • Testnet • BLS + Groth16 fixture (quarantined) • Machine approval (unverified) • Gasless path (unverified)</div>
 </header>
 <main>
   <div class="card">
@@ -86,7 +86,10 @@
 
   <div class="card">
     <h2>5. Burn → Unlock (Reverse)</h2>
+    <label>Amount (wSRC)</label>
     <input id="burnAmount" value="50" type="number" />
+    <label style="margin-top:8px; display:block;">Recipient on source chain</label>
+    <input id="burnRecipient" placeholder="source recipient" />
     <button id="burnBtn" style="margin-top:8px;">Burn on Stellar → Unlock on Source</button>
     <div id="burnLog" class="log" style="margin-top:10px;"></div>
   </div>
@@ -97,6 +100,7 @@
       <button id="badSigBtn" class="secondary">Submit Bad Sig (zeroed)</button>
       <button id="badRootBtn" class="secondary">Submit Bad Root (mismatch)</button>
       <button id="badVersionBtn" class="secondary">Submit Bad Version</button>
+      <button id="badZKBtn" class="secondary">Submit Bad Groth16 Root</button>
       <button id="replayBtn" class="secondary">Replay Same Nonce</button>
     </div>
     <div id="probeLog" class="log" style="margin-top:10px;"></div>
@@ -113,7 +117,7 @@
     <p style="font-size:13px; line-height:1.5; color:#aaa;">
       Anchor creates issuer, deploys SAC for wSRC, calls set_admin(gateway). Gateway only mints after finality_registry verifies BLS12-381 or Groth16 BN254 proof via native host functions. 
       Source chain is simulated (2-of-3 deterministic demo keys, valid G1/G2 points, and a development Groth16 fixture). Stellar-side controls require configured Testnet contracts; this checkout is not deployed.
-      Lock → proof → mint, burn → unlock, plus 4 fault probes. High-water-mark nonce prevents replay with one row per sender.
+      Lock → proof → mint, burn → unlock, plus 4 fault probes. High-water-mark nonce prevents replay with one row per sender. Gasless code is shown for the flow, but no live claim is made until a fresh unfunded Testnet account is verified.
     </p>
     <p style="font-size:12px; color:#666;">
       Contracts: finality_registry (BLS + ZK), settlement_gateway (lock/mint/burn + HWM). Off-chain: source_simulator (Axum), relayer (Rust), frontend (this). Anchor: stellar.toml + /info.
@@ -124,6 +128,7 @@
 
 <script type="module">
 import * as StellarSdk from '@stellar/stellar-sdk';
+import { buildBurnAndRelayTx, server as sorobanServer } from './src/soroban.ts';
 
 const SIM_URL = localStorage.getItem('simUrl') || import.meta.env.VITE_SIM_URL || '/source-api';
 document.getElementById('simUrl').textContent = SIM_URL;
@@ -249,8 +254,35 @@ document.getElementById('finalizeBtn').onclick = async () => {
 };
 
 document.getElementById('burnBtn').onclick = async () => {
+  if (!userPubkey) { log('burnLog', 'Connect Freighter first'); return; }
+  if (GATEWAY_ID.includes('...') || GATEWAY_ID.includes('PLACEHOLDER')) {
+    log('burnLog', 'A real Gateway contract ID is required; this checkout is not deployed.');
+    return;
+  }
   const amount = document.getElementById('burnAmount').value;
-  log('burnLog', `Burn ${amount} wSRC on Stellar -> would create Burn message and unlock on source. See gateway.burn_and_relay`);
+  const recipientOnSource = document.getElementById('burnRecipient').value || userPubkey;
+  const targetDomain = localStorage.getItem('sourceDomainKey') || localStorage.getItem('domainKey') || '';
+  if (!/^[0-9a-fA-F]{64}$/.test(targetDomain)) {
+    log('burnLog', 'Set sourceDomainKey to the deployed source domain key before burning.');
+    return;
+  }
+  try {
+    const prepared = await buildBurnAndRelayTx(
+      GATEWAY_ID, amount, recipientOnSource, targetDomain, userPubkey
+    );
+    const signed = await window.freighterApi.signTransaction(prepared.toXDR(), {
+      networkPassphrase: StellarSdk.Networks.TESTNET,
+      address: userPubkey,
+    });
+    const signedXdr = typeof signed === 'string' ? signed : signed.signedTxXdr;
+    if (!signedXdr) throw new Error('Freighter did not return a signed transaction');
+    const submitted = await sorobanServer.sendTransaction(
+      StellarSdk.TransactionBuilder.fromXDR(signedXdr, StellarSdk.Networks.TESTNET)
+    );
+    log('burnLog', `Burn submitted to live Soroban RPC: ${JSON.stringify(submitted)}`);
+    document.getElementById('explorerLink').textContent = `https://stellar.expert/explorer/testnet/contract/${GATEWAY_ID}`;
+    document.getElementById('explorerLink').href = `https://stellar.expert/explorer/testnet/contract/${GATEWAY_ID}`;
+  } catch (e) { log('burnLog', `Burn failed: ${e}`); }
 };
 
 document.getElementById('badSigBtn').onclick = async () => {
@@ -272,6 +304,13 @@ document.getElementById('badVersionBtn').onclick = async () => {
     const latest = await fetchSim('/blocks/latest');
     const bad = await fetchSim(`/proof?height=${latest.height}&kind=bls&tamper=version`);
     log('probeLog', `Bad version (99): should be rejected with VersionNotAccepted\n${JSON.stringify(bad).slice(0,500)}`);
+  } catch (e) { log('probeLog', `Error: ${e}`); }
+};
+document.getElementById('badZKBtn').onclick = async () => {
+  try {
+    const latest = await fetchSim('/blocks/latest');
+    const bad = await fetchSim(`/proof?height=${latest.height}&kind=zk&tamper=root`);
+    log('probeLog', `Bad Groth16 root: registry should reject DeclaredMismatch before pairing\n${JSON.stringify(bad).slice(0,500)}`);
   } catch (e) { log('probeLog', `Error: ${e}`); }
 };
 document.getElementById('replayBtn').onclick = async () => {

@@ -13,6 +13,30 @@ mod groth16 {
     pub const G1_SIZE: u32 = 64;
     pub const G2_SIZE: u32 = 128;
 
+    // BN254 Fr modulus, big-endian. Soroban's Bn254Fr::from_bytes reduces
+    // modulo r, so the verifier must reject non-canonical public inputs before
+    // constructing a scalar instead of silently accepting a different witness.
+    const FR_MODULUS: [u8; 32] = [
+        0x30, 0x64, 0x4e, 0x72, 0xe1, 0x31, 0xa0, 0x29, 0xb8, 0x50, 0x45, 0xb6, 0x81, 0x81, 0x58, 0x5d,
+        0x28, 0x33, 0xe8, 0x48, 0x79, 0xb9, 0x70, 0x91, 0x43, 0xe1, 0xf5, 0x93, 0xf0, 0x00, 0x00, 0x01,
+    ];
+
+    fn scalar_is_canonical(value: &BytesN<32>) -> bool {
+        let mut less = false;
+        for i in 0u32..32 {
+            let a = value.get(i).unwrap_or(0);
+            let b = FR_MODULUS[i as usize];
+            if a < b {
+                less = true;
+                break;
+            }
+            if a > b {
+                return false;
+            }
+        }
+        less
+    }
+
     fn to_fixed<const N: usize>(env: &Env, bytes: Bytes) -> BytesN<N> {
         let val: soroban_sdk::Val = bytes.into();
         BytesN::<N>::try_from_val(env, &val)
@@ -41,12 +65,17 @@ mod groth16 {
         proof: &Bytes,
         public_inputs: &Vec<BytesN<32>>,
     ) -> bool {
-        if proof.len() < 2 * G1_SIZE + G2_SIZE {
+        if proof.len() != 2 * G1_SIZE + G2_SIZE {
             return false;
         }
         let expected_vk_len = G1_SIZE + 3 * G2_SIZE + (public_inputs.len() + 1) * G1_SIZE;
-        if vk.len() < expected_vk_len {
+        if vk.len() != expected_vk_len {
             return false;
+        }
+        for i in 0..public_inputs.len() {
+            if !scalar_is_canonical(&public_inputs.get(i).unwrap()) {
+                return false;
+            }
         }
         let a_bytes = proof.slice(0..G1_SIZE);
         let b_bytes = proof.slice(G1_SIZE..G1_SIZE + G2_SIZE);
@@ -71,10 +100,23 @@ mod groth16 {
         let beta = g2(env, beta_bytes);
         let gamma = g2(env, gamma_bytes);
         let delta = g2(env, delta_bytes);
+        let bn254 = env.crypto().bn254();
+        if !bn254.g1_is_on_curve(&a)
+            || !bn254.g1_is_on_curve(&c)
+            || !bn254.g1_is_on_curve(&alpha)
+        {
+            return false;
+        }
 
         let mut vk_x = g1(env, ic_points.get(0).unwrap());
+        if !bn254.g1_is_on_curve(&vk_x) {
+            return false;
+        }
         for i in 0..public_inputs.len() {
             let ic_point = g1(env, ic_points.get(i + 1).unwrap());
+            if !bn254.g1_is_on_curve(&ic_point) {
+                return false;
+            }
             let scalar = Bn254Fr::from_bytes(public_inputs.get(i).unwrap());
             let scaled = ic_point * scalar.clone();
             vk_x = vk_x + scaled;

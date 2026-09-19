@@ -50,11 +50,25 @@ struct LockEvent {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+struct BurnUnlock {
+    burn_message_id: String,
+    amount: u64,
+    source_height: u64,
+    nonce: u64,
+    expiry_height: u64,
+    recipient_on_source: String,
+    payload_hash: String,
+    target_domain: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 struct SimulatorState {
     blocks: BTreeMap<u64, Block>,
     events: BTreeMap<u64, Vec<LockEvent>>,
     asset_id: String,
     unlocked_messages: BTreeMap<String, bool>,
+    burn_unlocks: BTreeMap<String, BurnUnlock>,
+    released_amounts: BTreeMap<String, u64>,
     latest_height: u64,
     event_nonce: u64,
     // BLS validator set (deterministic for demo)
@@ -87,6 +101,8 @@ impl SimulatorState {
             events: BTreeMap::new(),
             asset_id,
             unlocked_messages: BTreeMap::new(),
+            burn_unlocks: BTreeMap::new(),
+            released_amounts: BTreeMap::new(),
             latest_height: 0,
             event_nonce: 0,
             bls_sks: sks,
@@ -279,6 +295,60 @@ impl SimulatorState {
         Err("lock message not found".to_string())
     }
 
+    // The source simulator is the intentionally local side of reverse
+    // settlement. The relayer supplies a burn event that was read from the
+    // live gateway contract; this endpoint only checks the canonical payload
+    // binding and consumes the burn id once.
+    fn consume_burn_unlock(
+        &mut self,
+        burn_message_id: String,
+        amount: u64,
+        source_height: u64,
+        nonce: u64,
+        expiry_height: u64,
+        recipient_on_source: String,
+        payload_hash: String,
+        target_domain: String,
+    ) -> Result<BurnUnlock, String> {
+        if burn_message_id.is_empty() || recipient_on_source.is_empty() || target_domain.is_empty() {
+            return Err("burn unlock fields cannot be empty".to_string());
+        }
+        if amount == 0 {
+            return Err("burn amount must be positive".to_string());
+        }
+        if source_height > expiry_height {
+            return Err("burn message expired".to_string());
+        }
+        if self.burn_unlocks.contains_key(&burn_message_id) {
+            return Err("burn message already unlocked".to_string());
+        }
+
+        let mut payload_hasher = Sha256::new();
+        payload_hasher.update(self.asset_id.as_bytes());
+        payload_hasher.update((amount as i128).to_le_bytes());
+        payload_hasher.update(recipient_on_source.as_bytes());
+        let expected_payload_hash = hex::encode(payload_hasher.finalize());
+        if expected_payload_hash != payload_hash.to_ascii_lowercase() {
+            return Err("burn payload hash mismatch".to_string());
+        }
+
+        let released_to = recipient_on_source.clone();
+        let unlock = BurnUnlock {
+            burn_message_id: burn_message_id.clone(),
+            amount,
+            source_height,
+            nonce,
+            expiry_height,
+            recipient_on_source,
+            payload_hash,
+            target_domain,
+        };
+        let released = self.released_amounts.entry(released_to).or_default();
+        *released = released.saturating_add(amount);
+        self.burn_unlocks.insert(burn_message_id, unlock.clone());
+        Ok(unlock)
+    }
+
     // Real BLS signing: H = hash_to_curve(height||state_root||event_root), sig = sk * H, agg sig, agg pubkey
     fn build_bls_payload(&self, height: u64) -> Option<(Vec<u8>, String, String, String, String)> {
         let block = self.blocks.get(&height)?;
@@ -388,6 +458,24 @@ struct UnlockResponse {
 }
 
 #[derive(Deserialize)]
+struct BurnUnlockRequest {
+    burn_message_id: String,
+    amount: u64,
+    source_height: u64,
+    nonce: u64,
+    expiry_height: u64,
+    recipient_on_source: String,
+    payload_hash: String,
+    target_domain: String,
+}
+
+#[derive(Serialize)]
+struct BurnUnlockResponse {
+    unlocked: bool,
+    burn: BurnUnlock,
+}
+
+#[derive(Deserialize)]
 struct ProofQuery {
     height: u64,
     kind: Option<String>,
@@ -476,6 +564,32 @@ async fn post_unlock(
             };
             (status, error)
         })
+}
+
+async fn post_burn_unlock(
+    State(state): State<SharedState>,
+    Json(req): Json<BurnUnlockRequest>,
+) -> Result<Json<BurnUnlockResponse>, (StatusCode, String)> {
+    let mut s = state.lock().unwrap();
+    s.consume_burn_unlock(
+        req.burn_message_id,
+        req.amount,
+        req.source_height,
+        req.nonce,
+        req.expiry_height,
+        req.recipient_on_source,
+        req.payload_hash,
+        req.target_domain,
+    )
+    .map(|burn| Json(BurnUnlockResponse { unlocked: true, burn }))
+    .map_err(|error| {
+        let status = if error.contains("already unlocked") {
+            StatusCode::CONFLICT
+        } else {
+            StatusCode::BAD_REQUEST
+        };
+        (status, error)
+    })
 }
 
 async fn get_events(
@@ -626,6 +740,8 @@ async fn get_info(State(state): State<SharedState>) -> Json<serde_json::Value> {
         "blocks": s.blocks.len(),
         "total_events": s.events.values().map(|v| v.len()).sum::<usize>(),
         "unlocked_messages": s.unlocked_messages.len(),
+        "burn_unlocks": s.burn_unlocks.len(),
+        "released_amount": s.released_amounts.values().copied().sum::<u64>(),
         "asset_id": &s.asset_id,
         "target_domain": hex::encode(Sha256::digest(b"lumen-gate-stellar-testnet")),
         "bls_generator_g1": G1_GENERATOR_HEX,
@@ -665,6 +781,7 @@ async fn main() {
         .route("/blocks/:height", get(get_block))
         .route("/lock", post(post_lock))
         .route("/unlock", post(post_unlock))
+        .route("/burn-unlock", post(post_burn_unlock))
         .route("/events", get(get_events))
         .route("/proof", get(get_proof))
         .route("/info", get(get_info))

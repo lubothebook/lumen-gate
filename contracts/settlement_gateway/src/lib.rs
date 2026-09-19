@@ -159,6 +159,35 @@ fn compute_event_leaf(
     env.crypto().sha256(&buf).into()
 }
 
+// The reverse-direction event is deliberately a Bytes value rather than a
+// tuple. This gives the relayer a stable, documented wire format without
+// depending on a generated contract client for event-data decoding.
+//
+// Layout (little endian unless noted):
+// amount:i128 | source_height:u64 | nonce:u64 | expiry_height:u64 |
+// target_domain:32 | payload_hash:32 | recipient_len:u32 | recipient:bytes
+fn encode_burn_event(
+    env: &Env,
+    amount: i128,
+    source_height: u64,
+    nonce: u64,
+    expiry_height: u64,
+    target_domain: &BytesN<32>,
+    payload_hash: &BytesN<32>,
+    recipient_on_source: &Bytes,
+) -> Bytes {
+    let mut encoded = Bytes::new(env);
+    encoded.append(&Bytes::from_array(env, &amount.to_le_bytes()));
+    encoded.append(&Bytes::from_array(env, &source_height.to_le_bytes()));
+    encoded.append(&Bytes::from_array(env, &nonce.to_le_bytes()));
+    encoded.append(&Bytes::from_array(env, &expiry_height.to_le_bytes()));
+    encoded.append(&target_domain.clone().into());
+    encoded.append(&payload_hash.clone().into());
+    encoded.append(&Bytes::from_array(env, &recipient_on_source.len().to_le_bytes()));
+    encoded.append(recipient_on_source);
+    encoded
+}
+
 fn verify_merkle_proof(env: &Env, leaf: &BytesN<32>, proof: &Bytes, root: &BytesN<32>) -> bool {
     if proof.len() % 32 != 0 {
         return false;
@@ -617,9 +646,19 @@ impl SettlementGateway {
         env.storage()
             .persistent()
             .set(&DataKey::ProcessedMessage(message_id.clone()), &true);
+        let burn_event = encode_burn_event(
+            &env,
+            amount,
+            message.source_height,
+            nonce,
+            expiry_height,
+            &message.target_domain,
+            &message.payload_hash,
+            &recipient_on_source,
+        );
         env.events().publish(
             (Symbol::new(&env, "burn"), message.message_id.clone()),
-            (from, amount, target_domain, nonce),
+            burn_event,
         );
         Ok(message)
     }

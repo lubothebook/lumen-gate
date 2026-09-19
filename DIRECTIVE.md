@@ -138,8 +138,10 @@ oturumda çalıştırılmamıştır.
 - [ ] Gateway'deki Merkle doğrulaması, finalized event root ile doğru leaf ve
       sibling yönlerini kodda kontrol ediyor; canlı uçtan uca mint receipt'i ve
       çok-leaf Testnet kanıtı henüz yok.
-- [ ] `burn_and_relay` sonrası relayer'ın gerçek gateway burn event'ini okuyup
-      kaynak simülatöründeki tek-seferlik `/unlock` çağrısını yapması tamamlanmalı.
+- [x] `burn_and_relay` sonrası relayer'ın gerçek gateway `burn` event'ini
+      Soroban RPC'den okuyup Bytes payload'ı çözmesi ve kaynak simülatöründeki
+      tek-seferlik `/burn-unlock` çağrısını yapması yazıldı; gerçek receipt ve
+      live Testnet run'ı toolchain erişimi bekliyor.
 - [x] Browser kodunda sabit `localhost` kullanımı canlı preview için relative
       URL ve Vite proxy ile değiştirildi.
 - [ ] Taze, hiç fonlanmamış testnet keypair ile gasless mint kanıtı henüz canlı
@@ -242,6 +244,14 @@ Outbound burn/lock mesajı aynı envelope'ı kullanır. Gateway outbound mesajı
 processed saymaz; karşı domain'in unlock işlemi kendi HWM'si ile ayrı bir kez
 çalışır. Bu ayrım çift yakma ve çift serbest bırakma hatasını önler.
 
+`burn` event data'sı generated-client bağımlılığını azaltmak için `Bytes` olarak
+şu sabit formatta yayınlanır: `amount:i128 LE | source_height:u64 LE |
+nonce:u64 LE | expiry_height:u64 LE | target_domain:32 | payload_hash:32 |
+recipient_len:u32 LE | recipient:bytes`. Relayer bu XDR `SCV_BYTES` değerini
+Soroban RPC'den çözer ve source simulator `/burn-unlock` endpoint'ine yalnızca
+bir kez iletir. Simülatör payload hash'ini token id, amount ve recipient'dan
+yeniden üretir; gerçek source consensus iddiası yapmaz.
+
 ### 4.3 Anchor facade
 
 Anchor için entegrasyon yüzeyi:
@@ -259,13 +269,15 @@ Anchor facade çalışmayan SEP endpoint'lerini çalışıyormuş gibi ilan etme
 
 ### 4.4 Off-chain bileşenler
 
-- `source_simulator`: deterministic block/event/Merkle üretir, BLS ve ZK fixture
-  sağlar, lock ve unlock state machine'i tutar.
-- `relayer`: simulator event'lerini izler; gerçek Soroban RPC'de
-  `getLatestLedger` kontrolü yapar ve kurulu Stellar CLI'nin imzalı contract
-  invoke yoluyla registry/gateway işlemlerini gönderir. CLI encoding, receipt
-  confirmation ve burn-event tüketimi bu snapshot'ta ayrıca doğrulanmalıdır.
-  Private key yalnızca environment/secret store'dan gelir.
+- `source_simulator`: deterministic block/event/Merkle üretir, BLS ve
+  quarantined development ZK fixture sağlar, inbound lock ve one-time reverse
+  burn-unlock state machine'lerini tutar.
+- `relayer`: simulator lock event'lerini izler; gerçek Soroban RPC'de
+  `getLatestLedger` ve gateway `burn` event polling yapar, kurulu Stellar
+  CLI'nin imzalı contract invoke yoluyla registry/gateway işlemlerini gönderir
+  ve burn Bytes payload'ını source simulator `/burn-unlock` endpoint'ine bir kez
+  iletir. CLI encoding, receipt confirmation ve live Testnet run'ı bu snapshot'ta
+  ayrıca doğrulanmalıdır. Private key yalnızca environment/secret store'dan gelir.
 - `frontend`: Freighter ile kullanıcı cüzdanını bağlar, kanıt türünü seçer,
   gerçek explorer/RPC linklerini gösterir, BLS/ZK fault probe'larını görünür
   kılar. Preview ortamında browser'dan `localhost` çağrısı yapmaz.

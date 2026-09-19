@@ -133,7 +133,9 @@ Mevcut statik fixture, dynamic source-root finality kanıtı sayılmaz. Submissi
 - BLS key binding ve hash-to-curve fixture'larını eşleştirmek;
 - root-bound Groth16 proof üretmek;
 - relayer'ın gerçek CLI encoding, sign, submit ve receipt confirmation'ını doğrulamak;
-- burn sonrası kaynak unlock endpoint'i mevcut olsa da relayer event tüketimini tamamlamak;
+- gateway burn event'inin Bytes payload'ını Soroban RPC'den okuyup kaynak
+  simülatörünün tek-seferlik `/burn-unlock` endpoint'ine ileten relayer kodunu
+  gerçek Testnet receipt'iyle doğrulamak;
 - taze, hiç XLM fonlanmamış keypair ile gasless akışı kanıtlamak; kanıtlanamazsa
   bu iddiayı kaldırmak;
 - tüm test, build, frontend preview ve fault-probe komutlarını çalıştırmak.
@@ -168,7 +170,8 @@ Endpoint'ler:
 GET  /info
 GET  /blocks/latest
 POST /lock
-POST /unlock
+POST /unlock                 # inbound lock consume
+POST /burn-unlock            # live Stellar burn event consume
 GET  /events?height=<height>
 GET  /proof?height=<height>&kind=bls
 GET  /proof?height=<height>&kind=zk
@@ -191,7 +194,7 @@ cd frontend && npm install && npm run dev
 cd ../anchor && npm install && PORT=8081 SIM_URL=http://localhost:3001 npm start
 ```
 
-Browser tarafı sandbox'ın localhost'una güvenmemelidir. Preview için relative URL/Vite proxy veya public simulator URL kullanılır. Relayer BLS registry kanıtı sonrası gateway çağrısı için kod içerir; ZK fixture dynamic source-root bağlı olmadığı için yalnızca development registry probe'u olarak kalır.
+Browser tarafı sandbox'ın localhost'una güvenmemelidir. Preview için relative URL/Vite proxy veya public simulator URL kullanılır. Relayer BLS registry kanıtı ve gateway mint çağrısının yanında gerçek Soroban RPC'den burn Bytes event'ini okuyup source simulator `/burn-unlock` çağrısını yapar; bu kodun Testnet receipt'i henüz alınmadı. ZK fixture dynamic source-root bağlı olmadığı için yalnızca açıkça etkinleştirilen development registry probe'u olarak kalır.
 
 ## Güvenlik ve kapsam sınırları
 
