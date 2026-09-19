@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 5173",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "postbuild": "node -e \"const fs=require('fs'),p=require('path');fs.mkdirSync('dist/deployments',{recursive:true});for(const f of fs.readdirSync('../deployments'))if(f.endsWith('.json'))fs.copyFileSync(p.join('../deployments',f),p.join('dist/deployments',f));fs.mkdirSync('dist/anchor',{recursive:true});fs.copyFileSync('../anchor/stellar.toml','dist/anchor/stellar.toml');console.log('copied the deployment manifest and stellar.toml into dist')\""
   },
   "dependencies": {
     "@stellar/stellar-sdk": "^12.1.0"

@@ -297,7 +297,9 @@ The console runs in two places from one codebase: locally with two small process
 
 ### On Vercel
 
-`frontend/` builds to a static site and `api/` becomes serverless functions. Nothing needs a wallet key, and nothing shells out to a binary:
+`frontend/` builds to a static site and `api/` becomes serverless functions. Nothing needs a wallet key, and nothing shells out to a binary.
+
+Two packaging details decide whether this works at all. The handlers read `deployments/*.json` and `anchor/stellar.toml` through paths they build at runtime, so a bundler cannot trace them: `vercel.json` declares `includeFiles` for both, otherwise the deployed function answers `manifest not found` on its first real request. The build also copies those files into the static output, so the deployed site serves the same manifest it was built from and a reviewer can fetch it and compare.
 
 ```bash
 vercel                        # from the repository root
