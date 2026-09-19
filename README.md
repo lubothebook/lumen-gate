@@ -84,10 +84,13 @@ This checkout is a **Testnet engineering snapshot**, not a completed production 
 
 ### Live on Testnet
 
-| Contract | Address | Deploy tx |
+| Contract | Address | Note |
 | --- | --- | --- |
-| `finality_registry` | `CCXJDQMTJUGXKNFOQPC25IYVOAVWDMLJBNQYX75MAREHV7MZMU5OSEN4` | `df468a305e35f2deb6b81d52164a91380592dcf58c4b5edc2d3ca06645901e2a` |
-| `settlement_gateway` | `CAXQVMSRRMZSM36P4XE53BJFUIYHOGIDWVDGA6A5LK5HTRL4KWQUBX5B` | `2116fc69293466f40a72c7886a5097c5cbcc62c5911331ffc404cbf56e9c9d67` |
+| `finality_registry` | `CCXJDQMTJUGXKNFOQPC25IYVOAVWDMLJBNQYX75MAREHV7MZMU5OSEN4` | admin **renounced on-chain**; verifier key set; one domain admitted |
+| `settlement_gateway` | `CBUKVNCPF5XRYJVAH2SRLTLUMZT6T677T5KAJADXZIQOQTCTSBITQVPA` | current build, 18,303 bytes |
+| `wSRC` (Stellar Asset Contract) | `CBPBDVLP7K436KEXOAJMPFFHEF5OXNN4KJIB2HDFDBRWOABQ6WBTURRV` | admin handed to the gateway, so mint and burn ride the gateway's own authorisation |
+
+Three earlier gateway deployments and one earlier asset contract are listed under `superseded` in [`deployments/testnet.json`](deployments/testnet.json) rather than deleted. They were replaced for concrete reasons, and the reasons are the interesting part: one could not be driven from the command line, one could not be re-pointed at a fixed gateway, and one predated a real footgun fix. Keeping them visible is cheaper than pretending the first attempt worked.
 
 ### Receipts
 
@@ -100,21 +103,33 @@ This checkout is a **Testnet engineering snapshot**, not a completed production 
 | **BLS finality accepted** | **success** | **`b181956b9a9c3fc4f18faeea3938bdf2ea19b96edc9bd4414ddeb243e02008a4`** |
 | Replay the same evidence | rejected `#9 EvidenceAlreadyProcessed` | simulated, no fee burned |
 | Tamper one byte of the BLS signature | rejected `#7 InvalidSignature` | simulated, no fee burned |
+| Set the verifier key | success | `76e6c3978af3c32aecce89578085d2b8a6bddcf167a2e386e1760450a3314c3b` |
+| **Groth16 proof accepted** (heights 19, 39, 18, 91, 32) | **success** | `12be652f…`, `15e2143f…`, `1c2179bb…`, `4f612bfc…`, `f3bb88d1…` |
+| Tamper one byte of a Groth16 proof | rejected `#8 InvalidProof` | simulated, no fee burned |
+| **`renounce_admin`** | **success** | `8ca278c88a6ee375c21c09870b48320b953eea3ed3e7c35f55a03b87e03639b4` |
+| `set_vk` **after** renounce | rejected, VM call trapped | the capability is gone for everyone, including the deployer |
+| **Forward: lock → Merkle proof → mint** | **success**, balance 0 → 400,000,002 wSRC | `3d5d9936bf514b10423fe4ed4f39009899f02ae1f5cdb8b5fd16517258f57997` |
+| **Reverse: burn → source-chain unlock** | **success**, 150,000,000 released | `ca0a16605acb41c1dcb1e4db2dedaf4b45e98347b013e37d8e9906a559b83340` |
+| Replay the burn message on the source chain | rejected, HTTP 409 | — |
 
-The accepted transaction is ledger **4,762,103**, fee **168,960 stroops**, and it emitted `finality_verified` carrying the domain key, height and state root. The aggregate BLS12-381 signature was verified inside Soroban using the native pairing host functions — no off-chain check, no oracle, no signature-size shortcut.
+The first accepted transaction is ledger **4,762,103**, fee **168,960 stroops**, and it emitted `finality_verified` carrying the domain key, height and state root. The aggregate BLS12-381 signature was verified inside Soroban using the native pairing host functions — no off-chain check, no oracle, no signature-size shortcut.
+
+The Groth16 proof was generated from a circuit compiled in this repository, against a Powers-of-Tau ceremony run locally, and was checked by the contract's own BN254 pairing verifier. The proof for the settlement block is not the one that anchors that block — see below for why.
 
 ### Test status
 
-`cargo test --workspace --lib` → **18 passed, 0 failed** (9 in `finality_registry`, 9 in `settlement_gateway`). Run it yourself; the count in this file is not aspirational.
+`cargo test --workspace --lib` → **20 passed, 0 failed** (9 in `finality_registry`, 11 in `settlement_gateway`). Run it yourself; the count in this file is not aspirational.
 
 ### What is not claimed yet
 
-- **The Groth16/BN254 lane has no live receipt.** The checked-in material is a development fixture and is deliberately quarantined — see [`circuits/DEVELOPMENT_FIXTURE.md`](circuits/DEVELOPMENT_FIXTURE.md). It is never submitted unless `ALLOW_DEVELOPMENT_ZK_FIXTURE=1` is set for a development demonstration. A source-root-bound circuit is the next milestone.
+- **The Groth16 lane proves a quorum and binds the three roots; it is not a signature verifier.** The circuit header says so in its own words. It establishes that enough approvals exist over a bitmap and that `prev_state_root`, `state_root` and `event_root` participate in one Poseidon relation, so none of them is decorative metadata. It does **not** establish that any particular validator signed anything. A production ZK lane replaces the bitmap with a real signature gadget.
+- **Because of that, the registry does not persist an event root from the ZK lane.** Storing a root that no signature covers would let an unconstrained value become the anchor for a Merkle settlement proof, and minting reads that anchor. The settlement receipt above is anchored by the **BLS** lane, whose aggregate signature does cover the event root. This is a deliberate refusal, not an oversight, and it is the reason the two lanes are not interchangeable yet.
 - **The source side is a local deterministic simulator**, not a live external network. Its BLS signatures are real (RFC 9380 hash-to-curve, DST `lumen-gate-finality-v1`) but its validator secret keys are the fixed demo values 1, 2, 3. Production requires a DKG. See [Known simplifications](#known-simplifications).
-- **The reverse path and the gasless path have no live receipt yet.** They are implemented and unit-tested; they are not yet demonstrated end to end against the deployed contracts.
-- **No admin renounce has been executed on the deployed registry yet.** `renounce_admin` exists and is tested; the on-chain transaction is still pending.
+- **The gasless path is implemented, unit-tested and reachable from the command line, but has no live receipt yet.** No fresh zero-XLM account has been funded through `finalize_inbound_gasless_tooling` on testnet.
+- **The frontend is not wired to the live contracts.** The reverse and forward runs above were driven from the command line and from the anchor facade, not from the web app.
+- **No bond, fee or slashing economics.** A validator that signs a wrong root loses nothing.
 
-The source side is intentionally local. The Stellar side is not mocked: the acceptance bar was a real registry deployment, real transaction hashes, real events and negative probes against the live contract — and that bar is now met for the BLS lane.
+The source side is intentionally local. The Stellar side is not mocked: the acceptance bar was real deployments, real transaction hashes, real events, and negative probes against the live contracts — and that bar is now met for both directions.
 
 ## Product thesis
 
@@ -232,9 +247,22 @@ The full pairing path, not an on-curve-only shortcut, is the security claim show
 
 ### Groth16 / BN254
 
-The ZK path uses a small purpose-built circuit rather than porting a large source-chain VM. The proof must bind its public inputs to the finalized height, state root and message commitment. Soroban's native BN254 multi-pairing check is the on-chain verifier.
+The ZK path uses a small purpose-built circuit rather than porting a large source-chain VM. Soroban's native BN254 pairing check is the on-chain verifier, and it now verifies real proofs: [`circuits/finality_statement.circom`](circuits/finality_statement.circom) compiled with circom 2.2.3, proved with snarkjs 0.7.6 against a Powers-of-Tau ceremony generated locally, serialised by [`circuits/convert_to_soroban.py`](circuits/convert_to_soroban.py), and accepted five times on testnet.
 
-The checked-in circuit and fixtures are a starting point, not proof that a dynamic source root is already verified. Before submission, the circuit, VK, proof generator and Soroban public-input encoding must be tested together, including wrong-VK, modified-proof and root-mismatch rejection.
+The public signal order is fixed by the deployed verifier, which requires the last public input to equal the evidence's declared state root:
+
+```
+public_inputs[0] = prev_state_root
+public_inputs[1] = event_root
+public_inputs[2] = threshold
+public_inputs[3] = state_root      <- the value the registry binds
+```
+
+Getter/setter shape: a 768-byte verification key (α, β, γ, δ and five IC points), a 256-byte proof, and four 32-byte big-endian field elements. The Fp2 encoding is the part that bites: snarkjs emits each G2 coordinate real-first, while Soroban's host functions want the imaginary component first, so the converter swaps them and asserts the result.
+
+**What the circuit does and does not do.** It proves a quorum exists over an approval bitmap, and that the three roots participate in one Poseidon relation, so none of them is free metadata. It does **not** verify signatures. A production lane replaces the bitmap with a signature gadget. That is why the settlement anchor comes from the BLS lane, whose signature does cover the event root, and why the registry refuses to persist an event root from the ZK lane.
+
+The older checked-in fixture under `circuits/DEVELOPMENT_FIXTURE.md` is quarantined and is never submitted unless `ALLOW_DEVELOPMENT_ZK_FIXTURE=1` is set for a development demonstration.
 
 ## Anchor integration
 

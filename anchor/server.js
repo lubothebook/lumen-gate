@@ -9,9 +9,15 @@ const REGISTRY_ID =
   'CCXJDQMTJUGXKNFOQPC25IYVOAVWDMLJBNQYX75MAREHV7MZMU5OSEN4'; // testnet
 const GATEWAY_ID =
   process.env.GATEWAY_ID ||
-  'CAXQVMSRRMZSM36P4XE53BJFUIYHOGIDWVDGA6A5LK5HTRL4KWQUBX5B'; // testnet
-const TOKEN_ID = process.env.TOKEN_ID || 'CD-TOKEN-PLACEHOLDER';
-const ISSUER = process.env.ISSUER || 'GCEXAMPLEISSUER';
+  'CBUKVNCPF5XRYJVAH2SRLTLUMZT6T677T5KAJADXZIQOQTCTSBITQVPA'; // testnet
+// Stellar Asset Contract for wSRC. Its admin is the gateway, so mint and burn
+// are authorised by the gateway's own invocation rather than by a key we hold.
+const TOKEN_ID =
+  process.env.TOKEN_ID ||
+  'CBPBDVLP7K436KEXOAJMPFFHEF5OXNN4KJIB2HDFDBRWOABQ6WBTURRV'; // testnet
+const ISSUER =
+  process.env.ISSUER ||
+  'GBYFDKP4KLQ575HTJRDTHF4HUIVXAQLJNEZMWYJ5HBY3C3GDSPX5H4FR'; // testnet
 const RPC_URL = process.env.RPC_URL || 'https://soroban-testnet.stellar.org';
 
 function jsonResponse(res, obj, status=200) {
