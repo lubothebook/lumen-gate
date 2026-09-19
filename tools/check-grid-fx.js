@@ -27,7 +27,22 @@
 //      with synthetic viewports against a stub DOM, and must set 60/4 at
 //      dpr 1 and 30/2 at dpr 2, must emit exactly cols x rows cube elements,
 //      each an individual element with the cube class, and must not rebuild
-//      when the shape of the screen did not change.
+//      when the shape of the screen did not change;
+//   3. the correction: the cube CANNOT frame itself with :hover. The wall is
+//      painted at z-index -1, so every wrapper above it - section, shell,
+//      body - wins the hit test and a :hover on a cube never fires on the
+//      live page. The frame is therefore painted by pointer tracking in
+//      initLatticeFrame(), which must be wired at boot and must frame exactly
+//      one cube, only where that cube is visible: a strip, a card, the
+//      wallet band, the header, the footer or a dialog all hide it again.
+//      cubeUnderPointer() is driven here with synthetic hit-test stacks,
+//      because "the frame appears" is a behaviour, not a rule in a file;
+//   4. the strips: text does not sit on a painted section. Each row of text
+//      sits on its own full-bleed strip and the lattice stays visible in the
+//      gaps between them, so the rules that make a row full-bleed (negative
+//      vw margins, vw padding, the first-child reset, the overflow clip) are
+//      part of the contract - drop any one and the band becomes a page-wide
+//      block again, which is exactly what this round corrected.
 
 const fs = require('fs');
 const path = require('path');
@@ -97,10 +112,12 @@ if (cubeRule) {
   expect(/width:\s*var\(--cell\);\s*height:\s*var\(--cell\)/.test(cubeRule[0]), 'every cube is exactly one cell');
   expect(/transition:\s*box-shadow/.test(cubeRule[0]), 'the frame on a cube fades in and out rather than popping');
 }
-const hoverRule = /\.cube:hover\s*\{[^}]*\}/.exec(html);
-expect(Boolean(hoverRule), '.cube:hover rule missing: the pointer frame is the whole point');
+// The frame is one rule with two selectors: :hover for anything that can still
+// reach it, .frame for the tracked path the live page actually uses.
+const hoverRule = /\.cube:hover,\s*\.cube\.frame\s*\{[^}]*\}/.exec(html);
+expect(Boolean(hoverRule), '.cube:hover/.cube.frame rule missing: the pointer frame is the whole point');
 if (hoverRule) {
-  expect(/box-shadow:\s*inset 0 0 0 var\(--ring\) rgba\(255,\s*255,\s*255/.test(hoverRule[0]), 'the hover frame must be an inset white border drawn from the --ring token (4px on a 1x display)');
+  expect(/box-shadow:\s*inset 0 0 0 var\(--ring\) rgba\(255,\s*255,\s*255/.test(hoverRule[0]), 'the frame must be an inset white border drawn from the --ring token (4px on a 1x display)');
 }
 expect(/@media \(hover: none\), \(pointer: coarse\)[^}]*\.cube:hover[^}]*box-shadow:\s*none/.test(html), 'touch devices must not get the pointer frame');
 expect(/prefers-reduced-motion: reduce[^}]*\.cube[^}]*transition:\s*none/.test(html.replace(/\{ /g, '{')), 'reduced motion must remove the frame transition');
@@ -181,7 +198,120 @@ expect(run.calls.cubes.length === Math.ceil(1000 / 30) * Math.ceil(700 / 30), `1
   expect(clears === 1, `an unchanged screen must build the wall once, not on every pass (cleared ${clears} times)`);
 }
 
-console.log('lattice contract: coded wall, one element per 60px cube, per-cube 4px hover frame, pixelated tile, one asset px per screen px (60/4 at dpr 1, 30/2 at dpr 2) | behaviour: density tokens, exact coverage, no pointless rebuild');
+// ------------------------------------------------- 3. the frame a cube wears
+// The class the tracked path adds and the :hover state it stands in for must
+// both paint the same ring, and the touch guard must cover both.
+const frameRule = /\.cube:hover,\s*\.cube\.frame\s*\{[^}]*\}/.exec(html);
+expect(Boolean(frameRule), 'the .cube:hover rule must also accept .cube.frame: the tracked path and the hover path paint the same frame');
+if (frameRule) {
+  expect(/inset 0 0 0 var\(--ring\) rgba\(255,\s*255,\s*255/.test(frameRule[0]), 'the tracked frame must be the same inset white ring as the hover frame');
+}
+expect(/\.cube:hover,\s*\.cube\.frame[^}]*box-shadow:\s*none/.test(html), 'touch devices must not get the tracked frame either');
+expect(/function initLatticeFrame\(\)/.test(app), 'initLatticeFrame() is missing: the frame would only ever be a :hover that cannot fire behind the page');
+expect(/^initLatticeFrame\(\);/m.test(app), 'initLatticeFrame() is defined but never called at boot');
+for (const gesture of ['pointermove', 'pointerleave', 'blur', 'scroll']) {
+  expect(new RegExp(`addEventListener\\s*\\(\\s*'${gesture}'`).test(app), `the frame must be cleared or repainted on ${gesture}`);
+}
+expect(/LATTICE_BLOCKERS/.test(app) && /\.hero-panel/.test(app) && /\.card/.test(app), 'the blockers list must name the surfaces that hide the lattice (strips, cards, the band, chrome)');
+
+// Drive cubeUnderPointer() with synthetic hit-test stacks: the topmost cube
+// wins only when nothing opaque sits above it.
+const blockers = [...(app.match(/const LATTICE_BLOCKERS = \[[\s\S]*?\];/) || [''])[0].matchAll(/'([^']+)'/g)].map((m) => m[1]);
+expect(blockers.length >= 6, 'LATTICE_BLOCKERS should list the page surfaces that cover the lattice');
+const underMatch = app.match(/function cubeUnderPointer\([\s\S]*?\n\}/);
+expect(Boolean(underMatch), 'cubeUnderPointer() was not found in frontend/src/app.js');
+if (underMatch) {
+  // A synthetic hit-test stack, topmost first, exactly as elementsFromPoint
+  // returns it. Each node answers only the selectors it really matches.
+  const node = (name, matched) => ({
+    name,
+    classList: { values: name.split(' '), contains: (c) => name.split(' ').includes(c) },
+    matches: (sel) => matched.includes(sel),
+  });
+  const cube = node('cube', []);
+  const sandbox = { LATTICE_BLOCKERS: blockers };
+  vm.createContext(sandbox);
+  vm.runInContext(`${underMatch[0]}\ncubeUnderPointer = cubeUnderPointer;`, sandbox, { filename: 'app.js#cubeUnderPointer' });
+  const under = sandbox.cubeUnderPointer;
+  const section = node('strip', []);
+  const shell = node('shell', []);
+  expect(under([shell, section, node('main', []), cube, node('cube-lattice', [])]) === cube, 'a cube directly under the pointer in an open gap must be the one framed');
+  expect(under([node('card', ['.card']), shell, cube]) === null, 'a card above the cube must hide the frame');
+  expect(under([node('hero-panel', ['.hero-panel']), cube]) === null, 'the hero panel must hide the frame');
+  expect(under([node('band', ['.band']), cube]) === null, 'the wallet band must hide the frame');
+  expect(under([node('top', ['header.top']), cube]) === null, 'the header must hide the frame');
+  expect(under([node('boundary', ['.boundary']), cube]) === null, 'the settlement boundary strip must hide the frame');
+  expect(under([node('sec-head', ['main > section.strip > .shell > *']), shell, cube]) === null, 'a text strip must hide the frame - the lattice only shows in the gaps');
+  expect(under([node('body', [])]) === null, 'a pointer over no cube at all must frame nothing');
+}
+
+// The same function, with a live sandbox: one pointermove frames exactly one
+// cube, moving to another cube drops the first, and leaving clears it.
+{
+  const wall = { id: 'cubeLattice' };
+  const cubes = [node2('cube', []), node2('cube', []), node2('cube', [])];
+  cubes.forEach((c) => c.classes.push('cube'));
+  function node2(name, matched) {
+    const classes = [];
+    return {
+      name,
+      matched,
+      classes,
+      matches: (sel) => matched.includes(sel),
+      classList: {
+        contains: (c) => classes.includes(c),
+        add(c) { if (!classes.includes(c)) classes.push(c); },
+        remove(c) { const i = classes.indexOf(c); if (i !== -1) classes.splice(i, 1); },
+      },
+    };
+  }
+  const openGap = [node2('shell', []), node2('strip', [])];
+  let stack = [...openGap, cubes[0]];
+  const listeners = {};
+  const sandbox = {
+    $: () => wall,
+    document: { elementsFromPoint: () => stack },
+    requestAnimationFrame: (fn) => { fn(); return 1; },
+    window: { addEventListener: (name, fn) => { (listeners[name] = listeners[name] || []).push(fn); } },
+    LATTICE_BLOCKERS: blockers,
+    PointerEvent: function PointerEvent() {},
+  };
+  vm.createContext(sandbox);
+  vm.runInContext(`${underMatch[0]}\n${app.match(/function initLatticeFrame\(\) \{[\s\S]*?\n\}/)[0]}\ninitLatticeFrame();`, sandbox, { filename: 'app.js#initLatticeFrame' });
+  const move = (x, y, type) => (listeners.pointermove || []).forEach((fn) => fn({ clientX: x, clientY: y, pointerType: type }));
+  const framed = () => cubes.filter((c) => c.classes.includes('frame')).map((c) => cubes.indexOf(c));
+  move(10, 10);
+  expect(framed().join() === '0', `a pointermove over cube 0 must frame exactly that cube, got [${framed()}]`);
+  stack = [...openGap, cubes[1]];
+  move(70, 10);
+  expect(framed().join() === '1', `moving to cube 1 must leave exactly it framed, got [${framed()}]`);
+  stack = [node2('card', ['.card']), ...openGap, cubes[2]];
+  move(130, 10);
+  expect(framed().length === 0, 'moving over a card must close the frame entirely');
+  expect((listeners.pointerleave || []).length === 1, 'the frame must be closed when the pointer leaves the window');
+  expect((listeners.scroll || []).length === 1, 'the frame must be closed on scroll, so it cannot survive a re-layout');
+}
+
+// ------------------------------------------------------- 4. the line strips
+const stripRule = /main > section\.strip\s*\{[^}]*\}/.exec(html);
+expect(Boolean(stripRule), 'the section.strip rule is missing');
+if (stripRule) {
+  expect(/background:\s*none/.test(stripRule[0]) && /border:\s*0/.test(stripRule[0]), 'a section must not paint a block: only the text rows carry a strip');
+}
+const rowRule = /main > section\.strip > \.shell > \*\s*\{[^}]*\}/.exec(html);
+expect(Boolean(rowRule), 'the per-row strip rule (section.strip > .shell > *) is missing: text would sit on the bare lattice');
+if (rowRule) {
+  expect(/background:\s*rgba\(2,\s*2,\s*2,\s*0\.94\)/.test(rowRule[0]), 'each text row must carry its own black strip');
+  expect(/border-top:\s*1px solid var\(--line-2\)/.test(rowRule[0]) && /border-bottom:\s*1px solid var\(--line-2\)/.test(rowRule[0]), 'a strip is bounded by a hairline top and bottom');
+  expect(/margin-left:\s*calc\(50% - 50vw\)/.test(rowRule[0]) && /margin-right:\s*calc\(50% - 50vw\)/.test(rowRule[0]), 'a strip is infinite sideways: it must break out of the shell on both sides');
+  expect(/padding:[^;]*calc\(50vw - 50%\)/.test(rowRule[0]), 'the ink must be padded back to the shell measure, so rows in different strips still line up');
+  expect(/margin-top:\s*var\(--row-gap\)/.test(rowRule[0]), 'the gap between two strips is where the lattice shows: it must come from --row-gap');
+}
+expect(/main > section\.strip > \.shell > :first-child \{[^}]*margin-top:\s*0/.test(html), 'the first row in a section must not open with a gap');
+expect(/--row-gap:\s*clamp\(/.test(html), '--row-gap must be part of the rhythm tokens');
+expect(/overflow-x:\s*hidden/.test(html) && /overflow-x:\s*clip/.test(html), 'the full-bleed strips are measured in vw, so the horizontal overflow must be clipped (with a fallback first)');
+
+console.log('lattice contract: coded wall, one element per 60px cube, per-cube 4px frame (painted by pointer tracking, since the wall lives behind the page), pixelated tile, one asset px per screen px (60/4 at dpr 1, 30/2 at dpr 2) | behaviour: density tokens, exact coverage, no pointless rebuild, one framed cube at a time | strips: text rows are full-bleed and the lattice shows in the gaps');
 if (problems.length === 0) {
   console.log('grid fx: every cube is coded onto the grid and frames itself under the pointer, and only itself');
   process.exit(0);

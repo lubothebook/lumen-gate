@@ -33,6 +33,7 @@
     --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
     --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
     --cell: 60px;   /* one asset pixel per screen pixel; set from the device in app.js */
+    --row-gap: clamp(18px, 2.2vw, 30px);  /* the lattice breathes between two text strips */
     --ring: 4px;    /* the hover frame, same pixel language as the tile */
     /* motion: one easing family everywhere, short durations, no bounce for
        chrome, a hint of spring only where a control answers a finger. */
@@ -45,7 +46,10 @@
 
   /* ------------------------------------------------------------------ base */
   * { box-sizing: border-box; }
-  html { scroll-behavior: smooth; }
+  /* Full-bleed strips are measured in viewport units, which include the
+     scrollbar; clipping the overflow is what keeps an infinite band from
+     turning into a horizontal scrollbar. */
+  html { scroll-behavior: smooth; overflow-x: hidden; overflow-x: clip; }
   body {
     margin: 0;
     background-color: var(--bg);
@@ -92,6 +96,8 @@
   /* any value that can update in place reads as tabular figures, so a number
      changing never shifts the layout around it */
   .stat .value, .balances td:last-child, .pill, .kv dd, .chip, td.mono { font-feature-settings: "tnum", "cv11"; }
+  .pill .net-long, .pill .net-short { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pill .dot { flex: none; }
 
   /* The lattice wall: one element per cube, each painted from the submitted
      tile at the tile's own size - never resampled, never scaled up. The cubes
@@ -110,7 +116,9 @@
     image-rendering: pixelated;
     transition: box-shadow 0.18s var(--ease);
   }
-  .cube:hover { box-shadow: inset 0 0 0 var(--ring) rgba(255, 255, 255, 0.55); }
+  /* .frame is the same state, painted by app.js - see the note there on why the
+     cube cannot rely on its own :hover while it lives behind the page. */
+  .cube:hover, .cube.frame { box-shadow: inset 0 0 0 var(--ring) rgba(255, 255, 255, 0.55); }
 
   /* The lattice stops on a hairline. Everything above the line is the source
      chain; the black band below it is the only surface on this page that can
@@ -142,7 +150,7 @@
      should be on this display. Rendered as a miniature segmented control. */
   .field .hint[data-state="warn"] { color: var(--warn); }
   .log .log-empty { color: var(--faint); }
-  @media (hover: none), (pointer: coarse) { .cube:hover { box-shadow: none; } }
+  @media (hover: none), (pointer: coarse) { .cube:hover, .cube.frame { box-shadow: none; } }
   @media (prefers-reduced-motion: reduce) { .cube { transition: none; } }
 
   /* ---------------------------------------------------------------- header */
@@ -154,11 +162,15 @@
   .top-inner { display: flex; align-items: center; gap: 20px; min-height: 68px; padding-top: 14px; }
   .brand { display: inline-flex; text-decoration: none; flex: 0 0 auto; border-radius: 8px; }
   .brand img.mark { width: 26px; height: 26px; display: block; }
-  .top-right { display: flex; align-items: center; gap: 9px; flex: 0 0 auto; margin-left: auto; }
+  .top-right { display: flex; align-items: center; gap: 9px; flex: 0 1 auto; min-width: 0; margin-left: auto; justify-content: flex-end; }
+  .brand { min-width: 0; }
   .pill {
     display: inline-flex; align-items: center; gap: 7px; font-size: 0.8125rem; color: var(--muted);
     border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 999px; padding: 6px 12px; white-space: nowrap;
     background: rgba(255, 255, 255, 0.045);
+    /* The pill never pushes the header wider than the screen: with no room
+       left it truncates its own label instead of the page growing a scrollbar. */
+    min-width: 0; max-width: 100%;
   }
   .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); display: inline-block; flex: 0 0 auto; }
   .dot.ok { background: var(--ok); box-shadow: 0 0 0 3px rgba(50, 215, 75, 0.16); }
@@ -410,14 +422,25 @@
   dialog::backdrop { background: rgba(0, 0, 0, 0.7); }
   .hidden { display: none !important; }
 
-  /* text sits on its own black strips; the lattice lives in the gaps between
-     them, which is also where the pointer frame gets to play */
+  /* Text does not sit on a painted section. Each row of it sits on its own
+     full-bleed black strip, and the lattice stays visible in the gaps between
+     one strip and the next - which is also where the pointer frame gets to
+     play. The strip is infinite sideways; the ink stays at the shell measure,
+     so a row in a strip lines up exactly with the rows above and below it. */
   main > section.strip {
+    background: none; border: 0;
+    margin: clamp(64px, 8vw, 130px) 0;
+    padding: clamp(6px, 1vw, 16px) 0;
+  }
+  main > section.strip > .shell > * {
     background: rgba(2, 2, 2, 0.94);
     border-top: 1px solid var(--line-2); border-bottom: 1px solid var(--line-2);
-    margin: clamp(64px, 8vw, 130px) 0;
-    padding: clamp(30px, 4vw, 50px) 0;
+    border-radius: 0;
+    margin-left: calc(50% - 50vw); margin-right: calc(50% - 50vw);
+    padding: clamp(20px, 2.4vw, 30px) calc(50vw - 50%);
+    margin-top: var(--row-gap) !important; margin-bottom: 0 !important;
   }
+  main > section.strip > .shell > :first-child { margin-top: 0 !important; }
   .console, .grid-3, .grid-2, .stats, .trust-lanes { align-items: start; }
   .band { margin: clamp(44px, 5.5vw, 92px) 0; }
   footer { margin-top: clamp(44px, 5.5vw, 92px); }

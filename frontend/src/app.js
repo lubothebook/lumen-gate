@@ -155,10 +155,80 @@ function sizeLattice() {
 
 // The background is not a wallpaper: every cube is its own element on a
 // coded grid, one element per block of the source chain, each carrying the
-// submitted tile at the tile's own size. Each cube answers the pointer
-// itself - the 4px white frame is a plain :hover state of the cube, so it
-// appears exactly while the pointer is over that cube and closes when the
-// pointer leaves, with no bookkeeping that could fall out of step.
+// submitted tile at the tile's own size.
+//
+// The frame is painted from pointer tracking rather than from the cube's own
+// :hover, and that is a correction rather than a preference. The lattice is
+// painted behind the page (z-index: -1), so every wrapper above it - the
+// section, the shell, the body - wins the browser's hit test, and a :hover on
+// the cube could never fire anywhere on the live page. What is tracked here is
+// the rule the design actually asks for: the frame appears on the cube under
+// the pointer, and only where that cube is visible - a strip, a card, the
+// wallet band, the header, the footer or a dialog all hide it again.
+const LATTICE_BLOCKERS = [
+  'header.top',
+  'footer',
+  'nav.foot-nav',
+  'dialog',
+  '.boundary',
+  '.hero-panel',
+  '.band',
+  '.card',
+  '.steps',
+  '.lane',
+  '.log-wrap',
+  'main > section.strip > .shell > *',
+];
+
+function cubeUnderPointer(stack) {
+  const at = stack.findIndex((node) => node.classList && node.classList.contains('cube'));
+  if (at === -1) return null;
+  const hidden = stack
+    .slice(0, at)
+    .some((node) => node.matches && LATTICE_BLOCKERS.some((selector) => node.matches(selector)));
+  return hidden ? null : stack[at];
+}
+
+function initLatticeFrame() {
+  const wall = $('cubeLattice');
+  if (!wall || typeof document.elementsFromPoint !== 'function') return;
+  let framed = null;
+  let queued = false;
+  let x = 0;
+  let y = 0;
+  const clear = () => {
+    if (!framed) return;
+    framed.classList.remove('frame');
+    framed = null;
+  };
+  const paint = () => {
+    queued = false;
+    const cube = cubeUnderPointer(document.elementsFromPoint(x, y));
+    if (cube === framed) return;
+    clear();
+    if (cube) {
+      cube.classList.add('frame');
+      framed = cube;
+    }
+  };
+  window.addEventListener(
+    'pointermove',
+    (event) => {
+      if (event.pointerType === 'touch') return;
+      x = event.clientX;
+      y = event.clientY;
+      if (queued) return;
+      queued = true;
+      requestAnimationFrame(paint);
+    },
+    { passive: true }
+  );
+  window.addEventListener('pointerleave', clear);
+  window.addEventListener('blur', clear);
+  window.addEventListener('scroll', clear, { passive: true });
+  window.addEventListener('resize', clear, { passive: true });
+}
+
 function buildLattice() {
   const wall = $('cubeLattice');
   if (!wall) return;
@@ -409,7 +479,16 @@ async function loadStatus() {
     // addresses still have to be right: they come from the generated module,
     // which is written from the same deployment manifest, and the page says
     // out loud that it is offline instead of showing empty panels.
-    $('netPill').innerHTML = '<span class="dot bad"></span> API unavailable - static addresses only';
+    // Two lengths, the same way the live pill speaks: the full sentence where
+    // there is room for it, a short one where there is not. A header that
+    // overflows on a phone is the cheapest way to look broken.
+    $('netPill').textContent = '';
+    $('netPill').title = 'API unavailable - static addresses only';
+    $('netPill').append(
+      el('span', { class: 'dot bad' }),
+      el('span', { class: 'net-long', text: 'API unavailable - static addresses only' }),
+      el('span', { class: 'net-short', text: 'no API' })
+    );
     log(`Live status request failed (${failureText(payload)}). Addresses below come from the generated deployment module.`, 'warn');
     try {
       const { deployment } = await import('./deployment.js');
@@ -1203,6 +1282,7 @@ renderLanes().catch(() => {});
 wire();
 watchSections();
 buildLattice();
+initLatticeFrame();
 resetSteps();
 showLogPlaceholder();
 loadTrustEvidence();

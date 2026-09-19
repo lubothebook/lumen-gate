@@ -480,6 +480,35 @@ functionality belongs in the off-chain surface, the facade and the docs.
       full-bleed lattice behind it stays interactive. No generated artwork
       anywhere, per the standing rule that the operator's pixels are the
       design.
+- [x] **Text sits on line strips, not on painted sections.** The last round's
+      correction, finally executed: a section no longer paints a block. Each
+      row of text carries its own full-bleed strip (infinite sideways, hairline
+      top and bottom, ink padded back to the shell measure so rows still line
+      up across strips), and the lattice shows in the gap between one strip and
+      the next. Measured, not asserted: twelve strips, every one edge to edge,
+      every pair 30px apart at 1440, no horizontal scrollbar at 1440 / 768 /
+      390 / 360.
+- [x] **The pointer frame was a claim with no behaviour, and that is fixed.**
+      The frame was written as a `:hover` state on the cube while the lattice
+      is painted at `z-index: -1` - so every wrapper above it won the hit test
+      and the frame never appeared on the live page, through three rounds of
+      documentation that said it did. It is painted by pointer tracking now,
+      with the covering surfaces named in `LATTICE_BLOCKERS`, and it is checked
+      at two levels: `tools/check-grid-fx.js` drives the hit-test logic against
+      synthetic stacks (card, band, header, boundary and strip all hide it; a
+      cube in an open gap is the only one framed; exactly one at a time; it
+      closes on pointerleave and on scroll), and the new
+      `tools/check-live-page.js` drives the real page in a real browser.
+- [x] **The browser harness is committed, and it skips honestly.** Without
+      puppeteer installed it prints `[skip]` and exits 0 rather than passing by
+      default; with a dev server and a browser it asserts the strips, the
+      frame, the banner's own aspect, that every control is reachable (nothing
+      covered by an overlay) and that the page makes no failing request. First
+      green run on the round's work: *12 strips full-bleed with 30px of open
+      lattice between them, frame follows the pointer in the gaps and nowhere
+      else, banner 1500x500 drawn 560x187, 25 controls all reachable, 0 failing
+      requests.* It is deliberately outside the gate and CI: a check that needs
+      a browser must not make CI depend on one.
 - [x] **A real browser harness exists for this repository now**
       (headless Chromium, driven outside the sandbox and not committed): it
       boots the actual page with the API layer running, screenshots desktop and

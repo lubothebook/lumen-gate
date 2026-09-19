@@ -7,7 +7,8 @@
     "node": "20.x"
   },
   "scripts": {
-    "check:api": "node --check api/status.js && node --check api/audit.js && node --check api/finality.js && node --check api/relay.js && node --check api/_shared.js"
+    "check:api": "node --check api/status.js && node --check api/audit.js && node --check api/finality.js && node --check api/relay.js && node --check api/_shared.js",
+    "check:live": "node tools/check-live-page.js"
   },
   "dependencies": {
     "@stellar/stellar-sdk": "^12.3.0"
