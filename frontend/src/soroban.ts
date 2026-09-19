@@ -1,4 +1,4 @@
-// Soroban helpers for Trust Stellar, Move to Stellar - hardened
+// Soroban helpers for Lumen Gate - hardened
 import * as StellarSdk from '@stellar/stellar-sdk';
 
 const RPC_URL = import.meta.env.VITE_RPC_URL || 'https://soroban-testnet.stellar.org';
@@ -88,6 +88,41 @@ export function buildRawEvidence(
     declared_root: declaredRoot,
     submitter,
   };
+}
+
+export async function buildBurnAndRelayTx(
+  gatewayId: string,
+  amount: string,
+  recipientOnSource: string,
+  targetDomainHex: string,
+  userPublicKey: string
+) {
+  if (!/^[0-9a-fA-F]{64}$/.test(targetDomainHex)) {
+    throw new Error('target domain must be a 32-byte hex value');
+  }
+  const account = await server.getAccount(userPublicKey);
+  const latest = await server.getLatestLedger();
+  const contract = new StellarSdk.Contract(gatewayId);
+  const expiryHeight = BigInt(latest.sequence + 100);
+  const tx = new StellarSdk.TransactionBuilder(account, {
+    fee: '100000',
+    networkPassphrase: NETWORK_PASSPHRASE,
+  })
+    .addOperation(contract.call(
+      'burn_and_relay',
+      new StellarSdk.Address(userPublicKey).toScVal(),
+      StellarSdk.nativeToScVal(BigInt(amount), {type: 'i128'}),
+      StellarSdk.nativeToScVal(Buffer.from(recipientOnSource, 'utf8'), {type: 'bytes'}),
+      StellarSdk.xdr.ScVal.scvBytes(Buffer.from(targetDomainHex, 'hex')),
+      StellarSdk.nativeToScVal(expiryHeight, {type: 'u64'})
+    ))
+    .setTimeout(30)
+    .build();
+  const sim = await server.simulateTransaction(tx);
+  if (StellarSdk.SorobanRpc.Api.isSimulationError(sim)) {
+    throw new Error(`Burn simulation failed: ${JSON.stringify(sim)}`);
+  }
+  return StellarSdk.SorobanRpc.assembleTransaction(tx, sim).build();
 }
 
 export function parseBlsPayload(payloadHex: string) {

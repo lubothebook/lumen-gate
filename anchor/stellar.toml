@@ -2,8 +2,8 @@ VERSION="2.0.0"
 NETWORK_PASSPHRASE="Test SDF Network ; September 2015"
 
 [DOCUMENTATION]
-ORG_NAME="Trust Stellar, Move to Stellar Anchor"
-ORG_URL="https://github.com/migrate-to-stellar"
+ORG_NAME="Lumen Gate Anchor"
+ORG_URL="https://github.com/lubothebook/lumen-gate"
 ORG_DESCRIPTION="Anchor-attached settlement layer — neutral finality-proof infrastructure for anchors that don't want to run their own bridges. Issues wSRC backed by cryptographic finality proofs verified on Soroban."
 
 [[CURRENCIES]]
@@ -25,5 +25,5 @@ anchor_asset_type="crypto"
 # Anchor does not run source chain validators, it relies on finality proofs
 
 [PRINCIPALS]
-name="Trust Stellar, Move to Stellar Team"
-email="team@migrate-to-stellar.example"
+name="Lumen Gate Team"
+email="team@lumengate.example"

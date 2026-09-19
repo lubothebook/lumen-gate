@@ -1,104 +1,48 @@
-# PQ Roadmap — ML-DSA Hybrid (CAP-0087 Draft)
+# Post-quantum roadmap
 
-> Selected via ask_user: roadmap priority = PQ ML-DSA hybrid
+Post-quantum signatures are intentionally out of the Lumen Gate hackathon
+scope. The current implementation uses the two paths that can be demonstrated
+with the selected Soroban environment:
 
-## Background
+- BLS12-381 aggregate signatures;
+- Groth16 proofs over BN254.
 
-From reference universal settlement pattern, hybrid finality: BLS12-381 + post-quantum (ML-DSA-65 FIPS 204 NIST final).
+No post-quantum host is assumed to exist. Any future ML-DSA integration must be
+re-checked against the protocol and SDK used by the deployment; a draft proposal
+or an off-chain benchmark is not an available Soroban primitive.
 
-Stellar status (Sep 2026, verified via Raven):
-- PQ host not live yet
-- CAP-0087 draft proposes ML-DSA for Protocol 29
-- In-contract ML-DSA-65 via `soroban-ml-dsa` crate measured ~19% tx budget on testnet
-- Our `SecurityBacking` enum already reserves space: `SignatureSet(u32,u32,bool)` for BLS, `ZkProof` for Groth16, future `PqSignature`
+## Future design
 
-## Hybrid Design
+A future domain policy may require a hybrid finality statement:
 
-```
-Finality proof = BLS aggregate + ML-DSA aggregate (or ZK proof of both)
-- BLS: 3 validators, fast, native hosts Protocol 22
-- ML-DSA-65: post-quantum, FIPS 204, in-contract verification ~19% budget
-- Threshold: e.g., 2 BLS + 2 PQ = 4 required
-- SecurityBacking::SignatureSet(signers, required, slashable) extended with pq flag
+```text
+BLS aggregate + ML-DSA threshold
 ```
 
-## Implementation Plan
+The hybrid path would need:
 
-### Phase 1: In-Contract ML-DSA (Now, Testnet)
+1. a versioned evidence encoding;
+2. domain-bound BLS and ML-DSA public keys;
+3. native or independently audited in-contract verification;
+4. explicit fee and resource measurements;
+5. key rotation and revocation policy;
+6. new negative tests for partial and mixed-threshold proofs.
 
-Use `soroban-ml-dsa` crate (already measured):
+Until those conditions exist, no PQ field is added to the production demo
+message and no PQ security claim is made in the README.
 
-```rust
-// In finality_registry, add:
-use soroban_ml_dsa::{ml_dsa_65_verify, MlDsa65PublicKey, MlDsa65Signature};
+## Not in this submission
 
-pub fn submit_finality_evidence_pq(
-    env: Env,
-    evidence: RawEvidence,
-    pq_pubkeys: Vec<Bytes>,
-    pq_sigs: Vec<Bytes>,
-) -> Result<FinalityAttestation, RegistryError> {
-    // Verify ML-DSA-65 signatures over height||state_root||event_root
-    for (pk, sig) in pq_pubkeys.iter().zip(pq_sigs.iter()) {
-        let pk_obj = MlDsa65PublicKey::from_bytes(pk);
-        let sig_obj = MlDsa65Signature::from_bytes(sig);
-        if !ml_dsa_65_verify(&pk_obj, &evidence.payload, &sig_obj) {
-            return Err(RegistryError::InvalidSignature);
-        }
-    }
-    // If BLS + PQ both pass, store Finalized
-}
-```
+- ML-DSA verification inside `finality_registry`;
+- hybrid quorum policy;
+- PQ validator key generation or rotation;
+- claims about a future protocol's host API;
+- production migration from the BLS/ZK policies.
 
-Cost: ~19% tx budget per verification (from community measurements), acceptable for settlement (not per tx).
+## Acceptance criteria for future work
 
-### Phase 2: Native Host (Protocol 29, CAP-0087)
-
-When CAP-0087 lands:
-
-```rust
-// Future native host (draft):
-env.crypto().ml_dsa().ml_dsa_65_verify(pubkey, message, signature)
-env.crypto().ml_dsa().ml_dsa_87_verify(...)
-```
-
-Then BLS + PQ both native, cost drops to ~2% budget.
-
-### Phase 3: Hybrid Threshold
-
-```rust
-enum SecurityBacking {
-    SignatureSet(u32, u32, bool), // BLS
-    PqSignatureSet(u32, u32), // ML-DSA
-    Hybrid { bls: (u32,u32), pq: (u32,u32) }, // e.g., 2 BLS + 2 PQ
-    ZkProof,
-}
-```
-
-Domain can require hybrid: `required_depth` + `pq_required`.
-
-## Why PQ Matters
-
-- **Quantum horizon**: Ed25519/ECDSA breakable within lifetime of chain launched today
-- **Settlement layer longevity**: Finality proofs stored forever, must be PQ-secure
-- **Stellar alignment**: CAP-0087 draft shows Stellar intends native ML-DSA, we prepare
-
-## Current Code
-
-- `contracts/finality_registry/src/lib.rs`: `SecurityBacking` reserves, `FeeConfig` for future, comments on PQ
-- `README.md`: Roadmap section mentions PQ, CAP-0087, 19% budget
-- This file: detailed roadmap
-
-## References
-
-- Raven search: `search({query: "ML-DSA CAP-0087 Protocol 29"})` → draft, not live
-- `soroban-ml-dsa` crate: https://github.com/... (in-contract ML-DSA-65)
-- NIST FIPS 204: ML-DSA-65 final
-- Our reference pattern: BLS12-381 + ML-DSA-65 hybrid, legacy Dilithium5 only for migration
-
-## Next Steps
-
-- [ ] Add `soroban-ml-dsa` dependency, implement `submit_pq` with 19% budget test
-- [ ] Measure gas on testnet, document
-- [ ] When Protocol 29 lands, switch to native host
-- [ ] Hybrid threshold in `DomainRecord`
+- official protocol documentation and target-network support;
+- a small verified fixture and failure matrix;
+- measured Soroban resource budget;
+- live Testnet receipt;
+- migration note for already registered domains.

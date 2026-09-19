@@ -1,5 +1,5 @@
 // Source chain simulator client
-const SIM_URL = (typeof localStorage !== 'undefined' ? localStorage.getItem('simUrl') : null) || 'http://localhost:3001';
+const SIM_URL = (typeof localStorage !== 'undefined' ? localStorage.getItem('simUrl') : null) || import.meta.env.VITE_SIM_URL || '/source-api';
 
 export async function getInfo() {
   const res = await fetch(`${SIM_URL}/info`);

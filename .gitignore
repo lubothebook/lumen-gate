@@ -1,0 +1,17 @@
+# Local build and dependency artifacts
+/frontend/node_modules/
+/frontend/dist/
+/anchor/node_modules/
+/target/
+
+# Local environment and editor files
+.env
+.env.*
+!.env.example
+.DS_Store
+.vscode/
+.idea/
+
+# Python bytecode from the circuit tooling
+__pycache__/
+*.pyc
