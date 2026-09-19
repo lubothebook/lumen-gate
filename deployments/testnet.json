@@ -129,6 +129,16 @@
       "id": "self-audit-overwrote-its-own-history",
       "found": "the README said audit rounds are appended to deployments/self-audit.json, but the loop started from an empty in-memory array and wrote the whole file, so each run erased the previous rounds",
       "fix": "prior rounds are loaded at start-up and the round counter continues from them. The file now holds rounds 1 and 2 from this session, both 5/5"
+    },
+    {
+      "id": "relay-endpoint-was-open",
+      "found": "the anchor facade served every endpoint with 'Access-Control-Allow-Origin: *' and the relay endpoint needed only LUMEN_ALLOW_RELAY=1. Any page a visitor opened could have triggered a relayer pass that signs and spends the operator's XLM",
+      "fix": "writes now require a constant-time compared operator token and refuse to run at all when no token is configured; CORS reflects an origin allowlist instead of '*'; the relay runs one pass at a time with a cooldown"
+    },
+    {
+      "id": "stellar-toml-advertised-a-fake-issuer",
+      "found": "the discovery document other people's software reads declared the wrapped asset with the placeholder issuer GCEXAMPLEISSUERxxxx and also listed USDC, an asset this deployment does not issue",
+      "fix": "the issuer is the real account, the phantom currency is gone, and the entry now carries status, conditions and an explicit note that this is a testnet demonstration asset"
     }
   ],
   "negative_probes": {

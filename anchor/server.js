@@ -5,6 +5,42 @@ const { execFile } = require('child_process');
 
 const PORT = process.env.PORT || 8081;
 const SIM_URL = process.env.SIM_URL || 'http://localhost:8080';
+
+// ---------------------------------------------------------------------------
+// Hardening configuration
+//
+// This facade is the integration surface of the whole system, so it is also
+// the part most worth attacking. Three rules follow from that:
+//
+//   1. Reading is public. Anything that only observes the system is served to
+//      anyone, because a verifier that cannot be read is not a verifier.
+//   2. Writing is never public. Every endpoint that can move value or spend
+//      fees requires an operator token, and refuses to run at all when no
+//      token is configured. A capability that is switched on by accident is
+//      worse than one that is switched off.
+//   3. Every input is validated before it reaches the relayer, the RPC or the
+//      filesystem. Untrusted input never becomes an argument in a child
+//      process.
+// ---------------------------------------------------------------------------
+
+// Extra origins allowed to call this facade from a browser. Same-origin is
+// always allowed. A literal '*' is honoured only for the public read surface.
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '')
+  .split(',')
+  .map((value) => value.trim())
+  .filter(Boolean);
+const PUBLIC_ORIGIN = process.env.PUBLIC_ORIGIN || '';
+
+// The operator token guards every mutating endpoint. No token means no writes.
+const OPERATOR_TOKEN = (process.env.OPERATOR_TOKEN || '').trim();
+
+// Cost controls on the one endpoint that spends money.
+const RELAY_COOLDOWN_MS = Number(process.env.RELAY_COOLDOWN_MS || 30000);
+const RELAY_TIMEOUT_MS = Number(process.env.RELAY_TIMEOUT_MS || 180000);
+let relayInFlight = false;
+let lastRelayFinishedAt = 0;
+
+const TX_HASH = /^[0-9a-f]{64}$/;
 const REGISTRY_ID =
   process.env.REGISTRY_ID ||
   'CCXJDQMTJUGXKNFOQPC25IYVOAVWDMLJBNQYX75MAREHV7MZMU5OSEN4'; // testnet
@@ -21,15 +57,103 @@ const ISSUER =
   'GBYFDKP4KLQ575HTJRDTHF4HUIVXAQLJNEZMWYJ5HBY3C3GDSPX5H4FR'; // testnet
 const RPC_URL = process.env.RPC_URL || 'https://soroban-testnet.stellar.org';
 
-function jsonResponse(res, obj, status=200) {
-  res.writeHead(status, {'Content-Type':'application/json', 'Access-Control-Allow-Origin':'*', 'Access-Control-Allow-Methods':'GET, POST, OPTIONS', 'Access-Control-Allow-Headers':'Content-Type'});
+function allowedOrigin(req) {
+  const origin = req.headers.origin;
+  if (!origin) return null;
+  const host = req.headers.host;
+  if (PUBLIC_ORIGIN && origin === PUBLIC_ORIGIN) return origin;
+  if (host && (origin === `http://${host}` || origin === `https://${host}`)) return origin;
+  if (ALLOWED_ORIGINS.includes(origin)) return origin;
+  return null;
+}
+
+function securityHeaders(res) {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('X-Frame-Options', 'DENY');
+}
+
+function cors(res, req) {
+  const origin = allowedOrigin(req);
+  // A public read is open; a caller that is not on the allowlist simply does
+  // not get a CORS grant, and the browser blocks the cross-site mutation.
+  res.setHeader('Vary', 'Origin');
+  res.setHeader('Access-Control-Allow-Origin', origin || '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Max-Age', '600');
+}
+
+function jsonResponse(res, obj, status = 200, req = null) {
+  securityHeaders(res);
+  if (req) cors(res, req);
+  else res.setHeader('Access-Control-Allow-Origin', '*');
+  res.writeHead(status, {'Content-Type': 'application/json; charset=utf-8'});
   res.end(JSON.stringify(obj, null, 2));
 }
 
-function cors(res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+function textResponse(res, body, status = 200, contentType = 'text/plain; charset=utf-8') {
+  securityHeaders(res);
+  res.writeHead(status, {'Content-Type': contentType, 'Access-Control-Allow-Origin': '*'});
+  res.end(body);
+}
+
+/** Timing-safe comparison, so a wrong token does not leak its prefix. */
+function tokenMatches(provided) {
+  if (!OPERATOR_TOKEN || !provided) return false;
+  const a = Buffer.from(provided);
+  const b = Buffer.from(OPERATOR_TOKEN);
+  if (a.length !== b.length) return false;
+  return require('crypto').timingSafeEqual(a, b);
+}
+
+function isOperator(req) {
+  const header = req.headers.authorization || '';
+  const bearer = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
+  const headerToken = req.headers['x-lumen-operator'] || '';
+  return tokenMatches(bearer) || tokenMatches(String(headerToken));
+}
+
+/** Writes require an operator token. Read-only endpoints never call this. */
+function requireOperator(req, res) {
+  if (!OPERATOR_TOKEN) {
+    jsonResponse(res, {
+      error: 'writes_disabled',
+      why: 'no OPERATOR_TOKEN is configured, so this facade refuses every mutating request',
+      fix: 'set OPERATOR_TOKEN (and send it as Authorization: Bearer <token>) to enable writes',
+    }, 503, req);
+    return false;
+  }
+  if (!isOperator(req)) {
+    jsonResponse(res, {error: 'unauthorized', why: 'a valid operator token is required'}, 401, req);
+    return false;
+  }
+  return true;
+}
+
+/** Integers only, bounded, before anything is handed to the relayer. */
+function parseHeight(value) {
+  if (value === null || value === undefined || value === '') return {ok: true, height: null};
+  if (!/^\d{1,9}$/.test(String(value))) return {ok: false};
+  const height = Number(value);
+  if (height < 1) return {ok: false};
+  return {ok: true, height};
+}
+
+function capabilities() {
+  return {
+    reads: {status: 'enabled', note: 'the live deployment manifest, balances, and the audit record are public'},
+    relay: {
+      enabled: Boolean(OPERATOR_TOKEN) && process.env.LUMEN_ALLOW_RELAY === '1',
+      operator_token_required: Boolean(OPERATOR_TOKEN),
+      requires: 'OPERATOR_TOKEN and LUMEN_ALLOW_RELAY=1',
+      note: 'runs one relayer pass; it signs a transaction and spends fees',
+    },
+    wallet_paths: {
+      burn_and_relay: 'signed by the end user in the browser through Freighter',
+      inbound_mint: 'signed by the relayer, never by the end user',
+    },
+  };
 }
 
 
@@ -90,10 +214,31 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  securityHeaders(res);
+  cors(res, req);
+
+  if (req.method !== 'GET' && req.method !== 'POST') {
+    jsonResponse(res, {error: 'method_not_allowed'}, 405, req);
+    return;
+  }
+
   if (req.url === '/.well-known/stellar.toml' || req.url === '/stellar.toml') {
+    // Discovery must be correct, because other people's software reads it.
     const toml = fs.readFileSync(path.join(__dirname, 'stellar.toml'), 'utf8');
-    res.writeHead(200, {'Content-Type':'text/plain', 'Access-Control-Allow-Origin':'*'});
-    res.end(toml);
+    textResponse(res, toml);
+    return;
+  }
+
+  if (req.url === '/capabilities') {
+    // The UI gates its own controls on this, so a button that would fail is
+    // never shown as if it worked.
+    jsonResponse(res, {
+      ...capabilities(),
+      registry: REGISTRY_ID,
+      gateway: GATEWAY_ID,
+      token: TOKEN_ID,
+      network: process.env.STELLAR_NETWORK || 'testnet',
+    }, 200, req);
     return;
   }
 
@@ -147,18 +292,50 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.url.startsWith('/relay')) {
-    if (process.env.LUMEN_ALLOW_RELAY !== '1') {
-      jsonResponse(res, {
-        error: 'relay endpoint disabled',
-        why: 'this endpoint makes the relayer sign a transaction and spend XLM, so it is opt-in',
-        enable: 'LUMEN_ALLOW_RELAY=1 with the relayer binary built at target/debug/relayer',
-      }, 403);
+    if (req.method !== 'POST') {
+      jsonResponse(res, {error: 'method_not_allowed', why: 'the relay endpoint is POST-only'}, 405, req);
       return;
     }
-    const url = new URL(req.url, `http://${req.headers.host}`);
-    const height = url.searchParams.get('height');
-    const result = await runRelayer(height ? Number(height) : null);
-    jsonResponse(res, result, result.ok ? 200 : 500);
+    if (process.env.LUMEN_ALLOW_RELAY !== '1') {
+      jsonResponse(res, {
+        error: 'relay_disabled',
+        why: 'this endpoint makes the relayer sign a transaction and spend fees, so it is opt-in',
+        enable: 'LUMEN_ALLOW_RELAY=1 together with OPERATOR_TOKEN',
+      }, 403, req);
+      return;
+    }
+    if (!requireOperator(req, res)) return;
+
+    const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+    const parsed = parseHeight(url.searchParams.get('height'));
+    if (!parsed.ok) {
+      jsonResponse(res, {error: 'invalid_height', why: 'height must be a positive integer'}, 400, req);
+      return;
+    }
+
+    // One pass at a time, with a cooldown. Without this, a caller could start
+    // many concurrent relayer runs and drain the operator account.
+    if (relayInFlight) {
+      jsonResponse(res, {error: 'relay_busy', why: 'a relayer pass is already running'}, 429, req);
+      return;
+    }
+    const since = Date.now() - lastRelayFinishedAt;
+    if (lastRelayFinishedAt && since < RELAY_COOLDOWN_MS) {
+      jsonResponse(res, {
+        error: 'relay_cooldown',
+        why: `wait ${Math.ceil((RELAY_COOLDOWN_MS - since) / 1000)}s before the next pass`,
+      }, 429, req);
+      return;
+    }
+
+    relayInFlight = true;
+    try {
+      const result = await runRelayer(parsed.height);
+      jsonResponse(res, result, result.ok ? 200 : 500, req);
+    } finally {
+      relayInFlight = false;
+      lastRelayFinishedAt = Date.now();
+    }
     return;
   }
 
@@ -274,8 +451,15 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.url.startsWith('/transactions')) {
-    const url = new URL(req.url, `http://${req.headers.host}`);
-    const id = url.searchParams.get('id') || 'unknown';
+    const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+    const id = (url.searchParams.get('id') || '').toLowerCase();
+    if (!TX_HASH.test(id)) {
+      jsonResponse(res, {
+        error: 'invalid_id',
+        why: 'id must be a 32-byte transaction hash in lower-case hex',
+      }, 400, req);
+      return;
+    }
     jsonResponse(res, {
       id,
       status: "metadata_only; inspect the linked explorer transaction for the signed receipt",
@@ -323,8 +507,8 @@ const server = http.createServer(async (req, res) => {
       account,
       how: "1. Lock on source chain via POST /lock on simulator, 2. Relayer submits finality proof to Soroban (real BLS aggregate + Merkle), 3. Gateway mints wSRC to your Stellar account after HWM and payload_hash re-derive checks",
       steps: [
-        `POST ${SIM_URL}/lock {amount, recipient: "${account}", sender: "${account}"}`,
-        `GET ${SIM_URL}/proof?height=latest&kind=bls (real BLS aggregate, demo 2-of-3 keys)`,
+        'POST {source}/lock {amount, recipient, sender} on the source-chain adapter',
+        'GET {source}/proof?height=latest&kind=bls (real BLS aggregate, demo 2-of-3 keys)',
         `Submit to finality_registry.submit_finality_evidence_bls (on_curve, in_subgroup, hash_to_g1)`,
         `Optional hardened: submit_bls_hardened with full pairing e(sig,G2_gen)*e(-H,pubkey)==1`,
         `Call settlement_gateway.finalize_inbound with CrossDomainMessage, Merkle proof, asset, amount, recipient (HWM check, payload_hash re-derive, Merkle verification)`,
@@ -335,7 +519,7 @@ const server = http.createServer(async (req, res) => {
       gateway: GATEWAY_ID,
       rpc_url: RPC_URL,
       explorer: `https://stellar.expert/explorer/testnet/contract/${GATEWAY_ID}`,
-      note: "Anchor does not custody bridge keys. Mint authority is in gateway contract. BLS uses the real aggregate path when deployed; the checked-in ZK fixture remains development-only until its source root is bound. This checkout is not live until contract IDs and receipts are configured."
+      note: "This facade holds no custody and no mint authority: the mint authority is the gateway contract. The BLS lane is the live one; the Groth16 lane proves a quorum and a root binding, not a signature, so settlement never anchors on it. The source side is a local simulator in this deployment, which is stated everywhere it matters."
     });
     return;
   }
@@ -373,5 +557,7 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`  simulator: ${SIM_URL}`);
   console.log(`  registry: ${REGISTRY_ID}`);
   console.log(`  gateway: ${GATEWAY_ID}`);
-  console.log(`  Hardened: real BLS aggregate, Merkle tree, HWM, Groth16 bn254, SAC set_admin`);
+  console.log(`  writes: ${OPERATOR_TOKEN ? 'operator token required' : 'DISABLED (no OPERATOR_TOKEN)'}`);
+  console.log(`  relay:  ${process.env.LUMEN_ALLOW_RELAY === '1' ? `enabled, ${RELAY_COOLDOWN_MS}ms cooldown` : 'disabled'}`);
+  console.log(`  hints:  real BLS aggregate, Merkle tree, nonce HWM, Groth16 bn254, SAC set_admin`);
 });

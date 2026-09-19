@@ -1,29 +1,35 @@
+# Lumen Gate - SEP-1 stellar.toml
+#
+# This file is read by other people's software, so every value in it has to be
+# a fact and not an intention. It describes a testnet deployment built for a
+# hackathon: it is not a financial anchor, it holds no customer funds, and it
+# issues nothing of value.
 VERSION="2.0.0"
 NETWORK_PASSPHRASE="Test SDF Network ; September 2015"
 
+ACCOUNTS=["GBYFDKP4KLQ575HTJRDTHF4HUIVXAQLJNEZMWYJ5HBY3C3GDSPX5H4FR"]
+
 [DOCUMENTATION]
-ORG_NAME="Lumen Gate Anchor"
+ORG_NAME="Lumen Gate"
 ORG_URL="https://github.com/lubothebook/lumen-gate"
-ORG_DESCRIPTION="Anchor-attached settlement layer — neutral finality-proof infrastructure for anchors that don't want to run their own bridges. Issues wSRC backed by cryptographic finality proofs verified on Soroban."
+ORG_DESCRIPTION="Proof-driven settlement for Stellar Soroban. Finality of a source chain is verified on-chain by BLS12-381 aggregate signatures or a fixed-statement Groth16/BN254 proof, and the gateway releases the wrapped asset only against a verified Merkle proof of the specific source event. Testnet deployment; not an audited bridge and not a financial anchor."
+
+[[PRINCIPALS]]
+name="Lumen Gate Team"
+email="team@lumen-gate.dev"
 
 [[CURRENCIES]]
 code="wSRC"
-issuer="GCEXAMPLEISSUERxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+issuer="GBYFDKP4KLQ575HTJRDTHF4HUIVXAQLJNEZMWYJ5HBY3C3GDSPX5H4FR"
 display_decimals=7
-desc="Wrapped Source Chain asset, minted only after BLS12-381 or Groth16 BN254 finality proof verified on Soroban. SAC admin is settlement_gateway contract."
+name="Wrapped Source Asset"
+desc="Minted only after on-chain finality verification plus a per-message Merkle proof. The Stellar Asset Contract's admin is the settlement gateway contract, so mint authority is code, not a key held by this service."
 anchor_asset_type="crypto"
 is_asset_anchored=true
+attestation_of_reserve=false
 status="test"
+conditions="Testnet demonstration asset. It is not redeemable for anything of value and carries no reserve attestation."
 
-[[CURRENCIES]]
-code="USDC"
-issuer="GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5"
-display_decimals=7
-anchor_asset_type="crypto"
-
-[VALIDATORS]
-# Anchor does not run source chain validators, it relies on finality proofs
-
-[PRINCIPALS]
-name="Lumen Gate Team"
-email="team@lumengate.example"
+# Deliberately absent: any currency this deployment does not actually issue.
+# A stellar.toml that advertises assets the service cannot deliver is worse
+# than an empty one, because other people's software acts on it.

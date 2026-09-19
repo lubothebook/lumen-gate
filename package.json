@@ -1,0 +1,15 @@
+{
+  "name": "lumen-gate",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Lumen Gate - serverless API layer (Vercel functions) for the verification and operator console.",
+  "engines": {
+    "node": "20.x"
+  },
+  "scripts": {
+    "check:api": "node --check api/status.js && node --check api/audit.js && node --check api/finality.js && node --check api/relay.js && node --check api/_shared.js"
+  },
+  "dependencies": {
+    "@stellar/stellar-sdk": "^12.3.0"
+  }
+}

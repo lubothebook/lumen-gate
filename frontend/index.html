@@ -1,521 +1,389 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="theme-color" content="#050505" />
-<meta name="description" content="Lumen Gate is an anchor-attached, proof-driven settlement layer for Stellar Soroban." />
-<title>Lumen Gate — Proof-driven settlement for Stellar</title>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lumen Gate — proof-driven settlement on Stellar</title>
+<meta name="description" content="Lumen Gate verifies source-chain finality on Stellar Soroban with BLS12-381 aggregate signatures and a fixed-statement Groth16 proof, then releases a wrapped asset against a Merkle proof of the exact source event." />
+<meta name="color-scheme" content="dark" />
+<meta property="og:title" content="Lumen Gate" />
+<meta property="og:description" content="Move value across domains. Keep the receipt on-chain." />
+<meta property="og:image" content="/lumen-gate-banner.png" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='11' fill='none' stroke='white' stroke-width='2'/%3E%3Cpath d='M6 24 L26 8' stroke='white' stroke-width='2'/%3E%3C/svg%3E" />
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap');
-  :root {
-    --bg: #050505;
-    --panel: #0d0d0d;
-    --panel-2: #111;
-    --line: rgba(255,255,255,.13);
-    --line-soft: rgba(255,255,255,.07);
-    --ink: #f6f6f1;
-    --muted: #9b9b96;
-    --dim: #666660;
-    --lime: #d9ff63;
-    --blue: #83b8ff;
-    --danger: #ff8d8d;
-    --max: 1180px;
+  :root{
+    --bg:#06060a; --bg-elev:#0a0b10; --panel:#0d0e14; --panel-2:#12131a;
+    --line:rgba(255,255,255,.09); --line-strong:rgba(255,255,255,.18);
+    --text:#f4f5f7; --muted:#8b909a; --dim:#5d626c;
+    --ok:#49e0a3; --warn:#e9c46a; --bad:#ff6b6b; --info:#7cc5ff;
+    --radius:14px; --radius-sm:9px;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+    --shadow:0 1px 0 rgba(255,255,255,.04) inset, 0 24px 60px -30px rgba(0,0,0,.9);
   }
-  * { box-sizing: border-box; }
-  html { scroll-behavior: smooth; }
-  body {
-    margin: 0; color: var(--ink); background:
-      radial-gradient(circle at 70% 8%, rgba(217,255,99,.08), transparent 28rem),
-      var(--bg);
-    font-family: 'Manrope', Inter, system-ui, sans-serif;
-    -webkit-font-smoothing: antialiased;
-  }
-  a { color: inherit; text-decoration: none; }
-  .mono, code, .log, .eyebrow, .badge, .status-chip, .metric-label { font-family: 'DM Mono', ui-monospace, SFMono-Regular, monospace; }
-  .shell { width: min(var(--max), calc(100% - 48px)); margin: 0 auto; }
-  .topbar {
-    height: 78px; display: flex; align-items: center; justify-content: space-between;
-    border-bottom: 1px solid var(--line-soft); position: sticky; top: 0; z-index: 10;
-    background: rgba(5,5,5,.82); backdrop-filter: blur(18px);
-  }
-  .topmark { display: flex; align-items: center; gap: 12px; font-weight: 800; letter-spacing: -.04em; }
-  .topmark-orbit { width: 28px; height: 28px; border: 2px solid var(--ink); border-radius: 50%; position: relative; transform: rotate(-27deg); }
-  .topmark-orbit:before, .topmark-orbit:after { content: ''; position: absolute; height: 4px; width: 32px; left: -4px; top: 9px; background: var(--ink); border-radius: 4px; }
-  .topmark-orbit:after { top: 15px; }
-  nav { display: flex; gap: 25px; align-items: center; color: var(--muted); font-size: 13px; }
-  nav a:hover { color: var(--ink); }
-  .nav-cta { border: 1px solid var(--line); border-radius: 999px; padding: 10px 15px; color: var(--ink); }
-  .hero { padding: 72px 0 56px; position: relative; }
-  .hero-grid { display: grid; grid-template-columns: 1.05fr .95fr; gap: 56px; align-items: center; }
-  .eyebrow { color: var(--lime); font-size: 11px; letter-spacing: .16em; text-transform: uppercase; margin-bottom: 20px; }
-  h1 { font-size: clamp(42px, 6.4vw, 82px); line-height: .98; letter-spacing: -.075em; max-width: 700px; margin: 0 0 25px; font-weight: 800; }
-  h1 em { font-style: normal; color: var(--lime); }
-  .hero-copy { color: #bdbdb7; font-size: 17px; line-height: 1.75; max-width: 600px; margin: 0; }
-  .hero-actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 31px; }
-  button, .button { border: 0; border-radius: 999px; padding: 12px 18px; background: var(--ink); color: #080808; font: 700 13px 'Manrope', sans-serif; cursor: pointer; transition: transform .2s ease, background .2s ease, border-color .2s ease; }
-  button:hover, .button:hover { transform: translateY(-2px); }
-  button:disabled { opacity: .5; cursor: not-allowed; transform: none; }
-  .button-quiet, button.secondary { color: var(--ink); background: transparent; border: 1px solid var(--line); }
-  .button-quiet:hover, button.secondary:hover { border-color: rgba(255,255,255,.36); background: rgba(255,255,255,.05); }
-  .hero-art { border: 1px solid var(--line); border-radius: 24px; padding: 10px; background: rgba(255,255,255,.025); box-shadow: 0 30px 100px rgba(0,0,0,.4); }
-  .hero-art img { display: block; width: 100%; border-radius: 16px; }
-  .hero-note { display: flex; gap: 10px; margin-top: 17px; color: var(--dim); font-size: 11px; line-height: 1.5; }
-  .pulse { width: 7px; height: 7px; flex: 0 0 7px; border-radius: 50%; background: var(--lime); margin-top: 5px; box-shadow: 0 0 0 5px rgba(217,255,99,.08); }
-  .metrics { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
-  .metric { padding: 24px 18px 25px 0; border-right: 1px solid var(--line); margin-right: 18px; }
-  .metric:last-child { border-right: 0; margin-right: 0; }
-  .metric-value { font-size: 30px; font-weight: 800; letter-spacing: -.07em; }
-  .metric-label { color: var(--dim); display: block; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; margin-top: 7px; }
-  .section { padding: 105px 0 0; }
-  .section-heading { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 31px; }
-  .section-heading h2 { margin: 0; font-size: clamp(29px, 4vw, 48px); letter-spacing: -.065em; line-height: 1.05; max-width: 640px; }
-  .section-heading p { margin: 0; color: var(--muted); line-height: 1.6; max-width: 400px; font-size: 14px; }
-  .eyebrow.dark { color: var(--dim); margin-bottom: 12px; }
-  .why-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
-  .why-card, .flow-card, .console-card { background: linear-gradient(145deg, rgba(255,255,255,.055), rgba(255,255,255,.018)); border: 1px solid var(--line-soft); border-radius: 17px; padding: 22px; }
-  .why-card { min-height: 220px; display: flex; flex-direction: column; justify-content: space-between; }
-  .card-number { color: var(--lime); font: 11px 'DM Mono', monospace; }
-  .why-card h3 { margin: 30px 0 10px; font-size: 17px; letter-spacing: -.035em; }
-  .why-card p { color: var(--muted); font-size: 13px; line-height: 1.6; margin: 0; }
-  .protocol-strip { margin-top: 10px; padding: 16px 20px; display: flex; align-items: center; justify-content: space-between; gap: 20px; border: 1px solid rgba(217,255,99,.2); background: rgba(217,255,99,.04); border-radius: 13px; color: var(--muted); font-size: 12px; }
-  .protocol-strip strong { color: var(--lime); font-weight: 600; }
-  .flow { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
-  .flow-card { min-height: 173px; position: relative; }
-  .flow-card:not(:last-child):after { content: '→'; position: absolute; right: -17px; top: 50%; color: var(--lime); z-index: 2; font-size: 20px; }
-  .flow-card.reverse { border-color: rgba(131,184,255,.25); }
-  .flow-card.reverse .card-number { color: var(--blue); }
-  .flow-card h3 { font-size: 15px; margin: 38px 0 9px; }
-  .flow-card p { color: var(--muted); font-size: 12px; line-height: 1.55; margin: 0; }
-  .console-wrap { margin-top: 105px; padding: 70px 0 100px; background: linear-gradient(180deg, transparent, rgba(255,255,255,.025)); border-top: 1px solid var(--line-soft); }
-  .console-intro { display: flex; justify-content: space-between; align-items: end; gap: 25px; margin-bottom: 28px; }
-  .console-intro p { max-width: 500px; color: var(--muted); line-height: 1.6; font-size: 14px; }
-  .status-chip { display: inline-flex; align-items: center; gap: 8px; border: 1px solid rgba(255,255,255,.12); border-radius: 999px; padding: 7px 10px; color: var(--muted); font-size: 10px; white-space: nowrap; }
-  .status-chip .dot { margin: 0; }
-  .console-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
-  .console-card { padding: 24px; }
-  .console-card.wide { grid-column: 1 / -1; }
-  .console-card h2 { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 0 0 17px; }
-  .console-card h2 span { color: var(--dim); margin-right: 7px; }
-  .field-label { display: block; color: var(--dim); font: 10px 'DM Mono', monospace; letter-spacing: .05em; text-transform: uppercase; margin: 13px 0 7px; }
-  input { width: 100%; padding: 12px 13px; color: var(--ink); background: rgba(0,0,0,.35); border: 1px solid var(--line); border-radius: 9px; font: 13px 'DM Mono', monospace; outline: none; }
-  input:focus { border-color: var(--lime); box-shadow: 0 0 0 3px rgba(217,255,99,.08); }
-  .button-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 15px; }
-  .button-row button { border-radius: 8px; padding: 10px 12px; font-size: 12px; }
-  .button-row .primary { background: var(--lime); }
-  .log { background: rgba(0,0,0,.35); border: 1px solid var(--line-soft); border-radius: 9px; padding: 12px; min-height: 84px; max-height: 218px; overflow: auto; white-space: pre-wrap; color: #bdbdb7; font-size: 11px; line-height: 1.55; }
-  .log.tall { height: 166px; }
-  .log.compact { min-height: 55px; }
-  .identity-list { display: grid; gap: 8px; margin-top: 17px; }
-  .identity-row { display: flex; justify-content: space-between; gap: 12px; color: var(--dim); font-size: 11px; }
-  .identity-row span:last-child { color: var(--muted); text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 72%; }
-  .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; background: var(--danger); vertical-align: middle; }
-  .dot.green { background: var(--lime); box-shadow: 0 0 0 4px rgba(217,255,99,.08); }
-  .dot.yellow { background: #f3cb63; }
-  .dot.red { background: var(--danger); }
-  .proof-lanes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 14px; }
-  .proof-lane { border: 1px solid var(--line-soft); border-radius: 10px; padding: 12px; }
-  .proof-lane strong { display: block; font-size: 13px; margin-bottom: 4px; }
-  .proof-lane small { color: var(--dim); font-size: 10px; line-height: 1.4; }
-  .footer { border-top: 1px solid var(--line-soft); padding: 28px 0 40px; display: flex; justify-content: space-between; gap: 20px; color: var(--dim); font-size: 11px; }
-  .footer a { color: var(--muted); }
-  @media (max-width: 900px) {
-    .hero-grid { grid-template-columns: 1fr; gap: 35px; }
-    .why-grid { grid-template-columns: repeat(2, 1fr); }
-    .flow { grid-template-columns: repeat(2, 1fr); }
-    .flow-card:not(:last-child):after { display: none; }
-  }
-  @media (max-width: 650px) {
-    .shell { width: min(100% - 30px, var(--max)); }
-    .topbar { height: 65px; }
-    nav a:not(.nav-cta) { display: none; }
-    .hero { padding-top: 48px; }
-    .hero-art { padding: 5px; }
-    .metrics { grid-template-columns: repeat(2, 1fr); }
-    .metric { margin: 0; padding: 18px 10px 18px 0; border-bottom: 1px solid var(--line-soft); }
-    .metric:nth-child(2) { border-right: 0; }
-    .section { padding-top: 70px; }
-    .section-heading, .console-intro { display: block; }
-    .section-heading p, .console-intro p { margin-top: 16px; }
-    .why-grid, .console-grid, .proof-lanes { grid-template-columns: 1fr; }
-    .console-card.wide { grid-column: auto; }
-    .flow { grid-template-columns: 1fr; }
-    .flow-card { min-height: auto; }
-    .protocol-strip, .footer { display: block; }
-    .protocol-strip span { display: block; margin-top: 6px; }
-    .footer > * + * { margin-top: 12px; }
-  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased}
+  body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+    background:radial-gradient(900px 500px at 12% -10%,rgba(124,197,255,.07),transparent 60%),
+               radial-gradient(700px 400px at 92% 4%,rgba(73,224,163,.05),transparent 60%)}
+  a{color:var(--text);text-decoration:none;border-bottom:1px solid var(--line-strong)}
+  a:hover{border-color:var(--text)}
+  code,kbd{font-family:var(--mono);font-size:.86em}
+  .skip{position:absolute;left:-9999px}
+  .skip:focus{left:12px;top:12px;z-index:50;background:var(--panel);padding:8px 12px;border-radius:8px;border:1px solid var(--line-strong)}
+  .shell{max-width:1240px;margin:0 auto;padding:0 24px;position:relative;z-index:1}
+
+  /* ---------- header ---------- */
+  header.top{position:sticky;top:0;z-index:30;backdrop-filter:blur(14px);
+    background:linear-gradient(to bottom,rgba(6,6,10,.92),rgba(6,6,10,.72));border-bottom:1px solid var(--line)}
+  .top-inner{display:flex;align-items:center;gap:22px;height:64px}
+  .brand{display:flex;align-items:center;gap:11px;font-weight:600;letter-spacing:.34em;font-size:13px;text-transform:uppercase}
+  .brand svg{flex:0 0 auto}
+  nav.main{display:flex;gap:4px;margin-left:8px}
+  nav.main button{background:none;border:0;color:var(--muted);font:inherit;font-size:13.5px;padding:8px 12px;border-radius:8px;cursor:pointer}
+  nav.main button:hover{color:var(--text);background:rgba(255,255,255,.04)}
+  nav.main button[aria-current="page"]{color:var(--text);background:rgba(255,255,255,.07)}
+  .top-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+
+  /* ---------- primitives ---------- */
+  .pill{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;
+    padding:5px 10px;border:1px solid var(--line);border-radius:999px;color:var(--muted);background:rgba(255,255,255,.02);white-space:nowrap}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--dim);display:inline-block}
+  .dot.ok{background:var(--ok);box-shadow:0 0 0 3px rgba(73,224,163,.14)}
+  .dot.warn{background:var(--warn);box-shadow:0 0 0 3px rgba(233,196,106,.14)}
+  .dot.bad{background:var(--bad);box-shadow:0 0 0 3px rgba(255,107,107,.14)}
+  .dot.info{background:var(--info);box-shadow:0 0 0 3px rgba(124,197,255,.14)}
+  .btn{font:inherit;font-size:13.5px;padding:9px 15px;border-radius:9px;border:1px solid var(--line-strong);
+    background:rgba(255,255,255,.03);color:var(--text);cursor:pointer;transition:.15s}
+  .btn:hover{background:rgba(255,255,255,.07)}
+  .btn:focus-visible{outline:2px solid var(--info);outline-offset:2px}
+  .btn.primary{background:var(--text);color:#08080c;border-color:var(--text);font-weight:600}
+  .btn.primary:hover{background:#fff}
+  .btn[disabled]{opacity:.45;cursor:not-allowed}
+  .btn.small{font-size:12.5px;padding:6px 11px}
+  .card{background:linear-gradient(180deg,var(--panel),var(--bg-elev));border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}
+  .card .hd{display:flex;align-items:center;gap:10px;padding:16px 18px;border-bottom:1px solid var(--line)}
+  .card .hd h3{margin:0;font-size:14px;font-weight:600;letter-spacing:.01em}
+  .card .hd .n{font-family:var(--mono);font-size:11.5px;color:var(--dim)}
+  .card .bd{padding:18px}
+  .eyebrow{font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--dim)}
+  .grid{display:grid;gap:16px}
+  .cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .cols-3{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .cols-4{grid-template-columns:repeat(4,minmax(0,1fr))}
+  @media (max-width:980px){.cols-3,.cols-4{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  @media (max-width:680px){.cols-2,.cols-3,.cols-4{grid-template-columns:1fr}nav.main{display:none}}
+  .mono{font-family:var(--mono)}
+  .muted{color:var(--muted)}
+  .dim{color:var(--dim)}
+  .sm{font-size:13px}
+  .xs{font-size:12px}
+  .kv{display:grid;grid-template-columns:150px 1fr;gap:6px 14px;font-size:13px}
+  .kv dt{color:var(--dim)}
+  .kv dd{margin:0;word-break:break-all;font-family:var(--mono);font-size:12.5px}
+  .stat{padding:16px 18px;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel)}
+  .stat .label{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+  .stat .value{font-size:22px;font-weight:600;margin-top:6px;letter-spacing:-.01em}
+  .stat .sub{font-size:12.5px;color:var(--muted);margin-top:2px;font-family:var(--mono)}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{text-align:left;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);font-weight:500;
+    padding:9px 12px;border-bottom:1px solid var(--line)}
+  td{padding:11px 12px;border-bottom:1px solid rgba(255,255,255,.05);vertical-align:top}
+  tr:last-child td{border-bottom:0}
+  .log{font-family:var(--mono);font-size:12.5px;line-height:1.7;background:#08090d;border:1px solid var(--line);
+    border-radius:var(--radius-sm);padding:12px 14px;max-height:260px;overflow:auto;white-space:pre-wrap;word-break:break-word;color:#c9ced7}
+  .log .ok{color:var(--ok)} .log .bad{color:var(--bad)} .log .warn{color:var(--warn)} .log .info{color:var(--info)}
+  .field{display:block;margin-bottom:14px}
+  .field span{display:block;font-size:11.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);margin-bottom:6px}
+  input,select{width:100%;background:#08090d;border:1px solid var(--line-strong);color:var(--text);border-radius:9px;
+    padding:10px 12px;font-family:var(--mono);font-size:13px}
+  input:focus,select:focus{outline:2px solid rgba(124,197,255,.5);outline-offset:1px;border-color:transparent}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .chip{font-family:var(--mono);font-size:11.5px;border:1px solid var(--line);border-radius:6px;padding:3px 7px;color:var(--muted);background:rgba(255,255,255,.02)}
+  .explorer{font-family:var(--mono);font-size:12px;border-bottom:1px dashed var(--line-strong)}
+  .hr{height:1px;background:var(--line);margin:18px 0}
+  .note{border-left:2px solid var(--line-strong);padding:10px 0 10px 14px;color:var(--muted);font-size:13px}
+  .note.warn{border-color:var(--warn)} .note.bad{border-color:var(--bad)} .note.ok{border-color:var(--ok)}
+  .skel{background:linear-gradient(90deg,rgba(255,255,255,.05),rgba(255,255,255,.11),rgba(255,255,255,.05));
+    background-size:200% 100%;animation:sh 1.3s infinite;border-radius:6px;height:13px;display:inline-block;width:120px}
+  @keyframes sh{0%{background-position:200% 0}100%{background-position:-200% 0}}
+  @media (prefers-reduced-motion:reduce){.skel{animation:none}*{transition:none!important}}
+  h1{font-size:clamp(30px,4.6vw,54px);line-height:1.03;letter-spacing:-.035em;margin:0 0 14px;font-weight:600}
+  h2{font-size:clamp(20px,2.4vw,28px);letter-spacing:-.02em;margin:0 0 10px;font-weight:600}
+  h3{font-size:15px}
+  main{padding:34px 0 70px}
+  .hero{padding:44px 0 26px;border-bottom:1px solid var(--line)}
+  .hero p{color:var(--muted);font-size:16.5px;max-width:62ch}
+  section[hidden]{display:none}
+  .footer{border-top:1px solid var(--line);padding:22px 0;color:var(--dim);font-size:12.5px;display:flex;gap:18px;flex-wrap:wrap;justify-content:space-between}
+  dialog{border:1px solid var(--line-strong);background:var(--panel);color:var(--text);border-radius:var(--radius);padding:0;max-width:520px;width:92%}
+  dialog::backdrop{background:rgba(3,3,6,.72);backdrop-filter:blur(3px)}
+  .steps{display:grid;gap:0;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+  .step{display:grid;grid-template-columns:44px 1fr auto;gap:14px;align-items:start;padding:15px 16px;background:var(--panel);border-bottom:1px solid var(--line)}
+  .step:last-child{border-bottom:0}
+  .step .idx{width:26px;height:26px;border-radius:50%;border:1px solid var(--line-strong);display:grid;place-items:center;
+    font-family:var(--mono);font-size:12px;color:var(--muted)}
+  .step.done .idx{border-color:var(--ok);color:var(--ok)}
+  .step.active{background:var(--panel-2)}
+  .step h4{margin:0 0 3px;font-size:13.5px;font-weight:600}
+  .step p{margin:0;color:var(--muted);font-size:12.5px}
+  .mark{color:var(--ok);font-family:var(--mono);font-size:12px}
+  .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 </style>
 </head>
 <body>
-<header class="topbar">
-  <div class="shell" style="display:flex;align-items:center;justify-content:space-between;width:100%;">
-    <a class="topmark" href="#top" aria-label="Lumen Gate home"><span class="topmark-orbit"></span><span>Lumen Gate</span></a>
-    <nav aria-label="Main navigation">
-      <a href="#why-stellar">Why Stellar</a>
-      <a href="#architecture">Architecture</a>
-      <a href="#console">Live console</a>
-      <a class="nav-cta" href="https://github.com/lubothebook/lumen-gate" target="_blank" rel="noreferrer">Read the build ↗</a>
+<a class="skip" href="#view">Skip to content</a>
+
+<header class="top">
+  <div class="shell top-inner">
+    <span class="brand" aria-label="Lumen Gate">
+      <svg width="26" height="26" viewBox="0 0 32 32" aria-hidden="true">
+        <circle cx="16" cy="16" r="11" fill="none" stroke="currentColor" stroke-width="2"/>
+        <path d="M6 24 L26 8" stroke="currentColor" stroke-width="2"/>
+      </svg>
+      Lumen Gate
+    </span>
+    <nav class="main" aria-label="Sections">
+      <button data-nav="overview" aria-current="page">Overview</button>
+      <button data-nav="bridge">Bridge</button>
+      <button data-nav="redeem">Redeem</button>
+      <button data-nav="evidence">Evidence</button>
+      <button data-nav="about">About</button>
     </nav>
+    <div class="top-right">
+      <span class="pill" id="netPill"><span class="dot info"></span> loading network…</span>
+      <button class="btn small" id="operatorBtn" type="button">Operator</button>
+    </div>
   </div>
 </header>
-<main id="top">
-  <section class="hero shell">
-    <div class="hero-grid">
-      <div>
-        <div class="eyebrow">A neutral finality layer for the anchor economy</div>
-        <h1>Move value across domains.<br /><em>Move trust on-chain.</em></h1>
-        <p class="hero-copy">Lumen Gate gives Stellar anchors a verifiable settlement boundary: source-chain finality enters through a proof, Soroban makes the decision, and the asset only moves when the evidence checks out.</p>
-        <div class="hero-actions">
-          <a class="button" href="#console">Open the settlement console</a>
-          <a class="button button-quiet" href="#architecture">See the trust model ↓</a>
-        </div>
-        <div class="hero-note"><span class="pulse"></span><span>Testnet engineering demo. No “assume valid” branch. No production or gasless claim until receipts prove it.</span></div>
-      </div>
-      <div class="hero-art">
-        <img src="/lumen-gate-banner.png" alt="Lumen Gate wordmark" />
-        <div style="display:flex;justify-content:space-between;gap:12px;padding:14px 8px 4px;color:var(--dim);font-size:10px" class="mono"><span>ANCHOR-ATTACHED / SOROBAN-NATIVE</span><span>LG–01</span></div>
+
+<main class="shell" id="view">
+
+  <!-- ============================ OVERVIEW ============================ -->
+  <section id="view-overview" aria-labelledby="hero-h">
+    <div class="hero">
+      <div class="eyebrow">Stellar testnet · Soroban</div>
+      <h1 id="hero-h">Move value across domains.<br />Keep the receipt on-chain.</h1>
+      <p>Lumen Gate does not ask anyone to trust a server. Source-chain finality is verified inside a Soroban contract — by a BLS12-381 aggregate signature or a Groth16 proof — and the gateway releases the wrapped asset only against a Merkle proof of that exact source event.</p>
+      <div class="row" style="margin-top:20px">
+        <button class="btn primary" data-nav="bridge">Start a bridge</button>
+        <button class="btn" data-nav="evidence">Inspect the evidence</button>
+        <span class="pill" id="auditPill"><span class="dot"></span> audit</span>
       </div>
     </div>
-    <div class="metrics" style="margin-top:70px">
-      <div class="metric"><div class="metric-value">2</div><span class="metric-label">proof lanes: BLS + Groth16</span></div>
-      <div class="metric"><div class="metric-value">1</div><span class="metric-label">on-chain settlement decision</span></div>
-      <div class="metric"><div class="metric-value">↔</div><span class="metric-label">mint forward / unlock reverse</span></div>
-      <div class="metric"><div class="metric-value">0</div><span class="metric-label">assume-valid shortcuts</span></div>
-    </div>
-  </section>
 
-  <section id="why-stellar" class="section shell">
-    <div class="section-heading">
-      <div><div class="eyebrow dark">Why this belongs on Stellar</div><h2>Stellar has the rails.<br />Soroban can enforce the receipt.</h2></div>
-      <p>Anchors are already Stellar’s bridge to real-world value. Lumen Gate focuses on the missing coordination layer: making a source-chain settlement decision transparent, replay-safe and composable with Stellar assets.</p>
+    <div class="grid cols-4" style="margin-top:26px">
+      <div class="stat"><div class="label">Registry</div><div class="value" id="statRegistry">—</div><div class="sub" id="statRegistrySub">loading…</div></div>
+      <div class="stat"><div class="label">Last finalized source height</div><div class="value" id="statHeight">—</div><div class="sub" id="statHeightSub">read from the contract</div></div>
+      <div class="stat"><div class="label">Finality backing</div><div class="value" id="statSecurity">—</div><div class="sub" id="statSecuritySub">signature set</div></div>
+      <div class="stat"><div class="label">Self-audit</div><div class="value" id="statAudit">—</div><div class="sub" id="statAuditSub">rounds recorded</div></div>
     </div>
-    <div class="why-grid">
-      <article class="why-card"><span class="card-number">01 / RAILS</span><div><h3>Anchor-native by design</h3><p>Fits the SEP-1/6/24/31 surface instead of asking every anchor to become a validator operator.</p></div></article>
-      <article class="why-card"><span class="card-number">02 / CRYPTO</span><div><h3>Proofs where money moves</h3><p>BLS12-381 and BN254 verification are shaped for Soroban’s native cryptographic host functions.</p></div></article>
-      <article class="why-card"><span class="card-number">03 / EVIDENCE</span><div><h3>Receipts, not promises</h3><p>Events, transaction hashes, roots and heights become part of the settlement record an operator can inspect.</p></div></article>
-      <article class="why-card"><span class="card-number">04 / SAFETY</span><div><h3>Failure is a first-class result</h3><p>Bad signatures, roots, versions, proofs and replayed nonces are deliberately demonstrated as rejected states.</p></div></article>
-    </div>
-    <div class="protocol-strip"><strong>DESIGNED FOR THE STELLAR ECOSYSTEM</strong><span>Anchor metadata → Soroban registry → gateway → SAC asset → wallets, exchanges and payment rails</span></div>
-  </section>
 
-  <section id="architecture" class="section shell">
-    <div class="section-heading">
-      <div><div class="eyebrow dark">The settlement boundary</div><h2>One story. Two directions.<br />Every step accountable.</h2></div>
-      <p>The source simulator keeps the hackathon reproducible. The Stellar side is intentionally not mocked: the gateway, registry, SAC and RPC receipts are the target system.</p>
-    </div>
-    <div class="flow">
-      <article class="flow-card"><span class="card-number">01</span><h3>Lock</h3><p>Source event commits amount, recipient, height, root and message envelope.</p></article>
-      <article class="flow-card"><span class="card-number">02</span><h3>Prove</h3><p>Relayer carries BLS or Groth16 evidence with payload-derived checks.</p></article>
-      <article class="flow-card"><span class="card-number">03</span><h3>Verify</h3><p>Finality Registry rejects malformed, stale, mismatched or replayed evidence.</p></article>
-      <article class="flow-card"><span class="card-number">04</span><h3>Mint on Stellar</h3><p>Gateway controls the SAC authority only after the registry approves.</p></article>
-      <article class="flow-card reverse"><span class="card-number">05</span><h3>Burn → unlock</h3><p>Gateway emits canonical Bytes; the relayer delivers a one-time source unlock.</p></article>
-    </div>
-  </section>
-
-  <section id="console" class="console-wrap">
-    <div class="shell">
-      <div class="console-intro">
-        <div><div class="eyebrow dark">Operator console / live integration surface</div><h2 style="margin:0;font-size:clamp(29px,4vw,48px);letter-spacing:-.065em">Try the proof boundary.</h2></div>
-        <div><span class="status-chip"><span class="dot red" id="simDot"></span><span id="simUrl">/source-api</span></span><p>These are the live testnet contracts. Every address on this page is generated from the deployment manifest that the receipts were written against, not typed in by hand.</p></div>
-      </div>
-      <div class="console-grid">
-        <div class="console-card">
-          <h2><span>01</span> Wallet & network</h2>
-          <div id="walletStatus" class="log compact">Not connected</div>
-          <div class="button-row"><button id="connectBtn" class="primary">Connect Freighter</button><button id="faucetBtn" class="secondary">Fund via Friendbot</button></div>
-          <div class="identity-list">
-            <div class="identity-row"><span>Registry</span><span id="registryId">-</span></div>
-            <div class="identity-row"><span>Gateway</span><span id="gatewayId">-</span></div>
-            <div class="identity-row"><span>wSRC SAC</span><span id="tokenId">-</span></div>
+    <div class="grid cols-2" style="margin-top:16px">
+      <div class="card">
+        <div class="hd"><h3>Where the trust boundary is</h3><span class="n">the only diagram that matters</span></div>
+        <div class="bd">
+          <div class="steps">
+            <div class="step"><div class="idx">1</div><div><h4>Source chain</h4><p>A lock event is emitted. In this deployment the source chain is a deterministic simulator; its BLS signatures are real.</p></div><span class="chip mono">simulated</span></div>
+            <div class="step"><div class="idx">2</div><div><h4>Finality, verified on Stellar</h4><p>The registry checks the aggregate signature with the BN254/BLS host functions. A proof for another root is refused.</p></div><span class="chip mono">on-chain</span></div>
+            <div class="step"><div class="idx">3</div><div><h4>Per-message Merkle proof</h4><p>The gateway proves that this one event is inside the finalized event root, and re-derives the message id and payload hash.</p></div><span class="chip mono">on-chain</span></div>
+            <div class="step"><div class="idx">4</div><div><h4>Mint or release</h4><p>Nonce high-water mark blocks replays. The mint authority is the gateway contract — not a key held by this service.</p></div><span class="chip mono">on-chain</span></div>
           </div>
         </div>
-        <div class="console-card">
-          <h2><span>02</span> Source-chain simulator</h2>
-          <div id="simInfo" class="log tall">Loading...</div>
-          <div class="button-row"><button id="refreshSimBtn" class="secondary">Refresh state</button><button id="produceBlockBtn" class="secondary">Produce block</button></div>
-        </div>
-        <div class="console-card">
-          <h2><span>03</span> Lock → proof → mint</h2>
-          <label class="field-label" for="lockAmount">Amount / wSRC</label><input id="lockAmount" value="100" type="number" />
-          <label class="field-label" for="lockRecipient">Recipient on Stellar</label><input id="lockRecipient" placeholder="G..." />
-          <div class="button-row"><button id="lockBtn" class="primary">Create source lock</button><button id="lockBLSBtn" class="secondary">Fetch BLS</button><button id="lockZKBtn" class="secondary">Fetch ZK</button></div>
-          <div class="proof-lanes"><div class="proof-lane"><strong>BLS12-381</strong><small>Aggregate validator evidence / demo-only key set</small></div><div class="proof-lane"><strong>Groth16 / BN254</strong><small>Root-bound fixture / quarantined until regenerated</small></div></div>
-          <div id="lockLog" class="log" style="margin-top:10px"></div>
-        </div>
-        <div class="console-card">
-          <h2><span>04</span> Stellar settlement</h2>
-          <div id="balanceLog" class="log tall">Connect wallet first</div>
-          <div class="button-row"><button id="checkBalanceBtn" class="secondary">Check wSRC balance</button><button id="finalizeBtn" class="primary">Finalize mint</button></div>
-          <div style="margin-top:14px;color:var(--dim);font-size:11px">Explorer: <a id="explorerLink" href="#" target="_blank" style="color:var(--blue)">not available</a></div>
-        </div>
-        <div class="console-card">
-          <h2><span>05</span> Reverse settlement</h2>
-          <label class="field-label" for="burnAmount">Amount / wSRC</label><input id="burnAmount" value="50" type="number" />
-          <label class="field-label" for="burnRecipient">Recipient on source chain</label><input id="burnRecipient" placeholder="source recipient" />
-          <div class="button-row"><button id="burnBtn" class="primary">Burn → unlock source</button></div>
-          <div id="burnLog" class="log" style="margin-top:10px"></div>
-        </div>
-        <div class="console-card">
-          <h2><span>06</span> Fault probes</h2>
-          <div class="button-row"><button id="badSigBtn" class="secondary">Bad signature</button><button id="badRootBtn" class="secondary">Bad root</button><button id="badVersionBtn" class="secondary">Bad version</button><button id="badZKBtn" class="secondary">Bad Groth16 root</button><button id="replayBtn" class="secondary">Replay nonce</button></div>
-          <div id="probeLog" class="log" style="margin-top:10px">Each probe should fail closed on the verifier path.</div>
-        </div>
-        <div class="console-card wide">
-          <h2><span>07</span> Domain profile / anchor view</h2>
-          <div id="profileLog" class="log">Load the registered domain profile. Facts only; no score.</div>
-          <div class="button-row"><button id="profileBtn" class="secondary">Read profile</button></div>
-        </div>
-        <div class="console-card wide" style="border-color:rgba(217,255,99,.18)">
-          <h2><span>READ THIS FIRST</span> What is live vs. what is honest</h2>
-          <p style="font-size:13px;line-height:1.7;color:var(--muted);margin:0">Lumen Gate’s architecture is built for a real Soroban deployment: the Registry verifies BLS/Groth16 evidence, the Gateway controls settlement, and the relayer consumes canonical events. This checkout keeps the source chain local for reproducibility and labels every unverified Testnet, gasless and machine-only claim instead of hiding it behind a polished button.</p>
+      </div>
+
+      <div class="card">
+        <div class="hd"><h3>Deployment</h3><span class="n" id="deploymentStamp">—</span></div>
+        <div class="bd">
+          <dl class="kv" id="deploymentKv">
+            <dt>Registry</dt><dd><span class="skel" style="width:180px"></span></dd>
+            <dt>Gateway</dt><dd><span class="skel" style="width:180px"></span></dd>
+            <dt>wSRC (SAC)</dt><dd><span class="skel" style="width:180px"></span></dd>
+            <dt>Source domain</dt><dd><span class="skel" style="width:220px"></span></dd>
+          </dl>
+          <div class="hr"></div>
+          <div class="row">
+            <span class="pill" id="capReads"><span class="dot"></span> reads</span>
+            <span class="pill" id="capRelay"><span class="dot"></span> relay</span>
+            <span class="pill" id="capSource"><span class="dot"></span> source adapter</span>
+          </div>
+          <p class="xs muted" style="margin:12px 0 0">Live reads come from the deployed contracts through Soroban RPC simulation. Every address on this page is generated from the deployment manifest the receipts were written against.</p>
         </div>
       </div>
     </div>
+
+    <div class="card" style="margin-top:16px">
+      <div class="hd"><h3>What this deployment does not claim</h3><span class="n">kept next to the happy path, on purpose</span></div>
+      <div class="bd" id="honestyPanel"><span class="skel" style="width:60%"></span></div>
+    </div>
   </section>
+
+  <!-- ============================ BRIDGE ============================ -->
+  <section id="view-bridge" hidden aria-labelledby="bridge-h">
+    <div class="eyebrow">Inbound</div>
+    <h2 id="bridge-h">Lock on the source chain, mint on Stellar</h2>
+    <p class="muted" style="max-width:70ch">The end user never pays a Stellar fee for this direction. The relayer signs and pays; the gateway mints the wrapped asset to the address that locked on the source side, minus a fixed relayer fee.</p>
+
+    <div class="grid cols-2" style="margin-top:20px">
+      <div class="card">
+        <div class="hd"><h3>1 · Create the source lock</h3><span class="n">source chain</span></div>
+        <div class="bd">
+          <label class="field"><span>Amount (source units)</span><input id="lockAmount" value="200000000" inputmode="numeric" /></label>
+          <label class="field"><span>Recipient on Stellar</span><input id="lockRecipient" placeholder="G… (56 characters)" /></label>
+          <label class="field"><span>Events in this block</span><select id="lockCount">
+            <option value="1">1 — single-event block (empty Merkle proof)</option>
+            <option value="2">2 — one sibling in the proof</option>
+            <option value="4">4 — three siblings in the proof</option>
+          </select></label>
+          <div class="row">
+            <button class="btn primary" id="lockBtn" type="button">Lock on source chain</button>
+            <button class="btn" id="useWalletBtn" type="button">Use connected wallet</button>
+          </div>
+          <p class="xs muted" id="sourceNote" style="margin:14px 0 0">Checking the source adapter…</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="hd"><h3>2 · Watch it settle</h3><span class="n">Stellar</span></div>
+        <div class="bd">
+          <div class="steps" id="bridgeSteps">
+            <div class="step" id="bstep-lock"><div class="idx">1</div><div><h4>Lock observed</h4><p>message id, nonce and payload hash are derived from the event, not chosen by the relayer</p></div><span class="mark" data-mark></span></div>
+            <div class="step" id="bstep-finality"><div class="idx">2</div><div><h4>Finality verified on-chain</h4><p>aggregate BLS signature over height, state root and event root</p></div><span class="mark" data-mark></span></div>
+            <div class="step" id="bstep-mint"><div class="idx">3</div><div><h4>Wrapped asset minted</h4><p>Merkle proof of that single event against the finalized event root</p></div><span class="mark" data-mark></span></div>
+          </div>
+          <div class="row" style="margin-top:14px">
+            <button class="btn primary" id="settleBtn" type="button" disabled>Settle this message</button>
+            <button class="btn" id="copyCmdBtn" type="button">Copy the command instead</button>
+          </div>
+          <p class="xs muted" id="settleNote" style="margin:14px 0 0"></p>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <div class="hd"><h3>Run log</h3><span class="n">every hash here is a real testnet transaction</span></div>
+      <div class="bd"><div class="log" id="bridgeLog" role="log" aria-live="polite">Ready.</div></div>
+    </div>
+  </section>
+
+  <!-- ============================ REDEEM ============================ -->
+  <section id="view-redeem" hidden aria-labelledby="redeem-h">
+    <div class="eyebrow">Outbound</div>
+    <h2 id="redeem-h">Burn on Stellar, release on the source chain</h2>
+    <p class="muted" style="max-width:70ch">This direction is signed by the end user: you burn your own wrapped asset, the gateway emits a burn message, the relayer carries it back, and the source side releases the locked amount exactly once.</p>
+
+    <div class="grid cols-2" style="margin-top:20px">
+      <div class="card">
+        <div class="hd"><h3>Burn and relay</h3><span class="n">requires Freighter</span></div>
+        <div class="bd">
+          <div class="row" style="margin-bottom:14px">
+            <button class="btn primary" id="connectBtn" type="button">Connect Freighter</button>
+            <span class="chip mono" id="walletChip">not connected</span>
+          </div>
+          <label class="field"><span>Amount of wSRC</span><input id="burnAmount" value="50000000" inputmode="numeric" /></label>
+          <label class="field"><span>Recipient on the source chain</span><input id="burnRecipient" placeholder="defaults to your Stellar address" /></label>
+          <div class="row">
+            <button class="btn primary" id="burnBtn" type="button">Sign and burn</button>
+            <button class="btn" id="balanceBtn" type="button">Refresh balance</button>
+          </div>
+          <p class="xs muted" style="margin:14px 0 0">Burning needs a fee, so this direction is not gasless — the person who owns the tokens pays for their own transaction. Only the inbound mint is sponsored.</p>
+        </div>
+      </div>
+      <div class="card">
+        <div class="hd"><h3>Wallet</h3><span class="n">Horizon, live</span></div>
+        <div class="bd"><dl class="kv" id="walletKv"><dt>Status</dt><dd>not connected</dd></dl></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <div class="hd"><h3>Run log</h3><span class="n">outbound</span></div>
+      <div class="bd"><div class="log" id="redeemLog" role="log" aria-live="polite">Ready.</div></div>
+    </div>
+  </section>
+
+  <!-- ============================ EVIDENCE ============================ -->
+  <section id="view-evidence" hidden aria-labelledby="ev-h">
+    <div class="eyebrow">Evidence</div>
+    <h2 id="ev-h">Ask the contracts, not the website</h2>
+    <p class="muted" style="max-width:70ch">These reads are executed as Soroban simulations against the deployed registry. Nothing is cached from a file, so what you see is what a verifier would see.</p>
+
+    <div class="grid cols-2" style="margin-top:20px">
+      <div class="card">
+        <div class="hd"><h3>Finality record</h3><span class="n">live simulation</span></div>
+        <div class="bd">
+          <div class="row" style="margin-bottom:14px">
+            <label class="field" style="flex:1;margin:0"><span>Source height (blank = latest)</span><input id="heightQuery" placeholder="e.g. 306" inputmode="numeric" /></label>
+            <button class="btn" id="queryBtn" type="button" style="margin-top:20px">Query</button>
+          </div>
+          <dl class="kv" id="finalityKv"><dt>Result</dt><dd><span class="skel" style="width:140px"></span></dd></dl>
+        </div>
+      </div>
+      <div class="card">
+        <div class="hd"><h3>Self-audit record</h3><span class="n" id="auditStamp">—</span></div>
+        <div class="bd">
+          <table aria-label="Audit rounds"><thead><tr><th>Round</th><th>Finished</th><th>Checks</th><th>Result</th></tr></thead>
+          <tbody id="auditRows"><tr><td colspan="4"><span class="skel" style="width:70%"></span></td></tr></tbody></table>
+          <p class="xs muted" style="margin:14px 0 0">The audit loop probes the live contract each round: honest evidence must be accepted, a replay must be refused, a tampered signature must be refused, and the admin capability must be gone.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid cols-2" style="margin-top:16px">
+      <div class="card">
+        <div class="hd"><h3>Receipts</h3><span class="n">from the deployment manifest</span></div>
+        <div class="bd"><table aria-label="Receipts"><thead><tr><th>Step</th><th>Transaction</th></tr></thead><tbody id="receiptRows"><tr><td colspan="2"><span class="skel" style="width:70%"></span></td></tr></tbody></table></div>
+      </div>
+      <div class="card">
+        <div class="hd"><h3>Defects found and fixed</h3><span class="n" id="findingsCount">—</span></div>
+        <div class="bd"><div id="findingsList" class="sm"><span class="skel" style="width:70%"></span></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ ABOUT ============================ -->
+  <section id="view-about" hidden aria-labelledby="ab-h">
+    <div class="eyebrow">About</div>
+    <h2 id="ab-h">What the anchor facade is for</h2>
+    <div class="grid cols-2" style="margin-top:18px">
+      <div class="card"><div class="bd">
+        <p>The facade is the <strong>integration surface</strong>, not the trust anchor. It publishes the discovery document other people's software reads (<code>/.well-known/stellar.toml</code>), it serves the deployment manifest the receipts were written against, it exposes the read-only audit record, and it is the only place an operator can ask for a relayer pass.</p>
+        <p class="muted">It holds no custody, no mint authority and no verification keys. If it disappeared, settlement would keep working — you would lose the window, not the rule.</p>
+      </div></div>
+      <div class="card"><div class="bd">
+        <h3 style="margin-top:0">Is this a zkVM?</h3>
+        <p><strong>No.</strong> There is no virtual machine here. The Groth16 lane verifies one fixed statement compiled ahead of time: a quorum of approval bits is set and three roots participate in one Poseidon relation. It is a statement proof, not a VM proof, and a quorum proof, not a signature proof — which is exactly why settlement anchors on the BLS lane, whose signature does cover the event root.</p>
+        <p class="muted">The full write-up, including the measured on-chain cost, is in <code>docs/PROVING_SYSTEM.md</code>.</p>
+      </div></div>
+    </div>
+    <div class="card" style="margin-top:16px"><div class="hd"><h3>Read the primary sources</h3></div><div class="bd row">
+      <a class="btn small" href="https://github.com/lubothebook/lumen-gate#readme" target="_blank" rel="noreferrer">README</a>
+      <a class="btn small" href="https://github.com/lubothebook/lumen-gate/blob/main/docs/PROVING_SYSTEM.md" target="_blank" rel="noreferrer">Proving system</a>
+      <a class="btn small" href="https://github.com/lubothebook/lumen-gate/blob/main/deployments/testnet.json" target="_blank" rel="noreferrer">Deployment manifest</a>
+      <a class="btn small" href="https://stellar.expert/explorer/testnet" target="_blank" rel="noreferrer">Explorer</a>
+    </div></div>
+  </section>
+
+  <div class="footer">
+    <span>© 2026 Lumen Gate · testnet deployment · not an audited bridge</span>
+    <span id="footerChain">—</span>
+  </div>
 </main>
-<footer class="footer shell"><span>© 2026 Lumen Gate · Anchor-attached settlement for Stellar</span><span><a href="https://developers.stellar.org/docs/platforms/anchor-platform" target="_blank" rel="noreferrer">Anchor Platform ↗</a> &nbsp; <a href="https://developers.stellar.org/network/soroban-rpc/methods/getEvents" target="_blank" rel="noreferrer">Soroban events ↗</a></span></footer>
-<script type="module">
-import * as StellarSdk from '@stellar/stellar-sdk';
-import { buildBurnAndRelayTx, server as sorobanServer } from './src/soroban.ts';
 
-const SIM_URL = localStorage.getItem('simUrl') || import.meta.env.VITE_SIM_URL || '/source-api';
-document.getElementById('simUrl').textContent = SIM_URL;
+<dialog id="operatorDialog" aria-labelledby="op-h">
+  <form method="dialog">
+    <div class="card" style="border:0;box-shadow:none;background:none">
+      <div class="hd"><h3 id="op-h">Operator access</h3></div>
+      <div class="bd">
+        <p class="sm muted">Reads never need a token. Everything that can spend a fee does — including the relay button on the Bridge page. The token stays in this browser tab only.</p>
+        <label class="field"><span>Operator token</span><input id="opToken" type="password" autocomplete="off" placeholder="Bearer token" /></label>
+        <div class="row"><button class="btn primary" value="save" id="opSave" type="button">Save for this tab</button><button class="btn" value="clear" id="opClear" type="button">Clear</button></div>
+        <p class="xs muted" id="opState" style="margin:14px 0 0"></p>
+      </div>
+    </div>
+  </form>
+</dialog>
 
-import { deployment } from './src/deployment.js';
-
-// Live addresses come from the generated deployment module, which is written
-// from deployments/testnet.json by tools/sync-frontend-deployment.mjs. The
-// localStorage overrides exist for experiments and are reported when active.
-const REGISTRY_ID = localStorage.getItem('registryId') || deployment.registryId;
-const GATEWAY_ID = localStorage.getItem('gatewayId') || deployment.gatewayId;
-const TOKEN_ID = localStorage.getItem('tokenId') || deployment.tokenId;
-const DOMAIN_KEY = localStorage.getItem('sourceDomainKey') || deployment.sourceDomainKey;
-const FACADE = '/facade';
-
-document.getElementById('registryId').textContent = REGISTRY_ID;
-document.getElementById('gatewayId').textContent = GATEWAY_ID;
-document.getElementById('tokenId').textContent = TOKEN_ID;
-
-let userPubkey = null;
-let lastProof = null;
-let lastMessage = null;
-
-function log(elId, msg) {
-  const el = document.getElementById(elId);
-  const time = new Date().toISOString().slice(11,19);
-  el.textContent += `\n[${time}] ${msg}`;
-  el.scrollTop = el.scrollHeight;
-}
-
-async function fetchSim(path) {
-  try {
-    const res = await fetch(`${SIM_URL}${path}`);
-    const data = await res.json();
-    document.getElementById('simDot').className = 'dot green';
-    return data;
-  } catch (e) {
-    document.getElementById('simDot').className = 'dot red';
-    log('simInfo', `Failed to fetch ${path}: ${e}`);
-    throw e;
-  }
-}
-
-async function refreshSim() {
-  try {
-    const info = await fetchSim('/info');
-    const latest = await fetchSim('/blocks/latest');
-    document.getElementById('simInfo').textContent = JSON.stringify({info, latest}, null, 2);
-  } catch {}
-}
-refreshSim();
-document.getElementById('refreshSimBtn').onclick = refreshSim;
-
-document.getElementById('connectBtn').onclick = async () => {
-  if (!window.freighterApi) {
-    log('walletStatus', 'Freighter not found. Install Freighter extension.');
-    return;
-  }
-  try {
-    const pub = await window.freighterApi.getPublicKey();
-    userPubkey = pub;
-    document.getElementById('walletStatus').textContent = `Connected: ${pub}\nNetwork: Testnet`;
-    document.getElementById('lockRecipient').value = pub;
-    log('walletStatus', `Connected ${pub}`);
-  } catch (e) {
-    log('walletStatus', `Connect failed: ${e}`);
-  }
-};
-
-document.getElementById('faucetBtn').onclick = async () => {
-  if (!userPubkey) { log('walletStatus','Connect first'); return; }
-  try {
-    const res = await fetch(`https://friendbot.stellar.org?addr=${encodeURIComponent(userPubkey)}`);
-    const text = await res.text();
-    log('walletStatus', `Friendbot: ${text.slice(0,200)}`);
-  } catch (e) { log('walletStatus', `Faucet error: ${e}`); }
-};
-
-document.getElementById('lockBtn').onclick = async () => {
-  const amount = parseInt(document.getElementById('lockAmount').value);
-  const recipient = document.getElementById('lockRecipient').value || userPubkey;
-  if (!recipient) { log('lockLog','Need recipient'); return; }
-  try {
-    const res = await fetch(`${SIM_URL}/lock`, {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({amount, recipient, sender: recipient})
-    });
-    const data = await res.json();
-    lastMessage = data;
-    log('lockLog', `Lock event created: ${JSON.stringify(data, null, 2)}`);
-    await refreshSim();
-  } catch (e) { log('lockLog', `Lock failed: ${e}`); }
-};
-
-document.getElementById('lockBLSBtn').onclick = async () => {
-  try {
-    const latest = await fetchSim('/blocks/latest');
-    const proof = await fetchSim(`/proof?height=${latest.height}&kind=bls`);
-    lastProof = proof;
-    log('lockLog', `BLS Proof for height ${latest.height}:\n${JSON.stringify(proof, null, 2).slice(0,1000)}`);
-  } catch (e) { log('lockLog', `BLS proof fetch failed: ${e}`); }
-};
-
-document.getElementById('lockZKBtn').onclick = async () => {
-  try {
-    const latest = await fetchSim('/blocks/latest');
-    const proof = await fetchSim(`/proof?height=${latest.height}&kind=zk`);
-    lastProof = proof;
-    log('lockLog', `ZK Proof for height ${latest.height}:\nVK len ${proof.vk_hex?.length}, proof len ${proof.proof_hex?.length}\nPublic inputs: ${JSON.stringify(proof.public_inputs)}`);
-  } catch (e) { log('lockLog', `ZK proof fetch failed: ${e}`); }
-};
-
-document.getElementById('checkBalanceBtn').onclick = async () => {
-  if (!userPubkey) { log('balanceLog','Connect wallet'); return; }
-  try {
-    const server = new StellarSdk.Horizon.Server('https://horizon-testnet.stellar.org');
-    const acc = await server.loadAccount(userPubkey);
-    const balances = acc.balances.map(b => `${b.asset_code||'XLM'}:${b.balance}`).join(', ');
-    document.getElementById('balanceLog').textContent = `Balances: ${balances}\nAccount: ${userPubkey}`;
-    log('balanceLog', `Fetched balances: ${balances}`);
-  } catch (e) { log('balanceLog', `Balance error: ${e}`); }
-};
-
-document.getElementById('finalizeBtn').onclick = async () => {
-  // The relayer is the party that signs and pays for an inbound mint, so the
-  // page does not need a wallet for this direction at all: it asks the facade
-  // to run one pass against the height that was just locked on the source
-  // chain. The facade returns the transaction hashes it confirmed through
-  // Soroban RPC, and every one of them is linked to the explorer below.
-  const height = lastProof?.declared_height || lastMessage?.event?.height || null;
-  log('balanceLog', `Asking the relayer to settle source height ${height ?? '(latest)'} ...`);
-  try {
-    const response = await fetch(`${FACADE}/relay${height ? `?height=${height}` : ''}`, { method: 'POST' });
-    const result = await response.json();
-    if (!response.ok) {
-      log('balanceLog', `Relay refused: ${JSON.stringify(result)}`);
-      return;
-    }
-    log('balanceLog', `Relayer pass complete. Confirmed transactions: ${result.receipts?.length ? result.receipts.join(', ') : 'none'}`);
-    if (result.output) log('balanceLog', result.output.split('\n').filter(l => l.includes('receipt') || l.includes('already') || l.includes('mint')).join('\n'));
-    if (result.receipts && result.receipts.length > 0) {
-      const last = result.receipts[result.receipts.length - 1];
-      const link = `https://stellar.expert/explorer/testnet/tx/${last}`;
-      document.getElementById('explorerLink').textContent = link;
-      document.getElementById('explorerLink').href = link;
-      log('balanceLog', `Explorer: ${link}`);
-    }
-    log('balanceLog', `Registry ${REGISTRY_ID}\nGateway ${GATEWAY_ID}\nwSRC SAC ${TOKEN_ID}`);
-  } catch (error) {
-    log('balanceLog', `Relay failed: ${error}`);
-  }
-};
-
-document.getElementById('burnBtn').onclick = async () => {
-  if (!userPubkey) { log('burnLog', 'Connect Freighter first'); return; }
-  if (GATEWAY_ID.includes('...') || GATEWAY_ID.includes('PLACEHOLDER')) {
-    log('burnLog', 'A real Gateway contract ID is required; this checkout is not deployed.');
-    return;
-  }
-  const amount = document.getElementById('burnAmount').value;
-  const recipientOnSource = document.getElementById('burnRecipient').value || userPubkey;
-  const targetDomain = DOMAIN_KEY;
-  if (!/^[0-9a-fA-F]{64}$/.test(targetDomain)) {
-    log('burnLog', 'Set sourceDomainKey to the deployed source domain key before burning.');
-    return;
-  }
-  try {
-    const prepared = await buildBurnAndRelayTx(
-      GATEWAY_ID, amount, recipientOnSource, targetDomain, userPubkey
-    );
-    const signed = await window.freighterApi.signTransaction(prepared.toXDR(), {
-      networkPassphrase: StellarSdk.Networks.TESTNET,
-      address: userPubkey,
-    });
-    const signedXdr = typeof signed === 'string' ? signed : signed.signedTxXdr;
-    if (!signedXdr) throw new Error('Freighter did not return a signed transaction');
-    const submitted = await sorobanServer.sendTransaction(
-      StellarSdk.TransactionBuilder.fromXDR(signedXdr, StellarSdk.Networks.TESTNET)
-    );
-    log('burnLog', `Burn submitted to live Soroban RPC: ${JSON.stringify(submitted)}`);
-    document.getElementById('explorerLink').textContent = `https://stellar.expert/explorer/testnet/contract/${GATEWAY_ID}`;
-    document.getElementById('explorerLink').href = `https://stellar.expert/explorer/testnet/contract/${GATEWAY_ID}`;
-  } catch (e) { log('burnLog', `Burn failed: ${e}`); }
-};
-
-document.getElementById('badSigBtn').onclick = async () => {
-  try {
-    const latest = await fetchSim('/blocks/latest');
-    const bad = await fetchSim(`/proof?height=${latest.height}&kind=bls&tamper=sig`);
-    log('probeLog', `Bad sig proof (zeroed): should be rejected with InvalidSignature\n${JSON.stringify(bad).slice(0,500)}`);
-  } catch (e) { log('probeLog', `Error: ${e}`); }
-};
-document.getElementById('badRootBtn').onclick = async () => {
-  try {
-    const latest = await fetchSim('/blocks/latest');
-    const bad = await fetchSim(`/proof?height=${latest.height}&kind=bls&tamper=root`);
-    log('probeLog', `Bad root (declared mismatch): should be rejected with DeclaredMismatch\n${JSON.stringify(bad).slice(0,500)}`);
-  } catch (e) { log('probeLog', `Error: ${e}`); }
-};
-document.getElementById('badVersionBtn').onclick = async () => {
-  try {
-    const latest = await fetchSim('/blocks/latest');
-    const bad = await fetchSim(`/proof?height=${latest.height}&kind=bls&tamper=version`);
-    log('probeLog', `Bad version (99): should be rejected with VersionNotAccepted\n${JSON.stringify(bad).slice(0,500)}`);
-  } catch (e) { log('probeLog', `Error: ${e}`); }
-};
-document.getElementById('badZKBtn').onclick = async () => {
-  try {
-    const latest = await fetchSim('/blocks/latest');
-    const bad = await fetchSim(`/proof?height=${latest.height}&kind=zk&tamper=root`);
-    log('probeLog', `Bad Groth16 root: registry should reject DeclaredMismatch before pairing\n${JSON.stringify(bad).slice(0,500)}`);
-  } catch (e) { log('probeLog', `Error: ${e}`); }
-};
-document.getElementById('replayBtn').onclick = async () => {
-  log('probeLog', `Replay: submit same nonce twice -> gateway should return AlreadyProcessed (HWM). This is tested in settlement_gateway unit test.`);
-};
-
-document.getElementById('profileBtn').onclick = async () => {
-  document.getElementById('profileLog').textContent = JSON.stringify({
-    domain: "source-testnet",
-    adapter_id: "3dcbf6f582455337083d5f6d36721f6d63d47af0bef870a043c02aca7850dac9",
-    network: "source-testnet",
-    consensus_kind: "Deterministic 2-of-3 demo validators",
-    finality_kind: "EconomicFinality",
-    trust_model: "DemoOnly { set_size: 3, threshold: 2 }",
-    required_depth: 2,
-    security_backing: "SignatureSet { signers: 3, required: 2, slashable: false } or ZkProof { system: groth16-bn254 }",
-    state: "ConfiguredOnly; verify Testnet receipts",
-    last_height: "from /blocks/latest",
-    bond: "none (hackathon)",
-    history: ["Registered", "Admitted (selftest passed)", "Active"],
-    note: "No score, only facts with units. Anchor uses this to decide risk."
-  }, null, 2);
-};
-</script>
-</body>
-</html>
-
+<script type="module" src="/src/app.js"></script>
 </body>
 </html>

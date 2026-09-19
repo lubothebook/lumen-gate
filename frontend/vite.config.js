@@ -15,6 +15,13 @@ const sourceProxy = {
     changeOrigin: true,
     rewrite: (path) => path.replace(/^\/facade/, ''),
   },
+  // In production /api is served by serverless functions. In development the
+  // same handlers run through tools/api-dev-server.js, so the console is
+  // exercised against the real code path before it is deployed.
+  '/api': {
+    target: process.env.VITE_API_ORIGIN || 'http://127.0.0.1:3001',
+    changeOrigin: true,
+  },
 };
 
 export default defineConfig({

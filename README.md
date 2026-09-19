@@ -139,7 +139,7 @@ The Groth16 proof was generated from a circuit compiled in this repository, agai
 - **Because of that, the registry does not persist an event root from the ZK lane.** Storing a root that no signature covers would let an unconstrained value become the anchor for a Merkle settlement proof, and minting reads that anchor. The settlement receipt above is anchored by the **BLS** lane, whose aggregate signature does cover the event root. This is a deliberate refusal, not an oversight, and it is the reason the two lanes are not interchangeable yet.
 - **The source side is a local deterministic simulator**, not a live external network. Its BLS signatures are real (RFC 9380 hash-to-curve, DST `lumen-gate-finality-v1`) but its validator secret keys are the fixed demo values 1, 2, 3. Production requires a DKG. See [Known simplifications](#known-simplifications).
 - **The gasless path is live for inbound mints, and only for inbound mints.** The receipt above is real, but "gasless" here means *zero spendable XLM*, not zero setup: the recipient still needs an existing Stellar account holding a trustline for the wrapped asset, because a Stellar asset cannot be held without one. The outbound direction is not gasless — a user who wants to burn and unlock signs and pays for their own burn transaction. The fee the relayer charges is a fixed amount chosen at submission time, not a market.
-- **The frontend is wired to the live contracts, and it needs two local processes to be useful.** The addresses it prints are generated from `deployments/testnet.json` into `frontend/src/deployment.js` by `tools/sync-frontend-deployment.mjs`, and `--check` fails if the two ever drift, so the page cannot show an address the receipts were not written against. It reads balances from Horizon, reads the source chain through the simulator, and the **Finalize mint** button asks the anchor facade to run one relayer pass for the height that was just locked. The caveats, stated plainly: that button spends the relayer's XLM and is therefore opt-in (`LUMEN_ALLOW_RELAY=1`), the page expects the facade and the relayer to be running on the same machine as it, and the outbound burn is signed with Freighter but still needs that user to hold XLM. It is a live operator console, not a hosted service.
+- **The console is wired to the live contracts and is capability-gated.** Addresses come from the deployment manifest through `/api/status`, finality comes from a live contract simulation, balances come from Horizon, and the audit table comes from the record the loop writes. Controls that this particular deployment cannot honour are disabled with the reason shown — the relay button when no operator is configured, the lock button when no source adapter exists. The honest limits: the hosted console is a verification and operator surface, not a customer-facing anchor; the source chain is reachable only if someone exposes the simulator; and the outbound burn still needs the user's own Freighter signature and fee.
 - **No bond, fee or slashing economics.** A validator that signs a wrong root loses nothing.
 
 The source side is intentionally local. The Stellar side is not mocked: the acceptance bar was real deployments, real transaction hashes, real events, and negative probes against the live contracts — and that bar is now met for both directions.
@@ -251,6 +251,88 @@ highest_processed_nonce
 ```
 
 A nonce at or below the mark is rejected and only a higher nonce advances the mark. A separate message-ID record is retained as an additional idempotency guard.
+
+## The anchor facade: what it is for
+
+The facade is the **integration surface**, not the trust anchor. It is the only part of this system another team is expected to talk to, so it is also the part most worth attacking, and it is hardened accordingly.
+
+What it does:
+
+| Surface | Why it exists |
+| --- | --- |
+| `GET /.well-known/stellar.toml` | SEP-1 discovery. Other people's software reads this, so every value in it has to be a fact: the real issuer, the real asset, and an explicit note that this is a testnet demonstration asset |
+| `GET /deployment` | serves `deployments/testnet.json`, the manifest the receipts were written against. The console and the next developer both read addresses from here instead of from a hard-coded list |
+| `GET /capabilities` | says out loud what this instance may do: reads, relay, source adapter. The UI gates its controls on this, so a button that would fail is never shown as if it worked |
+| `GET /self-audit`, `GET /self-audit/history` | read-only view of the record the audit loop writes. It reports; it does not approve |
+| `POST /relay?height=H` | one relayer pass, so an operator can settle a specific source height without a terminal |
+| `GET /deposit`, `GET /withdraw`, `GET /transactions`, `GET /sep6/info` | machine-readable explanations of the two settlement directions, with SEP-6 explicitly disabled until a real authenticated anchor backend exists |
+
+What it does **not** do, and this is the important half: it holds no custody, no mint authority and no verification keys. If the facade disappeared, settlement would keep working — you would lose the window, not the rule. The mint authority is the gateway contract, and the verification key lives in a registry whose admin has been renounced.
+
+**How it is hardened.** Three rules, enforced in `anchor/server.js`:
+
+1. **Reading is public, writing never is.** Every mutating endpoint requires an operator token compared in constant time, and the service refuses to run writes at all when no token is configured. A capability that can be switched on by accident is worse than one that is switched off.
+2. **CORS is an allowlist, not a wildcard.** The previous revision answered every request with `Access-Control-Allow-Origin: *`, which meant any page a visitor opened could have triggered a relay that signs and spends the operator's XLM. Origins are now reflected only when they are on the allowlist.
+3. **Every input is validated before it is used.** Heights must be bounded positive integers, transaction ids must be 32-byte lower-case hex, and the one endpoint that spends money runs a single pass at a time with a cooldown, so it cannot be used to drain an account.
+
+## Deploying the console
+
+The console runs in two places from one codebase: locally with two small processes, and hosted on Vercel with no long-running process at all.
+
+### On Vercel
+
+`frontend/` builds to a static site and `api/` becomes serverless functions. Nothing needs a wallet key, and nothing shells out to a binary:
+
+```bash
+vercel                        # from the repository root
+# optional, for the operator controls:
+vercel env add OPERATOR_URL    # e.g. https://your-facade-host (running anchor/server.js)
+vercel env add OPERATOR_TOKEN  # the same token the facade was started with
+vercel env add SOURCE_URL      # the source-chain adapter, if you have one exposed
+```
+
+| Function | What it serves | Authority |
+| --- | --- | --- |
+| `GET /api/status` | the manifest, a live `getLatestLedger`, issuer balances, the audit summary and the capability flags | none, read-only |
+| `GET /api/audit` | the self-audit record from the repository | none, read-only |
+| `GET /api/finality?height=N` | a **live simulation** of `get_last_finalized` / `get_finalized_full` against the deployed registry | none, read-only |
+| `GET/POST /api/source` | reads of the source adapter; `POST /lock` needs the operator token | operator |
+| `POST /api/relay` | forwards one relayer pass to `OPERATOR_URL` | operator |
+
+The design decision that matters: **the signing key never leaves the operator's machine.** The hosted console cannot spend anything, because it does not hold the ability to. When no operator is configured, `/api/relay` answers with `writes_disabled` and the console disables the button and explains why, instead of offering a control that quietly fails.
+
+`GET /api/finality` is worth opening by hand. It is a simulation of the deployed contract, so the answer it returns is the answer a verifier would get, not a value copied into the page from a file:
+
+```bash
+curl -s https://<deployment>/api/finality | jq '.record'
+# { "last_height": "306", "state": 2, "last_security": ["SignatureSet", 3, 2, false], ... }
+```
+
+### Locally
+
+Three processes, one machine. The API functions run through a small stand-in so the console exercises the same code path it will use on Vercel:
+
+```bash
+# 1. source chain (the simulator that plays the source network)
+./target/debug/source_simulator --port 8080
+
+# 2. the serverless layer, locally
+SOURCE_URL=http://127.0.0.1:8080 \
+  OPERATOR_TOKEN=<pick-one> \
+  OPERATOR_URL=http://127.0.0.1:8081 \
+  node tools/api-dev-server.js          # listens on 3001
+
+# 3. the anchor facade (discovery, manifest, audit surface, relayer trigger)
+LUMEN_ALLOW_RELAY=1 OPERATOR_TOKEN=<pick-one> SIM_URL=http://127.0.0.1:8080 \
+  STELLAR_RELAYER_ADDRESS=<relayer G address> RELAYER_FEE=1000000 \
+  node anchor/server.js                 # listens on 8081
+
+# 4. the console
+cd frontend && npm install
+VITE_API_ORIGIN=http://127.0.0.1:3001 VITE_FACADE_ORIGIN=http://127.0.0.1:8081 npm run dev
+```
+
+The browser never talks to `localhost` directly: Vite proxies `/api`, `/source-api` and `/facade`, so the same page works on a development machine and behind whatever proxy serves it. That is the classic failure mode of a browser app that calls its own `localhost` in a hosted demo, and it does not apply here.
 
 ## Cryptographic paths
 
@@ -385,41 +467,7 @@ The relayer must fail loudly when the deployment manifest still contains a place
 
 ### Frontend and anchor facade
 
-Three processes, one machine. Start the source simulator, then the facade, then the app:
-
-```bash
-# 1. source chain (the simulator that plays the source network)
-./target/debug/source_simulator --port 8080
-
-# 2. anchor facade + relayer trigger (reads the deployment manifest itself)
-LUMEN_ALLOW_RELAY=1 \
-  STELLAR_RELAYER_ADDRESS=<relayer G address> \
-  RELAYER_FEE=1000000 \
-  SIM_URL=http://127.0.0.1:8080 \
-  node anchor/server.js          # listens on 8081
-
-# 3. the app, which proxies both of the above
-cd frontend
-npm install
-VITE_SIMULATOR_ORIGIN=http://127.0.0.1:8080 VITE_FACADE_ORIGIN=http://127.0.0.1:8081 npm run dev
-```
-
-The browser never talks to `localhost` directly. Vite proxies `/source-api` to the simulator and `/facade` to the anchor facade, so the page works both on the development machine and behind whatever proxy serves it — the classic failure mode of a browser app that calls its own `localhost` in a hosted demo does not apply here.
-
-Facade endpoints added for that integration:
-
-| Endpoint | What it does |
-| --- | --- |
-| `GET /deployment` | serves `deployments/testnet.json`, the manifest the frontend is generated from |
-| `GET /status` | runtime view: registry, gateway, source cursor, simulator status |
-| `POST /relay?height=H` | runs `target/debug/relayer --height H --once` and returns the transaction hashes it confirmed through Soroban RPC. **Disabled unless `LUMEN_ALLOW_RELAY=1`**, because it signs and spends |
-
-Regenerate the frontend addresses after any deployment change, and let CI check it:
-
-```bash
-node tools/sync-frontend-deployment.mjs          # write frontend/src/deployment.js
-node tools/sync-frontend-deployment.mjs --check   # exit 1 if it is stale
-```
+See [Deploying the console](#deploying-the-console) for the full picture: three processes locally, two Vercel functions plus a static build when hosted. The short version is that the console reads live state through `/api/*`, the facade owns discovery and the relayer trigger, and neither of them can move value on its own.
 
 ## Security and scope statement
 
