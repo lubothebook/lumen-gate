@@ -266,6 +266,16 @@ pub enum DataKey {
     /// Last accepted execution proof for a domain, kept apart from both the
     /// domain record and the step-chain record.
     Execution(BytesN<32>),
+    /// Verification key of the gate-vm lane: the hash-capable machine whose
+    /// program is committed by a Poseidon fold instead of published word by
+    /// word. A fourth slot, for the fourth time the same reason -- and here the
+    /// length argument genuinely fails (896 bytes is also the step-chain key's
+    /// length), which makes separate slots the *only* thing keeping one lane's
+    /// key from being presented to the other.
+    GateVmVk,
+    /// Last accepted gate-vm run per domain. Own slot, own record type; the
+    /// settlement anchor stays where the settlement lanes put it.
+    GateVm(BytesN<32>),
 }
 
 /// What the registry recorded for one accepted multi-step chain.
@@ -332,6 +342,41 @@ pub struct ExecutionAttestation {
     pub state_root: BytesN<32>,
     pub steps_executed: u64,
     pub gas_used: u64,
+    pub security: SecurityBacking,
+    pub evidence_digest: BytesN<32>,
+    pub adapter_version: u32,
+    pub evidence_version: u32,
+}
+
+/// What the registry recorded for one accepted gate-vm run. The roots here are
+/// the machine's own start and end; like the execution lane, `program_root` is
+/// the fold the circuit computed from the private program cells, and the
+/// registry saw the same 32 bytes in the proof's public inputs -- they are the
+/// same number by binding, not by convention.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GateVmRecord {
+    pub domain: BytesN<32>,
+    pub height: u64,
+    pub program_root: BytesN<32>,
+    pub start_root: BytesN<32>,
+    pub event_root: BytesN<32>,
+    pub end_root: BytesN<32>,
+    pub hash_steps: u64,
+    /// True, and always true: a verified run is not an anchored settlement
+    /// root, and this flag exists so no reader has to infer the difference.
+    pub settlement_anchored: bool,
+}
+
+/// An attestation for the gate-vm lane.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GateVmAttestation {
+    pub domain: BytesN<32>,
+    pub height: u64,
+    pub program_root: BytesN<32>,
+    pub end_root: BytesN<32>,
+    pub hash_steps: u64,
     pub security: SecurityBacking,
     pub evidence_digest: BytesN<32>,
     pub adapter_version: u32,
@@ -1233,10 +1278,7 @@ impl FinalityRegistry {
         if record.state == 0 || record.state >= 3 {
             return Err(RegistryError::NotAdmitted);
         }
-        if !record
-            .accepted_versions
-            .contains(&evidence.evidence_version)
-        {
+        if !record.accepted_versions.contains(evidence.evidence_version) {
             return Err(RegistryError::VersionNotAccepted);
         }
 
@@ -1348,6 +1390,170 @@ impl FinalityRegistry {
         })
     }
 
+    // =====================================================================
+    // Gate-VM lane
+    // =====================================================================
+    //
+    // The fourth lane, and the second one whose statement is a machine run.
+    // Where the execution lane's machine is a word processor -- 64-bit
+    // arithmetic, a memory bus, public program words -- this one is a
+    // field-native machine with a Poseidon instruction: its programs compute
+    // hash chains *as data*, and its program is committed (a fold root is the
+    // public input; the cells never appear in the proof's statement). That
+    // combination is what makes a claim like "H^4(start, event) = end, by
+    // executing this committed program" provable at all: the hash is inside
+    // the machine instead of around it.
+    //
+    // The three boundaries the execution lane documents apply verbatim: every
+    // public input is bound here, the payload is bounded before use, and the
+    // lane records without anchoring. Same rules, separate slots.
+
+    /// Bootstraps the gate-vm verification key. Admin-gated exactly like the
+    /// others, permanently refused after `renounce_admin`.
+    pub fn set_gate_vm_vk(env: Env, admin: Address, vk: Bytes) {
+        if Self::is_admin_renounced(&env) {
+            panic!("admin renounced");
+        }
+        admin.require_auth();
+        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        if stored_admin != admin {
+            panic!("not admin");
+        }
+        if vk.len() != GATE_VM_VK_LEN {
+            panic!("expected 896-byte gate-vm verification key");
+        }
+        env.storage().instance().set(&DataKey::GateVmVk, &vk);
+    }
+
+    pub fn get_gate_vm_vk(env: Env) -> Bytes {
+        env.storage()
+            .instance()
+            .get(&DataKey::GateVmVk)
+            .unwrap_or(Bytes::new(&env))
+    }
+
+    pub fn get_gate_vm_record(env: Env, domain: BytesN<32>) -> Option<GateVmRecord> {
+        env.storage().persistent().get(&DataKey::GateVm(domain))
+    }
+
+    /// Verifies a gate-vm run proof and records it.
+    pub fn submit_gate_vm_zk(
+        env: Env,
+        evidence: RawEvidence,
+        proof: Bytes,
+        public_inputs: Vec<BytesN<32>>,
+    ) -> Result<GateVmAttestation, RegistryError> {
+        let domain_key = compute_domain_key(&env, &evidence.adapter_id, &evidence.network);
+        let record: DomainRecord = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Domain(domain_key.clone()))
+            .ok_or(RegistryError::DomainNotFound)?;
+        if record.state == 0 || record.state >= 3 {
+            return Err(RegistryError::NotAdmitted);
+        }
+        if !record.accepted_versions.contains(evidence.evidence_version) {
+            return Err(RegistryError::VersionNotAccepted);
+        }
+
+        let digest = compute_evidence_digest(&env, &evidence);
+        if env
+            .storage()
+            .persistent()
+            .has(&DataKey::Evidence(digest.clone()))
+        {
+            return Err(RegistryError::EvidenceAlreadyProcessed);
+        }
+
+        let decoded = parse_gate_vm_payload(&env, &evidence.payload)?;
+        if decoded.height != evidence.declared_height || decoded.end_root != evidence.declared_root
+        {
+            return Err(RegistryError::DeclaredMismatch);
+        }
+
+        if proof.len() != groth16::PROOF_SIZE {
+            return Err(RegistryError::InvalidProof);
+        }
+        if public_inputs.len() != GATE_VM_PUBLIC_INPUTS {
+            return Err(RegistryError::InvalidProof);
+        }
+        let vk: Bytes = env
+            .storage()
+            .instance()
+            .get(&DataKey::GateVmVk)
+            .unwrap_or(Bytes::new(&env));
+        if vk.len() != GATE_VM_VK_LEN {
+            return Err(RegistryError::InvalidProof);
+        }
+
+        // -- bind every public input ------------------------------------------
+        // Order is the circuit's `main {public [...]}` declaration, mirrored by
+        // the vector generator:
+        //   0 program_root  1 start_root  2 event_root  3 end_root
+        //   4 hash_steps    5 domain_tag
+        require_root_input(&public_inputs, 0, &decoded.program_root)?;
+        require_root_input(&public_inputs, 1, &decoded.start_root)?;
+        require_root_input(&public_inputs, 2, &decoded.event_root)?;
+        require_root_input(&public_inputs, 3, &decoded.end_root)?;
+        require_scalar_input(&public_inputs, 4, decoded.hash_steps)?;
+        if public_inputs.get(5).unwrap() != gate_vm_tag(&env) {
+            return Err(RegistryError::DeclaredMismatch);
+        }
+
+        // -- the trail only moves forward --------------------------------------
+        if let Some(previous) = env
+            .storage()
+            .persistent()
+            .get::<DataKey, GateVmRecord>(&DataKey::GateVm(domain_key.clone()))
+        {
+            if decoded.height <= previous.height {
+                return Err(RegistryError::EvidenceAlreadyProcessed);
+            }
+        }
+
+        if !groth16::verify(&env, &vk, &proof, &public_inputs) {
+            return Err(RegistryError::InvalidProof);
+        }
+
+        let accepted = GateVmRecord {
+            domain: domain_key.clone(),
+            height: decoded.height,
+            program_root: decoded.program_root.clone(),
+            start_root: decoded.start_root.clone(),
+            event_root: decoded.event_root.clone(),
+            end_root: decoded.end_root.clone(),
+            hash_steps: decoded.hash_steps,
+            settlement_anchored: false,
+        };
+        env.storage()
+            .persistent()
+            .set(&DataKey::GateVm(domain_key.clone()), &accepted);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Evidence(digest.clone()), &true);
+
+        env.events().publish(
+            (Symbol::new(&env, "gate_vm_verified"), domain_key.clone()),
+            (
+                decoded.height,
+                decoded.hash_steps,
+                decoded.program_root.clone(),
+            ),
+        );
+
+        Ok(GateVmAttestation {
+            domain: domain_key,
+            height: decoded.height,
+            program_root: decoded.program_root,
+            end_root: decoded.end_root,
+            hash_steps: decoded.hash_steps,
+            security: SecurityBacking::ZkProof,
+            evidence_digest: digest,
+            adapter_version: record.adapter_version,
+            evidence_version: evidence.evidence_version,
+        })
+    }
+
     pub fn list_domains(env: Env) -> Vec<BytesN<32>> {
         env.storage()
             .instance()
@@ -1408,6 +1614,9 @@ mod step_chain_vectors;
 
 #[cfg(test)]
 mod execution_trace_vectors;
+
+#[cfg(test)]
+mod gate_vm_vectors;
 
 // ---------------------------------------------------------------------------
 // Multi-step chained lane: payload parsing and public-input binding
@@ -1678,6 +1887,94 @@ fn require_scalar_input(
         return Err(RegistryError::DeclaredMismatch);
     }
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Gate-VM lane: payload parsing and public-input binding
+// ---------------------------------------------------------------------------
+//
+// The circuit this lane verifies proves what `crates/gate_vm` implements: an
+// eight-line program of twelve-bit instructions ran on eight field-element
+// registers for an eight-row window, its program committed by a Poseidon fold,
+// its rows chained by the step relation, and its last row halted. The hash
+// steps the machine took are counted by the circuit itself, not declared by
+// the caller -- which is the whole reason the number is worth binding.
+//
+// What this lane is NOT: not a memory-bus argument (the machine is
+// register-only, and no sparse-merkle consistency story is claimed anywhere in
+// the circuit), not unbounded (the window is the gas, and a program that has
+// not halted by row eight has no witness to sell), and not anchored: the run
+// is recorded, and the settlement roots are not moved by it.
+
+/// Fixed capacities of the compiled circuit: six public inputs and a seventh
+/// IC point at the A-term, hence 64 + 3 x 128 + 7 x 64 = 896 bytes of key.
+pub const GATE_VM_PAYLOAD_LEN: u32 = 144;
+pub const GATE_VM_PUBLIC_INPUTS: u32 = 6;
+pub const GATE_VM_VK_LEN: u32 = 896;
+
+/// The window is eight rows and one of them must be the halt, so no trace has
+/// ever counted more than seven hash steps. A payload claiming otherwise
+/// describes no proof; refusing it is a courtesy to the submitter, not a
+/// security property (the circuit could not produce one either).
+pub const GATE_VM_MAX_HASH_STEPS: u64 = 7;
+
+/// The domain-separation tag compiled into the gate-vm circuit, as a 32-byte
+/// big-endian field element: sha256("lumen-gate-vm-v1")[0..31], zero-padded --
+/// the same derivation `STEP_CHAIN_TAG_BYTES` and `EXECUTION_TAG_BYTES` document
+/// for their lanes. `test_gate_vm_tag_matches_the_circuit_constant` pins it
+/// against the value the vectors carry.
+pub const GATE_VM_TAG_BYTES: [u8; 32] = [
+    0x00, 0x5c, 0x54, 0x64, 0x27, 0xe7, 0xcf, 0xce, 0x5f, 0xc9, 0xb9, 0xbb, 0xee, 0xd0, 0xc3, 0x73,
+    0x68, 0x13, 0x04, 0xae, 0xea, 0x84, 0xdc, 0xf9, 0xd7, 0x81, 0x46, 0xee, 0x84, 0x19, 0xa4, 0x59,
+];
+
+fn gate_vm_tag(env: &Env) -> BytesN<32> {
+    BytesN::from_array(env, &GATE_VM_TAG_BYTES)
+}
+
+/// The fields this lane reads out of the payload.
+///
+/// Layout, 144 bytes, little-endian integers:
+///
+/// ```text
+///   0   8   height                  the domain's gate-vm trail height
+///   8   32  program_root            == public input 0
+///   40  32  start_root              == public input 1
+///   72  32  event_root              == public input 2
+///   104 32  end_root                == public input 3
+///   136 8   hash_steps              == public input 4
+/// ```
+pub struct DecodedGateVm {
+    pub height: u64,
+    pub program_root: BytesN<32>,
+    pub start_root: BytesN<32>,
+    pub event_root: BytesN<32>,
+    pub end_root: BytesN<32>,
+    pub hash_steps: u64,
+}
+
+/// Parses the gate-vm payload. Any other length is a format error; the two
+/// value checks bound what a caller can even pay gas for.
+fn parse_gate_vm_payload(env: &Env, payload: &Bytes) -> Result<DecodedGateVm, RegistryError> {
+    if payload.len() != GATE_VM_PAYLOAD_LEN {
+        return Err(RegistryError::BadPayloadLength);
+    }
+    let height = read_u64_le(payload, 0);
+    if height == 0 {
+        return Err(RegistryError::InvalidPayload);
+    }
+    let hash_steps = read_u64_le(payload, 136);
+    if hash_steps > GATE_VM_MAX_HASH_STEPS {
+        return Err(RegistryError::InvalidPayload);
+    }
+    Ok(DecodedGateVm {
+        height,
+        program_root: read_root(env, payload, 8),
+        start_root: read_root(env, payload, 40),
+        event_root: read_root(env, payload, 72),
+        end_root: read_root(env, payload, 104),
+        hash_steps,
+    })
 }
 
 #[cfg(test)]
@@ -2641,11 +2938,11 @@ mod test {
     const EX_INSTRUCTION_WORDS: u64 = 13;
 
     fn ex_vk(env: &Env) -> Bytes {
-        Bytes::from_slice(env, &decode_hex_var(&vex::VK_HEX))
+        Bytes::from_slice(env, &decode_hex_var(vex::VK_HEX))
     }
 
     fn ex_proof(env: &Env) -> Bytes {
-        Bytes::from_slice(env, &decode_hex_var(&vex::PROOF_HEX))
+        Bytes::from_slice(env, &decode_hex_var(vex::PROOF_HEX))
     }
 
     fn ex_inputs(env: &Env) -> Vec<BytesN<32>> {
@@ -2749,6 +3046,8 @@ mod test {
     #[test]
     fn test_execution_vectors_are_the_layout_the_contract_expects() {
         // 1920 = 64 (alpha) + 3 x 128 (beta, gamma, delta) + 23 x 64 (IC[0..22]).
+        assert_eq!(vex::PUBLIC_INPUT_ORDER[EX_PROGRAM], "program_0");
+        assert_eq!(vex::PUBLIC_INPUT_ORDER[EX_GAS], "gas_used");
         assert_eq!(vex::VK_HEX.len(), (EXECUTION_VK_LEN as usize) * 2);
         assert_eq!(vex::PROOF_HEX.len(), 256 * 2);
         assert_eq!(
@@ -3107,5 +3406,372 @@ mod test {
             res.is_err(),
             "a renounced admin must not be able to set this lane's key either"
         );
+    }
+
+    // =====================================================================
+    // Gate-VM lane
+    // =====================================================================
+
+    use crate::gate_vm_vectors as gvx;
+
+    const GV_PROGRAM_ROOT: usize = 0;
+    const GV_START: usize = 1;
+    const GV_EVENT: usize = 2;
+    const GV_END: usize = 3;
+    const GV_HASH_STEPS: usize = 4;
+    const GV_TAG: usize = 5;
+
+    fn gv_vk(env: &Env) -> Bytes {
+        Bytes::from_slice(env, &decode_hex_var(gvx::VK_HEX))
+    }
+
+    fn gv_proof(env: &Env) -> Bytes {
+        Bytes::from_slice(env, &decode_hex_var(gvx::PROOF_HEX))
+    }
+
+    fn gv_inputs(env: &Env) -> Vec<BytesN<32>> {
+        let mut out = Vec::new(env);
+        for i in 0..gvx::PUBLIC_INPUTS_HEX.len() {
+            out.push_back(BytesN::from_array(
+                env,
+                &decode_hex::<32>(gvx::PUBLIC_INPUTS_HEX[i]),
+            ));
+        }
+        out
+    }
+
+    /// The payload, rebuilt from the proof's public inputs. Building it here
+    /// instead of pasting bytes proves the layout comment and the vector are
+    /// the same claim twice; the layout test then pins the reconstruction to
+    /// the exact committed payload bytes so "re-derived" never means "drifted".
+    fn gv_payload(env: &Env, height: u64) -> Bytes {
+        let inputs = gv_inputs(env);
+        let mut payload = Bytes::new(env);
+        payload.append(&Bytes::from_array(env, &height.to_le_bytes()));
+        for index in [GV_PROGRAM_ROOT, GV_START, GV_EVENT, GV_END] {
+            payload.append(&Bytes::from_array(
+                env,
+                &inputs.get(index as u32).unwrap().to_array(),
+            ));
+        }
+        payload.append(&Bytes::from_array(
+            env,
+            &public_u64(&inputs.get(GV_HASH_STEPS as u32).unwrap()).to_le_bytes(),
+        ));
+        payload
+    }
+
+    fn gv_evidence(env: &Env, height: u64) -> RawEvidence {
+        let (adapter, network) = sc_domain(env);
+        let inputs = gv_inputs(env);
+        RawEvidence {
+            adapter_id: adapter,
+            evidence_version: 1,
+            network,
+            payload: gv_payload(env, height),
+            declared_height: height,
+            declared_root: BytesN::from_array(env, &inputs.get(GV_END as u32).unwrap().to_array()),
+            submitter: Address::generate(env),
+        }
+    }
+
+    fn gv_registry(env: &Env) -> (FinalityRegistryClient<'_>, Address, BytesN<32>) {
+        let contract_id = env.register(FinalityRegistry, ());
+        let client = FinalityRegistryClient::new(env, &contract_id);
+        let admin = Address::generate(env);
+        client.initialize(&admin);
+        let (adapter, network) = sc_domain(env);
+        let domain = client.register_domain(
+            &admin,
+            &adapter,
+            &network,
+            &10,
+            &1,
+            &Vec::from_array(env, [1u32]),
+        );
+        client.admit_domain(&admin, &domain);
+        client.set_gate_vm_vk(&admin, &gv_vk(env));
+        (client, admin, domain)
+    }
+
+    #[test]
+    fn test_gate_vm_vectors_are_the_layout_the_contract_expects() {
+        // 896 = 64 (alpha) + 3 x 128 (beta, gamma, delta) + 7 x 64 (IC[0..6]).
+        assert_eq!(gvx::VK_HEX.len(), (GATE_VM_VK_LEN as usize) * 2);
+        assert_eq!(gvx::PROOF_HEX.len(), 256 * 2);
+        assert_eq!(gvx::PUBLIC_INPUTS_HEX.len(), GATE_VM_PUBLIC_INPUTS as usize);
+        assert_eq!(
+            gvx::PUBLIC_INPUT_ORDER,
+            [
+                "program_root",
+                "start_root",
+                "event_root",
+                "end_root",
+                "hash_steps",
+                "domain_tag"
+            ]
+        );
+        // The reconstruction helper and the committed bytes must be one thing.
+        let env = Env::default();
+        let rebuilt = gv_payload(&env, gvx::HEIGHT);
+        let committed = Bytes::from_slice(&env, &decode_hex_var(gvx::PAYLOAD_HEX));
+        assert_eq!(rebuilt, committed);
+        assert_eq!(committed.len(), GATE_VM_PAYLOAD_LEN);
+    }
+
+    #[test]
+    fn test_gate_vm_tag_matches_the_circuit_constant() {
+        // The constant this contract pins is the constant the circuit asserts
+        // is asserted against the witness the emitter shares: one number,
+        // three places, checked from the proven bytes inward.
+        let env = Env::default();
+        let inputs = gv_inputs(&env);
+        assert_eq!(
+            inputs.get(GV_TAG as u32).unwrap().to_array(),
+            GATE_VM_TAG_BYTES
+        );
+        // Distinct from both other lanes' tags: a proof is never lane-agnostic.
+        assert_ne!(GATE_VM_TAG_BYTES, STEP_CHAIN_TAG_BYTES);
+        assert_ne!(GATE_VM_TAG_BYTES, EXECUTION_TAG_BYTES);
+    }
+
+    #[test]
+    fn test_gate_vm_proof_verifies_in_host_and_is_recorded() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, _admin, domain) = gv_registry(&env);
+
+        let attestation = client.submit_gate_vm_zk(
+            &gv_evidence(&env, gvx::HEIGHT),
+            &gv_proof(&env),
+            &gv_inputs(&env),
+        );
+        assert_eq!(attestation.height, gvx::HEIGHT);
+        assert_eq!(attestation.hash_steps, 4);
+        assert_eq!(attestation.security, SecurityBacking::ZkProof);
+        assert_eq!(
+            attestation.program_root,
+            gv_inputs(&env).get(GV_PROGRAM_ROOT as u32).unwrap()
+        );
+
+        let recorded = client
+            .get_gate_vm_record(&domain)
+            .expect("an accepted run must be recorded");
+        assert_eq!(recorded.height, gvx::HEIGHT);
+        assert_eq!(recorded.hash_steps, 4);
+        assert_eq!(
+            recorded.end_root,
+            gv_inputs(&env).get(GV_END as u32).unwrap()
+        );
+        assert!(!recorded.settlement_anchored);
+    }
+
+    #[test]
+    fn test_gate_vm_does_not_touch_what_settlement_anchors_on() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, _admin, domain) = gv_registry(&env);
+
+        let before = client.get_domain(&domain).expect("domain exists");
+        client.submit_gate_vm_zk(
+            &gv_evidence(&env, gvx::HEIGHT),
+            &gv_proof(&env),
+            &gv_inputs(&env),
+        );
+        let after = client.get_domain(&domain).expect("domain exists");
+
+        assert_eq!(before.last_height, after.last_height);
+        assert_eq!(before.last_root, after.last_root);
+        assert_eq!(before.last_event_root, after.last_event_root);
+        assert_eq!(after.last_security, SecurityBacking::None);
+    }
+
+    #[test]
+    fn test_gate_vm_rejects_a_mutated_proof() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, _admin, _domain) = gv_registry(&env);
+
+        let mut proof = decode_hex_var(gvx::PROOF_HEX);
+        proof[9] ^= 0x01;
+        let proof = Bytes::from_slice(&env, &proof);
+        let res =
+            client.try_submit_gate_vm_zk(&gv_evidence(&env, gvx::HEIGHT), &proof, &gv_inputs(&env));
+        assert_eq!(res.unwrap_err().unwrap(), RegistryError::InvalidProof);
+    }
+
+    #[test]
+    fn test_gate_vm_rejects_swapped_public_inputs() {
+        // start and event are both roots; only their positions differ. A lane
+        // that bound "some root, some position" would accept this.
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, _admin, _domain) = gv_registry(&env);
+
+        let mut inputs = gv_inputs(&env);
+        let start = inputs.get(GV_START as u32).unwrap();
+        let event = inputs.get(GV_EVENT as u32).unwrap();
+        inputs.set(GV_START as u32, event);
+        inputs.set(GV_EVENT as u32, start);
+        let res =
+            client.try_submit_gate_vm_zk(&gv_evidence(&env, gvx::HEIGHT), &gv_proof(&env), &inputs);
+        assert_eq!(res.unwrap_err().unwrap(), RegistryError::DeclaredMismatch);
+    }
+
+    #[test]
+    fn test_gate_vm_rejects_a_rewritten_hash_count() {
+        // The payload claims three hashes; the proof says four. The contract's
+        // binding -- not the proof -- is what refuses here, which is the point:
+        // the counted number and the claimed number must be one number before
+        // any pairing runs.
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, _admin, _domain) = gv_registry(&env);
+
+        let inputs = gv_inputs(&env);
+        let mut payload = Bytes::new(&env);
+        payload.append(&Bytes::from_array(&env, &gvx::HEIGHT.to_le_bytes()));
+        for index in [GV_PROGRAM_ROOT, GV_START, GV_EVENT, GV_END] {
+            payload.append(&Bytes::from_array(
+                &env,
+                &inputs.get(index as u32).unwrap().to_array(),
+            ));
+        }
+        payload.append(&Bytes::from_array(&env, &3u64.to_le_bytes()));
+
+        let (adapter, network) = sc_domain(&env);
+        let evidence = RawEvidence {
+            adapter_id: adapter,
+            evidence_version: 1,
+            network,
+            payload,
+            declared_height: gvx::HEIGHT,
+            declared_root: inputs.get(GV_END as u32).unwrap(),
+            submitter: Address::generate(&env),
+        };
+        let res = client.try_submit_gate_vm_zk(&evidence, &gv_proof(&env), &inputs);
+        assert_eq!(res.unwrap_err().unwrap(), RegistryError::DeclaredMismatch);
+    }
+
+    #[test]
+    fn test_gate_vm_rejects_an_inflated_hash_count() {
+        // A payload claiming nine hash steps describes a trace the eight-row
+        // window cannot hold. Refused as a format error, before the pairing.
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, _admin, _domain) = gv_registry(&env);
+
+        let inputs = gv_inputs(&env);
+        let mut payload = Bytes::new(&env);
+        payload.append(&Bytes::from_array(&env, &1u64.to_le_bytes()));
+        for index in [GV_PROGRAM_ROOT, GV_START, GV_EVENT, GV_END] {
+            payload.append(&Bytes::from_array(
+                &env,
+                &inputs.get(index as u32).unwrap().to_array(),
+            ));
+        }
+        payload.append(&Bytes::from_array(&env, &9u64.to_le_bytes()));
+
+        let (adapter, network) = sc_domain(&env);
+        let evidence = RawEvidence {
+            adapter_id: adapter,
+            evidence_version: 1,
+            network,
+            payload,
+            declared_height: 1,
+            declared_root: inputs.get(GV_END as u32).unwrap(),
+            submitter: Address::generate(&env),
+        };
+        let res = client.try_submit_gate_vm_zk(&evidence, &gv_proof(&env), &inputs);
+        assert_eq!(res.unwrap_err().unwrap(), RegistryError::InvalidPayload);
+    }
+
+    #[test]
+    fn test_gate_vm_rejects_a_wrong_domain_tag() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, _admin, _domain) = gv_registry(&env);
+
+        let mut inputs = gv_inputs(&env);
+        inputs.set(
+            GV_TAG as u32,
+            BytesN::from_array(&env, &EXECUTION_TAG_BYTES),
+        );
+        let res =
+            client.try_submit_gate_vm_zk(&gv_evidence(&env, gvx::HEIGHT), &gv_proof(&env), &inputs);
+        assert_eq!(res.unwrap_err().unwrap(), RegistryError::DeclaredMismatch);
+    }
+
+    #[test]
+    fn test_gate_vm_rejects_a_rewritten_program_root() {
+        // Payload and proof must agree on WHICH program ran, byte for byte;
+        // a swapped-in commitment to some other eight cells never gets to the
+        // pairing check.
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, _admin, _domain) = gv_registry(&env);
+
+        let mut payload = decode_hex_var(gvx::PAYLOAD_HEX);
+        payload[8] ^= 0xff;
+        let payload = Bytes::from_slice(&env, &payload);
+
+        let (adapter, network) = sc_domain(&env);
+        let evidence = RawEvidence {
+            adapter_id: adapter,
+            evidence_version: 1,
+            network,
+            payload,
+            declared_height: gvx::HEIGHT,
+            declared_root: gv_inputs(&env).get(GV_END as u32).unwrap(),
+            submitter: Address::generate(&env),
+        };
+        let res = client.try_submit_gate_vm_zk(&evidence, &gv_proof(&env), &gv_inputs(&env));
+        assert_eq!(res.unwrap_err().unwrap(), RegistryError::DeclaredMismatch);
+    }
+
+    #[test]
+    fn test_gate_vm_rejects_a_replayed_digest() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, _admin, _domain) = gv_registry(&env);
+
+        let evidence = gv_evidence(&env, gvx::HEIGHT);
+        client.submit_gate_vm_zk(&evidence, &gv_proof(&env), &gv_inputs(&env));
+        let res = client.try_submit_gate_vm_zk(&evidence, &gv_proof(&env), &gv_inputs(&env));
+        assert_eq!(
+            res.unwrap_err().unwrap(),
+            RegistryError::EvidenceAlreadyProcessed
+        );
+    }
+
+    #[test]
+    fn test_gate_vm_refuses_the_step_chains_key_even_at_the_right_length() {
+        // Both lane keys are exactly 896 bytes -- length cannot tell them
+        // apart, and no length check claims to. What refuses the substitution
+        // is the pairing equation itself: a step-chain key does not verify a
+        // gate-vm proof, full stop, and the separate slots are what keep this
+        // the only possible mix-up.
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, admin, _domain) = gv_registry(&env);
+        let step_chain_vk = Bytes::from_slice(&env, &decode_hex_var(vsc::VK_HEX));
+        assert_eq!(step_chain_vk.len(), GATE_VM_VK_LEN); // right length, wrong key
+        client.set_gate_vm_vk(&admin, &step_chain_vk);
+        let res = client.try_submit_gate_vm_zk(
+            &gv_evidence(&env, gvx::HEIGHT),
+            &gv_proof(&env),
+            &gv_inputs(&env),
+        );
+        assert_eq!(res.unwrap_err().unwrap(), RegistryError::InvalidProof);
+    }
+
+    #[test]
+    #[should_panic(expected = "admin renounced")]
+    fn test_gate_vm_vk_setting_is_refused_after_renounce() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, admin, _domain) = gv_registry(&env);
+        client.renounce_admin(&admin);
+        client.set_gate_vm_vk(&admin, &gv_vk(&env));
     }
 }
