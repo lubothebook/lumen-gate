@@ -55,6 +55,29 @@ Concretely, the Registry computes `H = hash_to_curve(height || state_root || eve
 
 **Where a human still sits, honestly.** Admin-gated bootstrap is a real trust point during setup: whoever holds the admin key decides the initial verifying key and the initial BLS policy. That is why renounce is part of the product and not a footnote, and why the deployed registry has not yet renounced — the on-chain transaction is pending, and this file will not claim it until it is done.
 
+## The system keeps proving it, not just proved it once
+
+A test suite proves the contract behaved correctly at the moment someone ran it. That is a one-time claim. The self-audit loop turns it into a standing one.
+
+[`anchor/self-audit.js`](anchor/self-audit.js) runs against the **live deployed registry** on an interval. Every round it:
+
+1. advances the source chain so the round has genuinely new evidence,
+2. submits an honest proof and requires it to be **accepted**,
+3. resubmits the identical evidence and requires `#9 EvidenceAlreadyProcessed`,
+4. submits a proof with one byte of the signature tampered and requires `#7 InvalidSignature`,
+5. asks whether the admin capability has actually been given up.
+
+Results are timestamped and appended to [`deployments/self-audit.json`](deployments/self-audit.json), and served read-only at `/self-audit` on the anchor facade. Run it with:
+
+```bash
+REGISTRY_ID=CCXJDQMTJUGXKNFOQPC25IYVOAVWDMLJBNQYX75MAREHV7MZMU5OSEN4 \
+  node anchor/self-audit.js
+```
+
+**It holds no mint authority.** It cannot approve anything, it cannot change the verifying key, and it is not a new trusted party in the settlement path — it only asks the contract questions and writes down the answers. If it stops running, nothing about settlement changes; you just stop getting fresh evidence.
+
+The latest recorded round is **4/5**. The failing check is `admin_capability_renounced`, and it is failing for a real reason: the deployed registry's admin key is still live, because the Groth16 verifying key has not been set yet and setting it requires that key. Renouncing is the last setup step, not the first. The audit reports the gap instead of hiding it — which is the entire point of having it.
+
 ## Honest status
 
 This checkout is a **Testnet engineering snapshot**, not a completed production bridge. Everything claimed below was executed against Stellar Testnet (protocol 28) and can be checked on-chain; everything not executed is listed under [What is not claimed yet](#what-is-not-claimed-yet).

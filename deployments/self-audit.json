@@ -1,0 +1,80 @@
+{
+  "note": "Written by the Lumen Gate self-audit loop. Each entry is one round of probes against the live deployed registry.",
+  "updated_at": "2026-09-19T16:15:28.785Z",
+  "latest": {
+    "round": 1,
+    "started_at": "2026-09-19T16:15:20.468Z",
+    "finished_at": "2026-09-19T16:15:28.785Z",
+    "checks_passed": 4,
+    "checks_total": 5,
+    "all_passed": false,
+    "registry": "CCXJDQMTJUGXKNFOQPC25IYVOAVWDMLJBNQYX75MAREHV7MZMU5OSEN4",
+    "network": "testnet",
+    "checks": [
+      {
+        "check": "source_chain_reachable",
+        "passed": true,
+        "detail": "simulator produced height 98"
+      },
+      {
+        "check": "honest_evidence_accepted",
+        "passed": true,
+        "detail": "contract returned an attestation"
+      },
+      {
+        "check": "replay_rejected",
+        "passed": true,
+        "detail": "#9 EvidenceAlreadyProcessed"
+      },
+      {
+        "check": "tampered_signature_rejected",
+        "passed": true,
+        "detail": "#7 InvalidSignature"
+      },
+      {
+        "check": "admin_capability_renounced",
+        "passed": false,
+        "detail": "admin key is STILL LIVE -- bootstrap trust point has not been given up yet"
+      }
+    ]
+  },
+  "history": [
+    {
+      "round": 1,
+      "started_at": "2026-09-19T16:15:20.468Z",
+      "finished_at": "2026-09-19T16:15:28.785Z",
+      "checks_passed": 4,
+      "checks_total": 5,
+      "all_passed": false,
+      "registry": "CCXJDQMTJUGXKNFOQPC25IYVOAVWDMLJBNQYX75MAREHV7MZMU5OSEN4",
+      "network": "testnet",
+      "checks": [
+        {
+          "check": "source_chain_reachable",
+          "passed": true,
+          "detail": "simulator produced height 98"
+        },
+        {
+          "check": "honest_evidence_accepted",
+          "passed": true,
+          "detail": "contract returned an attestation"
+        },
+        {
+          "check": "replay_rejected",
+          "passed": true,
+          "detail": "#9 EvidenceAlreadyProcessed"
+        },
+        {
+          "check": "tampered_signature_rejected",
+          "passed": true,
+          "detail": "#7 InvalidSignature"
+        },
+        {
+          "check": "admin_capability_renounced",
+          "passed": false,
+          "detail": "admin key is STILL LIVE -- bootstrap trust point has not been given up yet"
+        }
+      ]
+    }
+  ]
+}
