@@ -6,3 +6,15 @@ members = [
   "crates/relayer",
 ]
 resolver = "2"
+
+# Contracts require overflow checks in release: silent integer wrapping in a
+# finality/settlement contract is a correctness bug, not a performance tradeoff.
+[profile.release]
+opt-level = "z"
+overflow-checks = true
+debug = 0
+strip = "symbols"
+debug-assertions = false
+panic = "abort"
+codegen-units = 1
+lto = true

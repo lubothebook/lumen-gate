@@ -3,9 +3,13 @@ const fs = require('fs');
 const path = require('path');
 
 const PORT = process.env.PORT || 8081;
-const SIM_URL = process.env.SIM_URL || 'http://localhost:3001';
-const REGISTRY_ID = process.env.REGISTRY_ID || 'CD-REGISTRY-PLACEHOLDER';
-const GATEWAY_ID = process.env.GATEWAY_ID || 'CD-GATEWAY-PLACEHOLDER';
+const SIM_URL = process.env.SIM_URL || 'http://localhost:8080';
+const REGISTRY_ID =
+  process.env.REGISTRY_ID ||
+  'CCXJDQMTJUGXKNFOQPC25IYVOAVWDMLJBNQYX75MAREHV7MZMU5OSEN4'; // testnet
+const GATEWAY_ID =
+  process.env.GATEWAY_ID ||
+  'CAXQVMSRRMZSM36P4XE53BJFUIYHOGIDWVDGA6A5LK5HTRL4KWQUBX5B'; // testnet
 const TOKEN_ID = process.env.TOKEN_ID || 'CD-TOKEN-PLACEHOLDER';
 const ISSUER = process.env.ISSUER || 'GCEXAMPLEISSUER';
 const RPC_URL = process.env.RPC_URL || 'https://soroban-testnet.stellar.org';
@@ -39,6 +43,43 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.url === '/self-audit' || req.url === '/self-audit/history') {
+    // Read-only surface over the record the self-audit loop writes.
+    // It holds no authority: it observes and reports, nothing else.
+    try {
+      const raw = fs.readFileSync(
+        path.join(__dirname, '..', 'deployments', 'self-audit.json'),
+        'utf8'
+      );
+      const doc = JSON.parse(raw);
+      const body =
+        req.url === '/self-audit'
+          ? {
+              last_check: doc.latest ? doc.latest.finished_at : null,
+              result: doc.latest
+                ? `${doc.latest.checks_passed}/${doc.latest.checks_total}`
+                : 'no rounds yet',
+              all_passed: doc.latest ? doc.latest.all_passed : null,
+              rounds_completed: doc.latest ? doc.latest.round : 0,
+              registry: doc.latest ? doc.latest.registry : null,
+              detail: '/self-audit/history',
+            }
+          : doc;
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify(body, null, 2));
+      return;
+    } catch (e) {
+      res.writeHead(503, { 'content-type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          status: 'no audit record yet',
+          hint: 'run: REGISTRY_ID=<id> node anchor/self-audit.js',
+          error: String(e.message || e),
+        })
+      );
+      return;
+    }
+  }
   if (req.url === '/health') {
     jsonResponse(res, {status: (REGISTRY_ID.includes('PLACEHOLDER') || GATEWAY_ID.includes('PLACEHOLDER') || TOKEN_ID.includes('PLACEHOLDER')) ? 'configuration_required' : 'ok', port: PORT, sim_url: SIM_URL, registry: REGISTRY_ID, gateway: GATEWAY_ID, time: new Date().toISOString()});
     return;

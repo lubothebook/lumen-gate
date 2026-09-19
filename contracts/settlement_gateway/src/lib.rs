@@ -30,6 +30,32 @@ pub struct CrossDomainMessage {
     pub expiry_height: u64,
 }
 
+/// The fields of `CrossDomainMessage`, with `MessageKind` replaced by a number.
+///
+/// `stellar contract invoke`, and anything else that builds arguments from the
+/// contract spec, cannot construct a value for a nested enum: the CLI reaches
+/// `soroban_spec_tools::Spec::parse_union`, which is unimplemented and panics.
+/// Contract-to-contract callers keep using `finalize_inbound` with the real
+/// enum; command-line tooling and the relayer use this struct so they can drive
+/// exactly the same code path.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InboundRelayArgs {
+    pub message_id: BytesN<32>,
+    pub source_domain: BytesN<32>,
+    pub target_domain: BytesN<32>,
+    pub source_height: u64,
+    pub event_index: u32,
+    pub nonce: u64,
+    pub sender: Address,
+    pub recipient: Address,
+    pub payload_hash: BytesN<32>,
+    /// 1 = Lock, 2 = Mint. Any other value is rejected, matching the range
+    /// `finalize_inbound_internal` accepts for inbound minting.
+    pub kind_code: u32,
+    pub expiry_height: u64,
+}
+
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CrossDomainMessageParams {
@@ -428,6 +454,73 @@ impl SettlementGateway {
         Self::finalize_inbound_internal(&env, message, merkle_proof, payload_asset, payload_amount, payload_recipient, None, 0)
     }
 
+    /// Enum-free twin of `finalize_inbound`, for command-line tooling and the
+    /// relayer. See `InboundRelayArgs` for why this exists.
+    pub fn finalize_inbound_tooling(
+        env: Env,
+        args: InboundRelayArgs,
+        merkle_proof: Bytes,
+        payload_asset: Address,
+        payload_amount: i128,
+        payload_recipient: Address,
+    ) -> Result<(), GatewayError> {
+        let message = Self::inbound_message_from_args(&args)?;
+        Self::finalize_inbound_internal(&env, message, merkle_proof, payload_asset, payload_amount, payload_recipient, None, 0)
+    }
+
+    /// Enum-free twin of `finalize_inbound_gasless`, for command-line tooling
+    /// and the relayer.
+    pub fn finalize_inbound_gasless_tooling(
+        env: Env,
+        relayer: Address,
+        args: InboundRelayArgs,
+        merkle_proof: Bytes,
+        payload_asset: Address,
+        payload_amount: i128,
+        payload_recipient: Address,
+        fee_amount: i128,
+    ) -> Result<(), GatewayError> {
+        relayer.require_auth();
+        if fee_amount < 0 {
+            return Err(GatewayError::FeeTooHigh);
+        }
+        if payload_amount <= fee_amount {
+            return Err(GatewayError::InsufficientAmountAfterFee);
+        }
+        let message = Self::inbound_message_from_args(&args)?;
+        Self::finalize_inbound_internal(
+            &env,
+            message,
+            merkle_proof,
+            payload_asset,
+            payload_amount,
+            payload_recipient,
+            Some(relayer),
+            fee_amount,
+        )
+    }
+
+    fn inbound_message_from_args(args: &InboundRelayArgs) -> Result<CrossDomainMessage, GatewayError> {
+        let kind = match args.kind_code {
+            1 => MessageKind::Lock,
+            2 => MessageKind::Mint,
+            _ => return Err(GatewayError::InvalidMessageKind),
+        };
+        Ok(CrossDomainMessage {
+            message_id: args.message_id.clone(),
+            source_domain: args.source_domain.clone(),
+            target_domain: args.target_domain.clone(),
+            source_height: args.source_height,
+            event_index: args.event_index,
+            nonce: args.nonce,
+            sender: args.sender.clone(),
+            recipient: args.recipient.clone(),
+            payload_hash: args.payload_hash.clone(),
+            kind,
+            expiry_height: args.expiry_height,
+        })
+    }
+
     // Gasless innovation: user with no XLM on Stellar can still get wSRC
     // Relayer pays XLM fee on Stellar, fee is extracted from source chain lock (amount includes fee)
     // Flow: user locks on source with amount = user_wants + fee, relayer calls this with fee, relayer gets fee, user gets amount-fee even without XLM
@@ -643,9 +736,21 @@ impl SettlementGateway {
             kind: params.kind,
             expiry_height: params.expiry_height,
         };
-        env.storage()
-            .persistent()
-            .set(&DataKey::ProcessedMessage(message_id.clone()), &true);
+        // Replay protection for an outbound burn is keyed on the nonce, NOT on
+        // the message id. `message_id` embeds `source_height`, and that is read
+        // from the live ledger sequence, which advances between the simulation
+        // that builds the footprint and the execution that must stay inside it.
+        // Keying storage on the message id made execution write an entry the
+        // simulated footprint did not contain, and the host rejected it with
+        // Storage::ExceededLimit ("outside of the footprint"). The nonce comes
+        // from contract storage, so it is identical in both phases.
+        Self::mark_processed(
+            &env,
+            &message.source_domain,
+            &message.target_domain,
+            &message.sender,
+            message.nonce,
+        )?;
         let burn_event = encode_burn_event(
             &env,
             amount,
@@ -809,11 +914,23 @@ mod test {
         let source = BytesN::from_array(&env, &[1u8; 32]);
         let target = BytesN::from_array(&env, &[2u8; 32]);
         let sender = Address::generate(&env);
-        assert!(!SettlementGateway::is_processed(&env, &source, &target, &sender, 0));
-        SettlementGateway::mark_processed(&env, &source, &target, &sender, 0).unwrap();
-        assert!(SettlementGateway::is_processed(&env, &source, &target, &sender, 0));
-        assert!(!SettlementGateway::is_processed(&env, &source, &target, &sender, 1));
-        assert!(SettlementGateway::mark_processed(&env, &source, &target, &sender, 0).is_err());
+        // The high-water mark is (source, target, sender) scoped and defaults to
+        // "nothing seen yet", so the very first nonce -- even nonce 0 -- must be
+        // accepted. Storage is only reachable from inside a contract frame.
+        let gateway_id = env.register(SettlementGateway, ());
+        env.as_contract(&gateway_id, || {
+            assert!(!SettlementGateway::is_processed(&env, &source, &target, &sender, 0));
+            SettlementGateway::mark_processed(&env, &source, &target, &sender, 0).unwrap();
+            assert!(SettlementGateway::is_processed(&env, &source, &target, &sender, 0));
+            assert!(!SettlementGateway::is_processed(&env, &source, &target, &sender, 1));
+            // Replaying the same nonce must fail: the mark only moves forward.
+            assert!(SettlementGateway::mark_processed(&env, &source, &target, &sender, 0).is_err());
+            // And every nonce below the mark is covered without extra state.
+            SettlementGateway::mark_processed(&env, &source, &target, &sender, 5).unwrap();
+            assert!(SettlementGateway::is_processed(&env, &source, &target, &sender, 3));
+            assert!(SettlementGateway::mark_processed(&env, &source, &target, &sender, 4).is_err());
+            assert!(!SettlementGateway::is_processed(&env, &source, &target, &sender, 6));
+        });
     }
 
     #[test]
@@ -932,7 +1049,7 @@ mod test {
         let message = CrossDomainMessage {
             message_id: compute_message_id(&env, &params),
             source_domain,
-            target_domain,
+            target_domain: target_domain.clone(),
             source_height: 1,
             event_index: 0,
             nonce: 0,
@@ -1041,5 +1158,135 @@ mod test {
         );
         let bal2 = token_client.balance(&fresh2);
         assert_eq!(bal2, expected_to_recipient);
+    }
+
+    #[test]
+    fn test_tooling_args_map_kind_codes() {
+        // The enum-free struct must reproduce exactly the kinds the contract
+        // entrypoint accepts, and reject everything else, so a relayer cannot
+        // smuggle a Burn or Unlock through the flat path.
+        let env = Env::default();
+        let mut args = InboundRelayArgs {
+            message_id: BytesN::from_array(&env, &[1u8; 32]),
+            source_domain: BytesN::from_array(&env, &[2u8; 32]),
+            target_domain: BytesN::from_array(&env, &[3u8; 32]),
+            source_height: 7,
+            event_index: 1,
+            nonce: 4,
+            sender: Address::generate(&env),
+            recipient: Address::generate(&env),
+            payload_hash: BytesN::from_array(&env, &[4u8; 32]),
+            kind_code: 1,
+            expiry_height: 100,
+        };
+        let message = SettlementGateway::inbound_message_from_args(&args).unwrap();
+        assert_eq!(message.kind, MessageKind::Lock);
+        assert_eq!(message.source_height, 7);
+        assert_eq!(message.event_index, 1);
+        assert_eq!(message.nonce, 4);
+
+        args.kind_code = 2;
+        assert_eq!(
+            SettlementGateway::inbound_message_from_args(&args)
+                .unwrap()
+                .kind,
+            MessageKind::Mint
+        );
+
+        for bad in [0u32, 3, 4, u32::MAX] {
+            args.kind_code = bad;
+            assert_eq!(
+                SettlementGateway::inbound_message_from_args(&args),
+                Err(GatewayError::InvalidMessageKind),
+                "kind_code {bad} must be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn test_tooling_entrypoint_mints_like_enum_entrypoint() {
+        // A relayer driving the gateway through the enum-free struct has to get
+        // exactly the same result as a contract caller using the enum.
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin = Address::generate(&env);
+        let token_admin = Address::generate(&env);
+        let sac = env.register_stellar_asset_contract_v2(token_admin.clone());
+        let token_addr = sac.address();
+
+        let recipient = Address::generate(&env);
+        let amount = 250i128;
+        let source_domain = BytesN::from_array(&env, &[1u8; 32]);
+        let target_domain: BytesN<32> = env
+            .crypto()
+            .sha256(&Bytes::from_slice(&env, b"lumen-gate-stellar-testnet"))
+            .into();
+        let payload_hash = compute_payload_hash_simple(&env, &token_addr, amount, &recipient);
+
+        let params = CrossDomainMessageParams {
+            source_domain: source_domain.clone(),
+            target_domain: target_domain.clone(),
+            source_height: 3,
+            event_index: 0,
+            nonce: 0,
+            sender: recipient.clone(),
+            recipient: recipient.clone(),
+            payload_hash: payload_hash.clone(),
+            kind: MessageKind::Lock,
+            expiry_height: 10000,
+        };
+        let message_id = compute_message_id(&env, &params);
+
+        let mock_id = env.register(MockRegistryWithRoot, ());
+        let leaf = compute_event_leaf(&env, &message_id, &payload_hash);
+        env.as_contract(&mock_id, || {
+            env.storage()
+                .instance()
+                .set(&Symbol::new(&env, "root"), &leaf);
+        });
+
+        let gateway_id = env.register(SettlementGateway, ());
+        let client = SettlementGatewayClient::new(&env, &gateway_id);
+        client.initialize(&admin, &mock_id, &token_addr);
+        token::StellarAssetClient::new(&env, &token_addr).set_admin(&gateway_id);
+
+        let args = InboundRelayArgs {
+            message_id,
+            source_domain,
+            target_domain,
+            source_height: 3,
+            event_index: 0,
+            nonce: 0,
+            sender: recipient.clone(),
+            recipient: recipient.clone(),
+            payload_hash,
+            kind_code: 1,
+            expiry_height: 10000,
+        };
+        let empty = Bytes::new(&env);
+        let first =
+            client.try_finalize_inbound_tooling(&args, &empty, &token_addr, &amount, &recipient);
+        assert!(
+            first.is_ok(),
+            "the tooling entrypoint must accept the same message as the enum path: {first:?}"
+        );
+
+        let token_client = token::Client::new(&env, &token_addr);
+        assert_eq!(token_client.balance(&recipient), amount);
+
+        // The nonce high-water mark must still catch a replay through the flat
+        // path, otherwise adding a second entrypoint would have opened a hole.
+        let replay =
+            client.try_finalize_inbound_tooling(&args, &empty, &token_addr, &amount, &recipient);
+        assert!(
+            replay.is_err(),
+            "replay through the tooling entrypoint must be rejected"
+        );
+        assert_eq!(
+            token_client.balance(&recipient),
+            amount,
+            "a rejected replay must not mint twice"
+        );
     }
 }

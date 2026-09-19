@@ -364,12 +364,12 @@ impl SimulatorState {
         msg.extend_from_slice(&event_root_bytes);
         let g1_hash =
             <G1Projective as HashToCurve<ExpandMsgXmd<Sha256>>>::hash_to_curve(
-                std::iter::once(msg.as_slice()),
+                msg.as_slice(),
                 b"lumen-gate-finality-v1",
             );
         let g2_gen =
             <G2Projective as HashToCurve<ExpandMsgXmd<Sha256>>>::hash_to_curve(
-                std::iter::once(&b"lumen-gate-g2-generator"[..]),
+                &b"lumen-gate-g2-generator"[..],
                 b"lumen-gate-finality-v1",
             );
 
@@ -438,11 +438,19 @@ struct LockRequest {
     amount: u64,
     recipient: String,
     sender: Option<String>,
+    /// How many lock events to place in the block produced by this call.
+    /// A block with several events gives the Merkle proof real siblings, so
+    /// the gateway's `verify_merkle_proof` exercises an actual tree walk
+    /// instead of the degenerate single-leaf case.
+    count: Option<u32>,
 }
 
 #[derive(Serialize)]
 struct LockResponse {
     event: LockEvent,
+    /// Every event committed to the block, in index order. `event` is the last
+    /// of these and stays for callers that only want one.
+    events: Vec<LockEvent>,
     block_height: u64,
 }
 
@@ -538,13 +546,24 @@ async fn post_lock(
     Json(req): Json<LockRequest>,
 ) -> Json<LockResponse> {
     let mut s = state.lock().unwrap();
-    let recipient = req.recipient;
-    let sender = req.sender.unwrap_or_else(|| recipient.clone());
-    let event = s.add_lock_event(req.amount, recipient, sender);
+    let count = req.count.unwrap_or(1).clamp(1, 64);
+    let mut events = Vec::with_capacity(count as usize);
+    for index in 0..count {
+        let recipient = req.recipient.clone();
+        let sender = req.sender.clone().unwrap_or_else(|| recipient.clone());
+        // Offset each amount by its index so repeated locks in the same block
+        // get distinct payload hashes. Identical leaves would still be a valid
+        // tree, but distinct ones make the sibling path observable in tests.
+        events.push(s.add_lock_event(req.amount + index as u64, recipient, sender));
+    }
     s.produce_block();
     let height = s.latest_height;
+    // add_lock_event appends at latest_height + 1, so every event in this loop
+    // lands in the block produced below, in the order they were created.
+    let last = events.last().cloned().expect("count is clamped to at least 1");
     Json(LockResponse {
-        event,
+        event: last,
+        events,
         block_height: height,
     })
 }

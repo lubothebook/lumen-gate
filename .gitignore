@@ -11,3 +11,7 @@
 .DS_Store
 .vscode/
 .idea/
+
+# Python bytecode from the circuit tooling
+__pycache__/
+*.pyc
