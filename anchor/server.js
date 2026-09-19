@@ -67,8 +67,8 @@ const server = http.createServer(async (req, res) => {
     }
 
     jsonResponse(res, {
-      anchor: "Migrate to Stellar Anchor - Hardened",
-      description: "Anchor-attached settlement layer — neutral finality-proof infra, no custodial bridge",
+      anchor: "Trust Stellar, Move to Stellar Anchor - Hardened",
+      description: "Anchor-attached settlement layer — neutral finality-proof infra, no custodial bridge, machine-approved via zkVM",
       network: "testnet",
       version: "0.2.0-hardened",
       contracts: {

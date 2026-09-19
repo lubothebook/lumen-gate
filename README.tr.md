@@ -1,4 +1,4 @@
-# Migrate to Stellar
+# Trust Stellar, Move to Stellar
 
 **Anchor'a takılan yerleşim katmanı — başka zincirlere köprü kurmak istemeyen anchor için nötr finality-proof altyapısı**
 
@@ -10,7 +10,7 @@
 
 Normal Stellar anchor'ları fiat <-> USDC işini kendi custody'leriyle yapar. Her yeni zincir yeni bir köprü, yeni validator, yeni audit demektir.
 
-Migrate to Stellar, anchor'lara **nötr bir yerleşim katmanı** veriyor:
+Trust Stellar, Move to Stellar, anchor'lara **nötr bir yerleşim katmanı** veriyor:
 
 1. **Kaynak zincir (simüle)** `state_root` + `event_root` ile blok üretir ve finality kanıtları üretir.
 2. **Finality Registry (Soroban, Rust)** bu kanıtları **native host fonksiyonlarıyla** doğrular:

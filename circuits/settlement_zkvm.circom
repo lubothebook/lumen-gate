@@ -4,7 +4,7 @@ include "circomlib/comparators.circom";
 include "circomlib/bitify.circom";
 
 /*
-Settlement zkVM - Machine approval for Migrate to Stellar
+Settlement zkVM - Machine approval for Trust Stellar, Move to Stellar
 Revised from our own universal settlement pattern, adapted for Stellar Soroban native verification
 No human multisig - only cryptographic proof verified by bn254_multi_pairing_check
 

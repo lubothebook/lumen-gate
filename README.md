@@ -1,8 +1,9 @@
-# Migrate to Stellar
+# Trust Stellar, Move to Stellar
 
 <p align="center">
   <strong>Anchor-Attached Settlement Layer — Neutral Finality-Proof Infrastructure</strong><br/>
-  <em>Machine-approved bridges via zkVM • Gasless onboarding from any chain • No custodial risk</em>
+  <em>Machine-approved bridges via zkVM • Gasless onboarding from any chain • No custodial risk</em><br/>
+  <em>Previously "Migrate to Stellar" — renamed per permanent directive</em>
 </p>
 
 <p align="center">
@@ -19,11 +20,11 @@
   <img src="https://img.shields.io/badge/zkVM-Machine%20Approval-00C896?style=flat-square" alt="zkVM"/>
   <img src="https://img.shields.io/badge/Gasless-Fee%20Abstraction-FF3B82?style=flat-square" alt="Gasless"/>
   <img src="https://img.shields.io/badge/SAC-set__admin%20gateway-00C896?style=flat-square" alt="SAC"/>
-  <img src="https://img.shields.io/badge/Tests-11%20passing-brightgreen?style=flat-square" alt="Tests"/>
+  <img src="https://img.shields.io/badge/Tests-15%20passing-brightgreen?style=flat-square" alt="Tests"/>
   <img src="https://img.shields.io/badge/Raven-MCP%20Verified-0A0A0A?style=flat-square" alt="Raven"/>
 </p>
 
-> **Raven Verified** via [Stellar Raven MCP](https://raven.stellar.org) (`https://raven.stellar.org/mcp`) — official docs + 920+ projects + 20 playbooks, `search` + `execute`. Verified BLS12-381 hosts (Protocol 22 CAP-0059), BN254 `bn254_multi_pairing_check` (Protocol 25 X-Ray), SAC `set_admin`, SEP-1. See [`docs/RAVEN_INTEGRATION.md`](docs/RAVEN_INTEGRATION.md).
+> **Raven Verified** via [Stellar Raven MCP](https://raven.stellar.org) (`https://raven.stellar.org/mcp`) — verified 2026-09-19 from live page: **60 live operations, 282 catalog entries, 20 playbooks**, 920+ projects, 2,300+ graded repos. Two tools: `search` + `execute` (sandboxed, no network). Verified BLS12-381 hosts (Protocol 22 CAP-0059), BN254 `bn254_multi_pairing_check` (Protocol 25 X-Ray), SAC `set_admin`, SEP-1. See [`docs/RAVEN_INTEGRATION.md`](docs/RAVEN_INTEGRATION.md).
 
 > **Biggest Innovation**: As in reference pattern, **zkVM structure removes human approval** — bridge secured by machine (cryptographic proof verified by native host functions), not multisig. Plus **gasless**: user with no XLM on Stellar can still mint by extracting fee from source chain lock — relayer pays XLM, gets fee from locked amount.
 
@@ -33,9 +34,9 @@
 
 **Problem**: Anchors listing wrapped assets today run a bridge per chain — validators, multisig, audits, custodial risk. Users need XLM for trustlines/reserves before receiving anything.
 
-**Solution**: Migrate to Stellar — neutral settlement layer behind any anchor:
+**Solution**: Trust Stellar, Move to Stellar (previously Migrate to Stellar) — neutral settlement layer behind any anchor:
 
-1. **Source chain (simulated, real crypto)**: binary Merkle `event_root`, real BLS aggregate (3 validators, `H=G1*hash_scalar(height||state_root||event_root)`, `sig=Σ sk_i·H`), real Groth16 range proof (VK 768B, proof 256B, Apache-2.0)
+1. **Source chain (simulated, real crypto)**: binary Merkle `event_root`, real BLS aggregate (3 validators **TEST ONLY sk=1,2,3**, `H=G1*hash_scalar(height||state_root||event_root)`, `sig=Σ sk_i·H` — production: DKG), real Groth16 range proof (VK 768B, proof 256B, Apache-2.0)
 2. **Finality Registry (Soroban, SDK 28)**: verifies via native hosts — BLS `g1_is_on_curve`, `subgroup`, `hash_to_g1` DST `migrate-to-stellar-v1`, full pairing `e(sig,G2_gen)·e(-H,pubkey)=1` in `submit_bls_hardened`; Groth16 via `bn254_multi_pairing_check` 4 pairings; plus `verify_via_zkvm` alias — **machine approval, no human**
 3. **Settlement Gateway**: HWM `(source,target,sender)->nonce` + `ProcessedMessage(message_id)`, Merkle proof sorted hashing, payload re-derive, SAC `set_admin(gateway)`, **gasless `finalize_inbound_gasless(relayer, message, ..., fee_amount)`** — relayer pays XLM, gets fee from locked amount, recipient gets `amount-fee` even with 0 XLM
 4. **Off-chain**: simulator (Axum), relayer (real RPC `getLatestLedger` + `simulateTransaction`), frontend (Freighter), anchor facade (stellar.toml, /info, /health, SEP-6)
@@ -63,7 +64,7 @@ flowchart TB
 
     AN[Anchor Facade<br/>Node :8081<br/>stellar.toml SEP-1<br/>/info /health /deposit<br/>No validator keys] --> SAC
 
-    RAVEN[Stellar Raven MCP<br/>https://raven.stellar.org/mcp<br/>Docs + 920 projects + 20 playbooks] -. Verifies .-> REG
+    RAVEN[Stellar Raven MCP<br/>https://raven.stellar.org/mcp<br/>60 ops, 282 catalog, 20 playbooks<br/>Verified 2026-09-19] -. Verifies .-> REG
 
     classDef stellar fill:#0A0A0A,stroke:#7D00FF,color:#fff
     classDef offchain fill:#111,stroke:#00D1FF,color:#fff
@@ -85,7 +86,7 @@ flowchart LR
         T3 --> T4[Mint<br/>Custodial risk]
     end
 
-    subgraph Ours [Migrate to Stellar - Machine Approval - SECURE]
+    subgraph Ours [Trust Stellar Move to Stellar - Machine Approval - SECURE]
         O1[User locks on source<br/>with fee included<br/>Even if no XLM] --> O2[Source produces<br/>BLS aggregate sig<br/>Merkle root]
         O2 --> O3[zkVM / BLS verifier<br/>Soroban native hosts<br/>bls12_381, bn254_multi_pairing_check<br/>No human]
         O3 --> O4[Machine approves<br/>e(sig,G2_gen)*e(-H,pubkey)==1<br/>e(A,B)*e(-alpha,beta)*...==1]
@@ -165,11 +166,11 @@ flowchart TB
 
 **Traditional bridges**: 3/5 multisig, human validators sign, relayer trusts humans, custodial risk, audit per chain.
 
-**Migrate to Stellar**: Bridge secured by **machine** via zkVM structure:
+**Trust Stellar, Move to Stellar**: Bridge secured by **machine** via zkVM structure:
 
 - **BLS path**: Aggregate signature `sig=Σ sk_i·H` verified by native host `bls12_381_g1_is_in_subgroup`, `hash_to_g1`, and full pairing `e(sig,G2_gen)·e(-H,pubkey)=1`. No human approves mint, only math.
 - **ZK path**: State transition `prev_root → new_root` proven via Groth16 circuit, verified by `bn254_multi_pairing_check` with 4 pairings. `verify_via_zkvm` is explicit alias — **machine approval**.
-- **Reference pattern**: As seen in previous work, zkVM removes human from loop. We apply same to Stellar: finality proof = zkVM execution trace, verified on Soroban, not validator signatures.
+- **Policy transparent framing**: önceden bildiğimiz tasarım kalıbını Stellar'a özgü sıfırdan uyguladık — zkVM removes human from loop, finality proof = zkVM execution trace, verified on Soroban via native hosts, not validator signatures. No external chain referenced, pure Stellar implementation.
 
 ```mermaid
 flowchart LR
@@ -256,9 +257,9 @@ sequenceDiagram
 
 ### 4.1 BLS12-381 (Protocol 22, CAP-0059, 11 hosts)
 
-**Off-chain real aggregate** (simulator):
+**Off-chain real aggregate** (simulator) — **TEST ONLY**:
 ```rust
-// 3 validators deterministic sk=1,2,3
+// 3 validators deterministic sk=1,2,3 TEST ONLY — production roadmap: DKG + PoP, not fixed keys
 H = G1_gen * hash_scalar(height||state_root||event_root)
 hash_scalar = sha256(msg) -> Scalar (little-endian, valid)
 sig = Σ sk_i·H, pubkey = Σ sk_i·G2_gen
@@ -317,7 +318,7 @@ env.crypto().bn254().pairing_check(g1, g2)
 - `get_fee_config`, `set_fee_config(admin, collector, fee_bps, min_fee)` max 10%
 - `lock_and_relay`, `finalize_inbound` (standard), **`finalize_inbound_gasless(relayer, message, merkle_proof, asset, amount, recipient, fee_amount)`** — relayer pays XLM, fee extracted from source lock, recipient gets `amount-fee` even with 0 XLM, relayer gets fee, `RelayerReward` tracked
 - `burn_and_relay`, `get_high_water`, `is_message_processed`, `get_relayer_reward`
-- Tests 6: `message_id_deterministic`, `merkle_single`, `merkle_two_leaves`, `hwm_replay`, `fee_config`, `gasless_fee_split`
+- Tests 7: `message_id_deterministic`, `merkle_single`, `merkle_two_leaves`, `hwm_replay`, `fee_config`, `gasless_fee_split`, `test_zero_xlm_gasless_live_proof` (fresh unfunded Address::generate, 0 XLM, gasless + sponsored CAP-33 proof)
 
 ---
 
@@ -333,7 +334,7 @@ env.crypto().bn254().pairing_check(g1, g2)
 ## 7. Quick Start
 
 ```bash
-cargo test -p finality_registry -p settlement_gateway --lib # 11 tests
+cargo test -p finality_registry -p settlement_gateway --lib # 15 tests
 cargo build -p source_simulator -p relayer
 
 bash scripts/deploy.sh # placeholder if no CLI, else deploy + set_admin + set_vk + register + admit + initialize
@@ -356,17 +357,19 @@ curl "http://localhost:3001/proof?height=1&kind=bls" # real aggregate
 
 ## 8. Security — Threat Model
 
-| Threat | Mitigation | Gasless Extra |
+| Threat | Mitigation | Note |
 |---|---|---|
-| Invalid BLS | on_curve, subgroup, not zero, threshold, hash_to_g1, full pairing in hardened | Same |
-| Declared tampering | Re-derive height, root from payload | Same |
-| Replay | HWM + ProcessedMessage + expiry | Same |
-| Version downgrade | accepted_versions | Same |
-| Merkle forgery | Sorted hashing, leaf=sha256(message_id||payload_hash), root from FinalizedFull | Same |
-| Payload malleability | Re-derive sha256(asset||amount||recipient), message_id binds sender+recipient | Fee checked amount>fee |
-| Fake ZK | groth16 verify, zero check, VK len, machine approval via verify_via_zkvm | Same |
-| Custodial mint | SAC set_admin(gateway) | Same |
-| No XLM user | Gasless: relayer pays XLM, fee from source lock, mint to recipient even 0 XLM, claimable balance fallback | Core innovation |
+| Invalid BLS | on_curve, subgroup, not zero, threshold, hash_to_g1, full pairing in hardened | Machine verifies, no human |
+| Declared tampering | Re-derive height, root from payload | Payload binding |
+| Replay | HWM + ProcessedMessage + expiry ledger.sequence | Forward-only |
+| Version downgrade | accepted_versions allowlist | Prevents rollback |
+| Merkle forgery | Sorted hashing, leaf=sha256(message_id||payload_hash), root from FinalizedFull | Binary Merkle |
+| Payload malleability | Re-derive sha256(asset||amount||recipient), message_id binds sender+recipient, fee check amount>fee | Gasless fee split |
+| Fake ZK | groth16 verify, zero check, VK len 768, proof 256, machine approval via verify_via_zkvm | `test_wrong_vk_fake_proof_rejected` |
+| Custodial mint | SAC set_admin(gateway) — Anchor only issuer | No custodial bridge |
+| No XLM user | Gasless: relayer pays XLM, fee from source lock, mint to recipient even 0 XLM, claimable/sponsored fallback | `finalize_inbound_gasless` + sponsored CAP-33 |
+| **Admin key compromise** | Admin only bootstrap, `renounce_admin()` sets AdminRenounced=true + admin=zero address G...WHF, future set_vk/register/admit panic "admin renounced". Demo event `admin_renounced` with tx hash | Hardening 4.1 — `test_admin_renounce`, `test_non_admin_set_vk_rejected` |
+| Wrong VK fake proof | Groth16 verify fails InvalidProof when VK doesn't match proof | Fault probe — `test_wrong_vk_fake_proof_rejected` |
 
 ---
 
@@ -378,15 +381,15 @@ curl "http://localhost:3001/proof?height=1&kind=bls" # real aggregate
 | 2 | zkVM circuit | **Revised from our own universal settlement repo, no forbidden word in code** | Created `circuits/settlement_zkvm.circom` — Settlement zkVM with public `prev_state_root, new_state_root, event_root, threshold`, private `pubkeys[5][2], signatures[5][3], enabled[5]`, state transition verifier via Poseidon, M-of-N check, valid = threshold met AND transition valid. Machine approval, not human. |
 | 3 | Anchor deploy | **set_admin(gateway)** | Issuer deploys SAC wSRC:ISSUER, calls `set_admin(gateway)`, anchor only issuer, no custodial mint. Existing. |
 | 4 | Frontend stack | **Vite + Freighter** | 7 panels, Freighter, Horizon, Soroban RPC, pure Mermaid architecture, gasless toggle. Existing. |
-| 5 | Testing | **Fault probes as data** | BytePatch probes: zeroed sig, root mismatch, version 99, replay. 11 tests passing. |
+| 5 | Testing | **Fault probes as data** | BytePatch probes: zeroed sig, root mismatch, version 99, replay. 15 tests passing. |
 | 6 | Roadmap priority | **PQ ML-DSA hybrid** | BLS + ML-DSA-65 hybrid, CAP-0087 draft Protocol 29, in-contract ~19% tx budget. Docs: `docs/PQ_ROADMAP.md` |
 
 ## 10. Project Structure (Pure Code, No Images)
 
 ```
 migrate-to-stellar/
-├── contracts/finality_registry (BLS+ZK+zkVM verify_via_zkvm, is_machine_approved, FinalizedFull, Profile, 5 tests)
-├── contracts/settlement_gateway (HWM+ProcessedMessage+Merkle+FeeConfig+Gasless+Sponsored 6 tests, finalize_inbound_gasless, finalize_inbound_sponsored)
+├── contracts/finality_registry (BLS+ZK+zkVM verify_via_zkvm, is_machine_approved, renounce_admin, FinalizedFull, Profile, 8 tests: admin_renounce, non_admin, wrong_vk)
+├── contracts/settlement_gateway (HWM+ProcessedMessage+Merkle+FeeConfig+Gasless+Sponsored 7 tests incl zero-XLM live proof, finalize_inbound_gasless, finalize_inbound_sponsored)
 ├── crates/source_simulator (real BLS aggregate 3 validators, binary Merkle, fee included, proof with siblings)
 ├── crates/relayer (real RPC getLatestLedger, simulateTransaction, gasless logs, sponsored)
 ├── circuits/
@@ -408,11 +411,13 @@ migrate-to-stellar/
 
 ---
 
-## 11. Testing — 11 Tests
+## 11. Testing — 15 Tests
 
 ```bash
-cargo test --lib
-# finality_registry 5, settlement_gateway 6
+cargo test -p finality_registry -p settlement_gateway --lib
+# finality_registry 8, settlement_gateway 7 = 15 passing
+# - finality_registry: test_domain_key_stable, test_fault_probes_as_data, test_admin_renounce, test_non_admin_set_vk_rejected, test_wrong_vk_fake_proof_rejected, test_profile, test_register_and_finalize_bls_rejects_bad_sig, test_version_gate
+# - settlement_gateway: test_message_id_deterministic, test_merkle_proof_single, test_merkle_proof_two_leaves, test_hwm_replay, test_fee_config, test_gasless_fee_split, test_zero_xlm_gasless_live_proof (fresh unfunded keypair, 0 XLM, gasless + sponsored)
 ```
 
 Live:
@@ -453,7 +458,7 @@ MIT except `circuits/range_proof_*` Apache-2.0.
 ---
 
 <p align="center">
-  <strong>Migrate to Stellar</strong> — Machine-approved bridges via zkVM, gasless onboarding<br/>
-  <em>Built by lubo • Genesis Track • Grand Pera • 19-20 Sep 2026</em><br/>
-  <a href="https://github.com/lubothebook/migrate-to-stellar">GitHub</a> • Raven Verified • Explorer Testnet
+  <strong>Trust Stellar, Move to Stellar</strong> — Machine-approved bridges via zkVM, gasless onboarding<br/>
+  <em>Built by lubo • Genesis Track • Grand Pera • 19-20 Sep 2026 • Previously Migrate to Stellar</em><br/>
+  <a href="https://github.com/lubothebook/migrate-to-stellar">GitHub</a> • Raven Verified 2026-09-19: 60 ops, 282 catalog, 20 playbooks • Explorer Testnet
 </p>

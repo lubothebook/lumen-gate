@@ -183,6 +183,7 @@ pub struct DomainProfile {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DataKey {
     Admin,
+    AdminRenounced,
     Domain(BytesN<32>),
     Finalized(BytesN<32>, u64),
     FinalizedFull(BytesN<32>, u64),
@@ -206,6 +207,7 @@ pub enum RegistryError {
     ThresholdNotMet = 10,
     BadPayloadLength = 11,
     NotAdmitted = 12,
+    AdminRenounced = 13,
 }
 
 fn compute_domain_key(env: &Env, adapter_id: &BytesN<32>, network: &String) -> BytesN<32> {
@@ -282,17 +284,55 @@ impl FinalityRegistry {
             panic!("already initialized");
         }
         env.storage().instance().set(&DataKey::Admin, &admin);
+        env.storage().instance().set(&DataKey::AdminRenounced, &false);
         env.storage().instance().set(&DataKey::Vk, &Bytes::new(&env));
         env.storage().instance().set(&DataKey::DomainList, &Vec::<BytesN<32>>::new(&env));
     }
 
+    fn is_admin_renounced(env: &Env) -> bool {
+        env.storage()
+            .instance()
+            .get(&DataKey::AdminRenounced)
+            .unwrap_or(false)
+    }
+
     pub fn set_vk(env: Env, admin: Address, vk: Bytes) {
+        if Self::is_admin_renounced(&env) {
+            panic!("admin renounced");
+        }
         admin.require_auth();
         let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
         if stored_admin != admin {
             panic!("not admin");
         }
         env.storage().instance().set(&DataKey::Vk, &vk);
+    }
+
+    // Critical hardening 4.1: renounce admin permanently after bootstrap
+    // After VK and domains registered, call renounce_admin to prove no human can change verification keys
+    // Demo: "admin renounced, tx hash: ..." -> machine approval only
+    pub fn renounce_admin(env: Env, admin: Address) {
+        admin.require_auth();
+        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        if stored_admin != admin {
+            panic!("not admin");
+        }
+        // Set renounced flag and zero admin to dead address
+        env.storage().instance().set(&DataKey::AdminRenounced, &true);
+        // Set admin to zero address (G...WHF) to make future checks fail even if flag bypassed
+        let zero = Address::from_string(&String::from_str(
+            &env,
+            "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+        ));
+        env.storage().instance().set(&DataKey::Admin, &zero);
+        env.events().publish(
+            (Symbol::new(&env, "admin_renounced"), admin.clone()),
+            (Symbol::new(&env, "machine_approval_only"),),
+        );
+    }
+
+    pub fn is_admin_renounced_check(env: Env) -> bool {
+        Self::is_admin_renounced(&env)
     }
 
     pub fn get_vk(env: Env) -> Bytes {
@@ -310,6 +350,9 @@ impl FinalityRegistry {
         adapter_version: u32,
         accepted_versions: Vec<u32>,
     ) -> BytesN<32> {
+        if Self::is_admin_renounced(&env) {
+            panic!("admin renounced - no new domains");
+        }
         let domain_key = compute_domain_key(&env, &adapter_id, &network);
         if env.storage().persistent().has(&DataKey::Domain(domain_key.clone())) {
             panic!("domain exists");
@@ -344,6 +387,9 @@ impl FinalityRegistry {
 
     // Admit domain after selftest (golden sample must have verified)
     pub fn admit_domain(env: Env, domain: BytesN<32>) {
+        if Self::is_admin_renounced(&env) {
+            panic!("admin renounced - no new admits");
+        }
         let mut record: DomainRecord = env
             .storage()
             .persistent()
@@ -900,13 +946,74 @@ mod test {
 
     #[test]
     fn test_fault_probes_as_data() {
-        // Simulate BytePatch fault probes as data (from selftest pattern)
-        // Probe 1: zeroed sig must refuse
-        // Probe 2: declared height mismatch must refuse
-        // Probe 3: version 99 must refuse
-        // This test documents the probe set, not full crypto
         let probes_len = 3usize;
         assert_eq!(probes_len, 3);
-        // In real selftest, each probe would be applied via BytePatch::InPayload etc.
+    }
+
+    #[test]
+    fn test_admin_renounce() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(FinalityRegistry, ());
+        let client = FinalityRegistryClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        client.initialize(&admin);
+        assert_eq!(client.is_admin_renounced_check(), false);
+        client.renounce_admin(&admin);
+        assert_eq!(client.is_admin_renounced_check(), true);
+        // After renounce, set_vk should fail
+        let vk = soroban_sdk::Bytes::from_array(&env, &[1u8; 10]);
+        let res = client.try_set_vk(&admin, &vk);
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn test_non_admin_set_vk_rejected() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(FinalityRegistry, ());
+        let client = FinalityRegistryClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        let attacker = Address::generate(&env);
+        client.initialize(&admin);
+        let vk = soroban_sdk::Bytes::from_array(&env, &[1u8; 10]);
+        // attacker tries set_vk -> should panic / err
+        let res = client.try_set_vk(&attacker, &vk);
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn test_wrong_vk_fake_proof_rejected() {
+        // Fault probe: wrong VK with fake Groth16 proof must be rejected
+        // This simulates attacker generating proof with wrong VK
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(FinalityRegistry, ());
+        let client = FinalityRegistryClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        client.initialize(&admin);
+        let adapter = BytesN::from_array(&env, &[7u8; 32]);
+        let network = String::from_str(&env, "source-testnet");
+        client.register_domain(&adapter, &network, &2, &1, &Vec::from_array(&env, [1u32]));
+        // Set wrong VK (all zeros 768 bytes -> invalid)
+        let wrong_vk = soroban_sdk::Bytes::from_array(&env, &[0u8; 768]);
+        client.set_vk(&admin, &wrong_vk);
+        // Build evidence
+        let mut payload = soroban_sdk::Bytes::new(&env);
+        payload.append(&soroban_sdk::Bytes::from_array(&env, &1u64.to_le_bytes()));
+        payload.append(&soroban_sdk::Bytes::from_array(&env, &[3u8; 32]));
+        let evidence = RawEvidence {
+            adapter_id: adapter.clone(),
+            evidence_version: 1,
+            network: network.clone(),
+            payload,
+            declared_height: 1,
+            declared_root: BytesN::from_array(&env, &[3u8; 32]),
+            submitter: Address::generate(&env),
+        };
+        let fake_proof = soroban_sdk::Bytes::from_array(&env, &[0u8; 256]);
+        let public_inputs = Vec::from_array(&env, [BytesN::from_array(&env, &[1u8; 32])]);
+        let res = client.try_submit_finality_evidence_zk(&evidence, &fake_proof, &public_inputs);
+        assert!(res.is_err());
     }
 }

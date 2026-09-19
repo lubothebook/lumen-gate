@@ -3,7 +3,7 @@ include "circomlib/poseidon.circom";
 include "circomlib/comparators.circom";
 
 /*
-M-of-N finality circuit for Migrate to Stellar
+M-of-N finality circuit for Trust Stellar, Move to Stellar
 Proves: at least M of N EdDSA signatures over a state root are valid
 Simplified for hackathon: we use Poseidon hash and range check as placeholder
 Public inputs: state_root, threshold

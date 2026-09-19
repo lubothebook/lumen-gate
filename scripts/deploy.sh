@@ -1,14 +1,14 @@
 #!/bin/bash
 set -e
 
-# Migrate to Stellar - Testnet Deploy Script (hardened)
+# Trust Stellar, Move to Stellar - Testnet Deploy Script (hardened)
 # Requires: stellar CLI (cargo install stellar-cli), funded testnet account
 
 NETWORK="testnet"
 RPC_URL="https://soroban-testnet.stellar.org"
 FRIENDBOT="https://friendbot.stellar.org"
 
-echo "=== Migrate to Stellar Deploy (hardened) ==="
+echo "=== Trust Stellar, Move to Stellar Deploy (hardened) ==="
 echo "Network: $NETWORK, RPC: $RPC_URL"
 echo "Hardened: BLS aggregate + Merkle + HWM + Groth16 BN254 + SAC set_admin"
 

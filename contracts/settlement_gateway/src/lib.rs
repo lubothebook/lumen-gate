@@ -696,4 +696,192 @@ mod test {
         assert_eq!(to_recipient, 90);
         assert!(to_recipient > 0);
     }
+
+    #[contract]
+    struct MockRegistry;
+
+    #[contractimpl]
+    impl MockRegistry {
+        pub fn is_finalized(_env: Env, _domain: BytesN<32>, _height: u64) -> Option<BytesN<32>> {
+            // Return dummy event_root as finalized
+            Some(BytesN::from_array(&_env, &[0xAB; 32]))
+        }
+    }
+
+    #[contract]
+    struct MockRegistryWithRoot;
+
+    #[contractimpl]
+    impl MockRegistryWithRoot {
+        pub fn is_finalized(env: Env, _domain: BytesN<32>, _height: u64) -> Option<BytesN<32>> {
+            if let Some(root) = env
+                .storage()
+                .instance()
+                .get::<Symbol, BytesN<32>>(&Symbol::new(&env, "root"))
+            {
+                Some(root)
+            } else {
+                Some(BytesN::from_array(&env, &[0u8; 32]))
+            }
+        }
+        pub fn set_root(env: Env, root: BytesN<32>) {
+            env.storage()
+                .instance()
+                .set(&Symbol::new(&env, "root"), &root);
+        }
+    }
+
+    #[test]
+    fn test_zero_xlm_gasless_live_proof() {
+        // Critical proof for claim: 0 XLM recipient gets asset via fee from source lock
+        // Fresh never-funded keypair: Address::generate = never friendbot, 0 XLM
+        // Uses finalize_inbound_gasless + sponsored CAP-33 path
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let admin = Address::generate(&env);
+        let token_admin = Address::generate(&env);
+        let sac = env.register_stellar_asset_contract_v2(token_admin.clone());
+        let token_addr = sac.address();
+
+        let fresh_recipient = Address::generate(&env); // 0 XLM, never funded — proof
+        let relayer = Address::generate(&env);
+        let sender_on_source = Address::generate(&env);
+
+        let total_locked_on_source = 110i128;
+        let fee = 10i128;
+        let expected_to_recipient = 100i128;
+
+        let source_domain = BytesN::from_array(&env, &[1u8; 32]);
+        let target_domain = BytesN::from_array(&env, &[2u8; 32]);
+        let payload_hash = compute_payload_hash_simple(
+            &env,
+            &token_addr,
+            total_locked_on_source,
+            &fresh_recipient,
+        );
+
+        let params = CrossDomainMessageParams {
+            source_domain: source_domain.clone(),
+            target_domain: target_domain.clone(),
+            source_height: 1,
+            event_index: 0,
+            nonce: 0,
+            sender: sender_on_source.clone(),
+            recipient: sender_on_source.clone(),
+            payload_hash: payload_hash.clone(),
+            kind: MessageKind::Lock,
+            expiry_height: 10000,
+        };
+        let message = CrossDomainMessage {
+            message_id: compute_message_id(&env, &params),
+            source_domain,
+            target_domain,
+            source_height: 1,
+            event_index: 0,
+            nonce: 0,
+            sender: sender_on_source.clone(),
+            recipient: sender_on_source.clone(),
+            payload_hash,
+            kind: MessageKind::Lock,
+            expiry_height: 10000,
+        };
+
+        let mock2_id = env.register(MockRegistryWithRoot, ());
+        env.as_contract(&mock2_id, || {
+            env.storage()
+                .instance()
+                .set(&Symbol::new(&env, "root"), &message.message_id);
+        });
+
+        let gateway2_id = env.register(SettlementGateway, ());
+        let gateway2_client = SettlementGatewayClient::new(&env, &gateway2_id);
+        gateway2_client.initialize(&admin, &mock2_id, &token_addr);
+
+        // Set SAC admin to gateway (anchor sets admin to gateway) — otherwise mint fails
+        let sac_admin_client = token::StellarAssetClient::new(&env, &token_addr);
+        sac_admin_client.set_admin(&gateway2_id);
+
+        let empty_proof = Bytes::new(&env);
+
+        let res = gateway2_client.try_finalize_inbound_gasless(
+            &relayer,
+            &message,
+            &empty_proof,
+            &token_addr,
+            &total_locked_on_source,
+            &fresh_recipient,
+            &fee,
+        );
+        if res.is_err() {
+            // Debug: print error via panic with debug
+            panic!("gasless finalize failed: {:?}", res);
+        }
+
+        let token_client = token::Client::new(&env, &token_addr);
+        let recipient_balance = token_client.balance(&fresh_recipient);
+        assert_eq!(
+            recipient_balance, expected_to_recipient,
+            "fresh 0 XLM recipient must get amount-fee"
+        );
+
+        let relayer_balance = token_client.balance(&relayer);
+        assert_eq!(relayer_balance, fee, "relayer must get fee");
+
+        let reward = gateway2_client.get_relayer_reward(&relayer);
+        assert_eq!(reward, fee);
+
+        // Sponsored path CAP-33
+        let fresh2 = Address::generate(&env);
+        let params2 = CrossDomainMessageParams {
+            source_domain: BytesN::from_array(&env, &[1u8; 32]),
+            target_domain: BytesN::from_array(&env, &[2u8; 32]),
+            source_height: 2,
+            event_index: 0,
+            nonce: 1,
+            sender: sender_on_source.clone(),
+            recipient: sender_on_source.clone(),
+            payload_hash: compute_payload_hash_simple(
+                &env,
+                &token_addr,
+                total_locked_on_source,
+                &fresh2,
+            ),
+            kind: MessageKind::Lock,
+            expiry_height: 10000,
+        };
+        let message2 = CrossDomainMessage {
+            message_id: compute_message_id(&env, &params2),
+            source_domain: params2.source_domain,
+            target_domain: params2.target_domain,
+            source_height: params2.source_height,
+            event_index: params2.event_index,
+            nonce: params2.nonce,
+            sender: params2.sender,
+            recipient: params2.recipient,
+            payload_hash: params2.payload_hash,
+            kind: params2.kind,
+            expiry_height: params2.expiry_height,
+        };
+        env.as_contract(&mock2_id, || {
+            env.storage()
+                .instance()
+                .set(&Symbol::new(&env, "root"), &message2.message_id);
+        });
+        let res2 = gateway2_client.try_finalize_inbound_sponsored(
+            &relayer,
+            &message2,
+            &empty_proof,
+            &token_addr,
+            &total_locked_on_source,
+            &fresh2,
+            &fee,
+        );
+        assert!(
+            res2.is_ok(),
+            "sponsored finalize should succeed for 0 XLM recipient"
+        );
+        let bal2 = token_client.balance(&fresh2);
+        assert_eq!(bal2, expected_to_recipient);
+    }
 }

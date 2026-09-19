@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Raven helper for Migrate to Stellar
+// Raven helper for Trust Stellar, Move to Stellar
 // Demonstrates how Raven MCP would be used to verify our implementation
 // If you have Raven MCP connected, you can run this via execute tool
 // Otherwise, it falls back to local docs
@@ -60,7 +60,7 @@ const DOCS = {
 };
 
 function printRavenSearchExamples() {
-  console.log("=== Raven search examples for Migrate to Stellar ===\n");
+  console.log("=== Raven search examples for Trust Stellar, Move to Stellar ===\n");
   console.log("In any MCP client connected to Raven (https://raven.stellar.org/mcp):\n");
   const queries = [
     "Soroban BLS12-381 host functions list",

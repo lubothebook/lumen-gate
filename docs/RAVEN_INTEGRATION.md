@@ -1,4 +1,4 @@
-# Raven Integration — Migrate to Stellar
+# Raven Integration — Trust Stellar, Move to Stellar
 
 > Raven is the official Stellar MCP server: one endpoint `https://raven.stellar.org/mcp`, one browser sign-in, no API keys. It bundles official docs, live ecosystem data, community intel, and 20 proven playbooks behind two tools: `search` and `execute`.
 
@@ -53,7 +53,7 @@ Playground (no agent): https://raven.stellar.org/playground (sign-in required, r
 
 Health: https://raven.stellar.org/health and https://raven.stellar.org/health/skills
 
-## 2. How we used Raven to harden Migrate to Stellar
+## 2. How we used Raven to harden Trust Stellar, Move to Stellar
 
 Raven exposes 60 operations, 282 catalog entries, 20 playbooks. We used `search` to rank, then `execute` to run sandboxed JS that composes calls. Every call returns `{ok:true,data}` or `{ok:false,error}`.
 

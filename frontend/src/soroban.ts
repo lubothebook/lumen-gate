@@ -1,4 +1,4 @@
-// Soroban helpers for Migrate to Stellar - hardened
+// Soroban helpers for Trust Stellar, Move to Stellar - hardened
 import * as StellarSdk from '@stellar/stellar-sdk';
 
 const RPC_URL = import.meta.env.VITE_RPC_URL || 'https://soroban-testnet.stellar.org';

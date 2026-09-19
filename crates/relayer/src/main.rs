@@ -156,7 +156,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::env::var("RPC_URL").unwrap_or_else(|_| "https://soroban-testnet.stellar.org".to_string())
     };
 
-    println!("Migrate to Stellar - Relayer (hardened)");
+    println!("Trust Stellar, Move to Stellar - Relayer (hardened)");
     println!("  Simulator: {}", sim_url);
     println!("  Soroban RPC: {}", rpc_url);
     println!("  Hardened: real BLS aggregate verification (G1/G2 on-curve + hash_to_g1), Merkle proof, HWM replay protection, anchor SAC flow");
