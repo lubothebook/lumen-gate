@@ -532,20 +532,24 @@ async function loadStatus() {
   if (!recipient.value) recipient.value = payload.accounts?.gasless_recipient || payload.accounts?.end_user || '';
 
   const relayReady = Boolean(payload.capabilities?.operator_relay?.enabled);
-  $('settleNote').textContent = relayReady
-    ? 'This deployment can relay: the button runs one relayer pass at the height you locked. The relayer signs and pays.'
-    : 'This deployment cannot relay by itself: no operator URL and token are configured here. Locking still works; use "Copy the command instead" to settle it with the local relayer.';
+  // Three states, three sentences: the note is what the button's own title is
+  // copied from, so a state that is missing here would leave a disabled button
+  // explaining the wrong thing.
+  $('settleNote').textContent = !relayReady
+    ? 'This deployment cannot relay by itself: no operator URL and token are configured here. Locking still works; use "Copy the command instead" to settle it with the local relayer.'
+    : state.lock
+      ? 'This deployment can relay: the button runs one relayer pass at the height you locked. The relayer signs and pays.'
+      : 'This deployment can relay. Lock a block first: settlement settles one specific lock, so the button unlocks once there is something to settle.';
   $('settleBtn').disabled = !relayReady || !state.lock;
-  $('settleBtn').title = relayReady ? (state.lock ? '' : 'Lock something first: settlement settles a specific lock.') : 'No operator URL and token are configured here, so this deployment cannot relay.';
 
   const sourceReady = Boolean(payload.capabilities?.source_chain?.configured);
   $('sourceNote').textContent = sourceReady
     ? 'Source adapter configured. Locks created here become real events on the simulated source chain, with real BLS evidence behind them.'
     : 'No source adapter is configured on this deployment, so this button is disabled rather than pretending to work.';
   $('lockBtn').disabled = !sourceReady;
-  $('lockBtn').title = sourceReady ? '' : 'No source adapter is configured on this deployment. Locking is disabled on purpose.';
 
   paintWriteState();
+  paintDisabledReasons();
   $('footerChain').textContent = `${payload.chain?.horizon || ''}`.replace('https://', '');
   return payload;
 }
@@ -919,11 +923,41 @@ async function withBusy(btn, fn) {
   }
 }
 
+// A control that cannot act has to say why, and it has to say it twice: in
+// the note under the control, where a reader sees it without hunting, and in
+// its own title, where a pointer finds it. Both come from the same sentence -
+// the note is the source and the title is a copy of it - because two
+// hand-written copies of one reason drift apart, and the version a reader
+// hovers is then the one that is wrong.
+//
+// This started as a finding, not a design: a click-through of the live page
+// found four disabled controls, two of them silent. "Pay with Freighter" and
+// "Check status" were greyed with nothing anywhere saying why.
+const DISABLED_REASONS = [
+  { control: 'lockBtn', note: 'sourceNote' },
+  { control: 'settleBtn', note: 'settleNote' },
+  { control: 'cashoutPayBtn', note: 'cashoutActionNote' },
+  { control: 'cashoutStatusBtn', note: 'cashoutActionNote' },
+];
+
+function paintDisabledReasons() {
+  for (const { control, note } of DISABLED_REASONS) {
+    const button = $(control);
+    const source = $(note);
+    if (!button || !source) continue;
+    button.setAttribute('aria-describedby', note);
+    const reason = source.textContent.replace(/\s+/g, ' ').trim();
+    if (button.disabled && reason) button.title = reason;
+    else button.removeAttribute('title');
+  }
+}
+
 function paintWriteState() {
   const set = Boolean(state.operatorToken);
   $('operatorHint').textContent = set ? 'writes: token set for this tab' : 'writes: no operator token yet';
   $('operatorHintBtn').hidden = set;
   $('opState').textContent = set ? 'A token is set for this tab.' : 'No token set: writes will be refused.';
+  paintDisabledReasons();
 }
 
 function operatorDialog() {
@@ -1023,9 +1057,22 @@ function cashoutPaintInstructions(instructions) {
   }
   $('cashoutPayBtn').disabled = !instructions;
   $('cashoutStatusBtn').disabled = !CASHOUT.transactionId;
+  // The note the two buttons point at is written for the state they are in:
+  // with an open withdrawal it is the anchor's own instruction (pay this
+  // address, with this memo), and without one it is why they are grey.
+  if (!instructions) {
+    $('cashoutActionNote').textContent =
+      'Read the anchor and open a withdrawal first: the payment address, the memo and the amount all come from the anchor, so there is nothing to pay or poll until it has answered.';
+  } else if (!CASHOUT.transactionId) {
+    $('cashoutActionNote').textContent =
+      "The withdrawal is open but the anchor has not returned a transaction id yet, so there is nothing to poll: pay first, then check the status.";
+  } else {
+    $('cashoutActionNote').textContent = `Pay ${instructions.amount} ${instructions.asset_code} to ${instructions.treasury} with memo ${instructions.memo} (${instructions.memo_type}), then poll the anchor for this withdrawal.`;
+  }
   if (instructions && instructions.extra_info && instructions.extra_info.message) {
     $('cashoutPayHint').textContent = instructions.extra_info.message;
   }
+  paintDisabledReasons();
 }
 
 async function cashoutReadAnchor() {
@@ -1283,6 +1330,7 @@ wire();
 watchSections();
 buildLattice();
 initLatticeFrame();
+paintDisabledReasons();
 resetSteps();
 showLogPlaceholder();
 loadTrustEvidence();

@@ -480,6 +480,18 @@ functionality belongs in the off-chain surface, the facade and the docs.
       full-bleed lattice behind it stays interactive. No generated artwork
       anywhere, per the standing rule that the operator's pixels are the
       design.
+- [x] **Every control was clicked, in a browser, and the silent ones were
+      fixed.** The operator's sentence - "the wallet buttons don't work, test
+      the whole system and the screen" - is answerable now: 29 controls clicked
+      in a real browser, each asserted to have an observable consequence (a log
+      line, a note that changed, a pane that switched, a dialog that opened, a
+      table that refreshed), and every disabled control held to a stated
+      reason. The first pass found two silent grey buttons - "Pay with
+      Freighter" and "Check status" were disabled with nothing anywhere saying
+      why - and two more that carried a tooltip but pointed at no note. One
+      table (`DISABLED_REASONS`) now paints the note and the title together, so
+      the two cannot drift, and `tools/check-console.js` fails the build if a
+      button the code disables is missing from it.
 - [x] **Text sits on line strips, not on painted sections.** The last round's
       correction, finally executed: a section no longer paints a block. Each
       row of text carries its own full-bleed strip (infinite sideways, hairline

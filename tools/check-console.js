@@ -9,7 +9,15 @@
 //
 //   1. every element the code looks up exists,
 //   2. every navigation target exists as an anchor on the page,
-//   3. the images embedded in the page are the images in frontend/public.
+//   3. the images embedded in the page are the images in frontend/public,
+//   4. a control that cannot act says why: every disabled button points at the
+//      note that explains it, and every button the code disables is covered by
+//      the reasons table that copies that note into the button's own title.
+//
+// The fourth rule came out of clicking the live page rather than reading it:
+// four disabled controls, two of them silent. A stylesheet read cannot notice
+// that, and neither can a contract test, so it is written down twice here and
+// once in tools/check-live-actions.js, which clicks them.
 
 const fs = require('fs');
 const path = require('path');
@@ -32,6 +40,17 @@ const lookups = new Set(
 for (const match of app.matchAll(/^\s+(?:lock|finality|mint): '([^']+)',/gm)) lookups.add(match[1]);
 
 const navTargets = [...html.matchAll(/data-nav="([^"]+)"/g)].map((match) => match[1]);
+
+// ---------------------------------------------------------------- rule 4
+// A grey button with no explanation is the failure the operator named. Static
+// half: the markup must point every disabled button at a note, and the module
+// must carry that button in the table that paints the title from the note.
+const disabledButtons = [...html.matchAll(/<button[^>]*\bdisabled\b[^>]*>/g)].map((match) => match[0]);
+const disabledWithoutNote = disabledButtons.filter((tag) => !/aria-describedby="([^"]+)"/.test(tag));
+const reasonsTable = (app.match(/const DISABLED_REASONS = \[[\s\S]*?\];/) || [''])[0];
+const painted = new Set([...reasonsTable.matchAll(/control: '([^']+)'/g)].map((match) => match[1]));
+// Every button the module can disable has to be in that table.
+const switched = new Set([...app.matchAll(/\$\('([A-Za-z0-9_]+)'\)\.disabled\s*=/g)].map((match) => match[1]));
 
 const problems = [];
 
@@ -58,6 +77,25 @@ for (const target of navTargets) {
 }
 for (const id of ['top', 'console', 'evidence', 'about']) {
   if (ids.has(id) && !navTargets.includes(id)) problems.push(`section #${id} is not reachable from the navigation`);
+}
+
+for (const tag of disabledWithoutNote) {
+  const id = (/id="([^"]+)"/.exec(tag) || [])[1] || tag;
+  problems.push(`#${id} is disabled in the markup but does not point at the note that explains why (aria-describedby)`);
+}
+for (const tag of disabledButtons) {
+  const described = /aria-describedby="([^"]+)"/.exec(tag);
+  if (described && !ids.has(described[1])) {
+    problems.push(`a disabled button points at #${described[1]}, which the markup does not define`);
+  }
+}
+for (const id of switched) {
+  if (!painted.has(id)) {
+    problems.push(`#${id} is disabled by the code but is not in DISABLED_REASONS, so it would sit grey with no stated reason`);
+  }
+}
+if (disabledButtons.length > 0 && painted.size === 0) {
+  problems.push('the page disables buttons, so DISABLED_REASONS must exist and cover them');
 }
 
 // The page carries its two images as base64 so it renders with no network at
@@ -87,7 +125,7 @@ for (const { file, label } of assetExpectations) {
 }
 
 console.log(
-  `markup ids: ${ids.size} | code lookups: ${lookups.size} | nav targets: ${navTargets.length} | embedded assets verified: ${embeddedCount}/${assetExpectations.length}`
+  `markup ids: ${ids.size} | code lookups: ${lookups.size} | nav targets: ${navTargets.length} | embedded assets verified: ${embeddedCount}/${assetExpectations.length} | disabled controls with a stated reason: ${disabledButtons.length - disabledWithoutNote.length}/${disabledButtons.length}, ${switched.size} code-switched buttons in the reasons table`
 );
 if (problems.length === 0) {
   console.log('console wiring: every selector resolves, every nav target exists, embedded assets match frontend/public');

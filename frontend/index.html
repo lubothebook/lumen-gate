@@ -725,7 +725,7 @@
                   <span class="hint">The relayer keeps a fixed fee out of the amount, set at submission time.</span>
                 </div>
                 <div class="span-2">
-                  <button class="btn primary wide" id="lockBtn" type="button">Lock on the source chain</button>
+                  <button class="btn primary wide" id="lockBtn" type="button" aria-describedby="sourceNote">Lock on the source chain</button>
                 </div>
               </div>
               <p class="note" id="sourceNote" style="margin-top:16px">Checking whether this deployment has a source adapter...</p>
@@ -782,9 +782,13 @@
                 </div>
                 <div class="span-2">
                   <div class="btn-row">
-                    <button class="btn small" id="cashoutPayBtn" type="button" disabled>Pay with Freighter</button>
-                    <button class="btn small" id="cashoutStatusBtn" type="button" disabled>Check status</button>
+                    <button class="btn small" id="cashoutPayBtn" type="button" aria-describedby="cashoutActionNote" disabled>Pay with Freighter</button>
+                    <button class="btn small" id="cashoutStatusBtn" type="button" aria-describedby="cashoutActionNote" disabled>Check status</button>
                   </div>
+                  <p class="note" id="cashoutActionNote" style="margin-top:14px; font-size:0.8125rem">
+                    Read the anchor and open a withdrawal first: the payment address, the memo and the amount all come
+                    from the anchor, so there is nothing to pay or poll until it has answered.
+                  </p>
                 </div>
               </div>
               <p class="note" id="cashoutNote" style="margin-top:16px">
@@ -828,7 +832,7 @@
 
           <div class="run-foot">
             <div class="btn-row">
-              <button class="btn primary" id="settleBtn" type="button" disabled>Ask the relayer to settle</button>
+              <button class="btn primary" id="settleBtn" type="button" aria-describedby="settleNote" disabled>Ask the relayer to settle</button>
               <button class="btn" id="copyCmdBtn" type="button">Copy the command instead</button>
             </div>
             <p class="note" id="settleNote">Lock a block first; settlement runs one relayer pass at the height you locked.</p>
