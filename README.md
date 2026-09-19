@@ -51,20 +51,20 @@
 
 ```mermaid
 flowchart TB
-    User([User / Anchor Operator<br/>No XLM needed]) --> FE[Frontend<br/>Vite + Freighter + Horizon<br/>7 panels]
-    FE --> SIM[Source Simulator<br/>Axum :3001<br/>Real BLS aggregate<br/>Binary Merkle]
-    SIM --> REG[Finality Registry<br/>Soroban SDK 28<br/>BLS + Groth16 + zkVM]
-    REG --> GW[Settlement Gateway<br/>HWM + Merkle + SAC mint<br/>Gasless fee abstraction]
-    GW --> SAC[SAC wSRC:ISSUER<br/>admin=gateway<br/>No custodial mint]
+    User[User No XLM needed] --> FE[Frontend Vite Freighter 7 panels]
+    FE --> SIM[Source Simulator Axum 3001 BLS Merkle]
+    SIM --> REG[Finality Registry Soroban SDK 28 BLS Groth16 zkVM]
+    REG --> GW[Settlement Gateway HWM Merkle SAC mint Gasless]
+    GW --> SAC[SAC wSRC ISSUER admin gateway No custodial]
     SAC --> User
 
-    REL[Relayer<br/>Rust<br/>Polls sim<br/>Real RPC getLatestLedger<br/>Pays XLM, gets fee] --> SIM
+    REL[Relayer Rust Polls sim Real RPC Pays XLM] --> SIM
     REL --> REG
     REL --> GW
 
-    AN[Anchor Facade<br/>Node :8081<br/>stellar.toml SEP-1<br/>/info /health /deposit<br/>No validator keys] --> SAC
+    AN[Anchor Facade Node 8081 stellar toml] --> SAC
 
-    RAVEN[Stellar Raven MCP<br/>https://raven.stellar.org/mcp<br/>60 ops, 282 catalog, 20 playbooks<br/>Verified 2026-09-19] -. Verifies .-> REG
+    RAVEN[Stellar Raven MCP 60 ops 282 catalog 20 playbooks Verified] -.-> REG
 
     classDef stellar fill:#0A0A0A,stroke:#7D00FF,color:#fff
     classDef offchain fill:#111,stroke:#00D1FF,color:#fff
@@ -80,21 +80,21 @@ flowchart TB
 
 ```mermaid
 flowchart LR
-    subgraph Traditional [Traditional Bridge - Human Approval - INSECURE]
-        T1[User locks] --> T2[Multisig validators<br/>Human approval<br/>3/5 sign]
-        T2 --> T3[Relayer submits<br/>Trust in humans]
-        T3 --> T4[Mint<br/>Custodial risk]
+    subgraph Traditional["Traditional Bridge Human Approval INSECURE"]
+        T1[User locks] --> T2[Multisig validators Human approval]
+        T2 --> T3[Relayer submits Trust humans]
+        T3 --> T4[Mint Custodial risk]
     end
 
-    subgraph Ours [Trust Stellar Move to Stellar - Machine Approval - SECURE]
-        O1[User locks on source<br/>with fee included<br/>Even if no XLM] --> O2[Source produces<br/>BLS aggregate sig<br/>Merkle root]
-        O2 --> O3[zkVM / BLS verifier<br/>Soroban native hosts<br/>bls12_381, bn254_multi_pairing_check<br/>No human]
-        O3 --> O4[Machine approves<br/>e(sig,G2_gen)*e(-H,pubkey)==1<br/>e(A,B)*e(-alpha,beta)*...==1]
-        O4 --> O5[Gateway mints<br/>HWM + Merkle + payload re-derive<br/>Gasless: relayer pays XLM<br/>gets fee from lock]
-        O5 --> O6[User receives wSRC<br/>Even with 0 XLM<br/>Claimable or sponsored]
+    subgraph Ours["Trust Stellar Move to Stellar Machine Approval SECURE"]
+        O1[User locks on source with fee Even if no XLM] --> O2[Source produces BLS sig Merkle root]
+        O2 --> O3[zkVM BLS verifier Soroban native hosts No human]
+        O3 --> O4[Machine approves pairing check]
+        O4 --> O5[Gateway mints HWM Merkle Gasless relayer pays XLM]
+        O5 --> O6[User receives wSRC Even with 0 XLM Claimable sponsored]
     end
 
-    Traditional -.->|Replaced by| Ours
+    Traditional -.-> Ours
 ```
 
 
@@ -102,59 +102,70 @@ flowchart LR
 
 ```mermaid
 flowchart TB
-    subgraph SourceChain [Source Chain - Simulated but Real Crypto]
-        B1[Block Producer<br/>state_root=sha256(prev||h)<br/>event_root=binary Merkle<br/>leaf=sha256(message_id||payload_hash)<br/>sorted hashing]
-        B2[Lock Event<br/>payload_hash=sha256(wSRC||amount||recipient)<br/>message_id=sha256(source||target||h||nonce||payload_hash||expiry||kind||sender||recipient)]
-        B3[BLS Aggregate<br/>sk=1,2,3 deterministic<br/>H=G1_gen * hash_scalar(h||state||event)<br/>hash_scalar=sha256(msg)->Scalar<br/>sig=Σ sk_i·H 96B uncompressed<br/>pubkey=Σ sk_i·G2_gen 192B]
-        B4[Merkle Proof<br/>siblings Vec<32B><br/>proof for message_id]
-        B5[Groth16 Range Proof<br/>VK 768B alpha|beta|gamma|delta|IC<br/>Proof 256B A|B|C<br/>Public inputs 4x32<br/>Apache-2.0 stellar-zkstream]
-        B6[Fee Included<br/>amount = user_wants + fee<br/>For gasless]
+    subgraph SourceChain["Source Chain Simulated Real Crypto"]
+        B1[Block Producer state root event root Merkle]
+        B2[Lock Event payload hash message id]
+        B3[BLS Aggregate sk 1 2 3 deterministic TEST ONLY]
+        B4[Merkle Proof siblings]
+        B5[Groth16 Range Proof VK 768B Proof 256B]
+        B6[Fee Included amount user plus fee Gasless]
     end
 
-    subgraph StellarReal [Stellar Testnet - Real - No Mocks]
-        R1[finality_registry<br/>register_domain -> domain_key=sha256(adapter||network)<br/>admit_domain after selftest<br/>DomainRecord with last_event_root<br/>state 0=Registered 1=Admitted 2=Active]
-        R2[submit_finality_evidence_bls<br/>368B payload<br/>version gate accepted_versions<br/>digest replay Evidence(digest)<br/>declared re-derive height==declared, root==declared<br/>threshold signer>=required<br/>not zero, on_curve, subgroup<br/>hash_to_g1 DST migrate-to-stellar-v1]
-        R3[submit_bls_hardened<br/>FULL pairing<br/>G2_gen=hash_to_g2(DST)<br/>H=hash_to_g1(h||state||event)<br/>pairing_check([sig, -H], [G2_gen, pubkey])<br/>e(sig,G2_gen)*e(-H,pubkey)==1]
-        R4[submit_finality_evidence_zk<br/>40B payload h||state_root<br/>groth16::verify<br/>vk_x=IC0+Σ public_i*IC_i<br/>pairing_check([A,-alpha,-vk_x,-C],[B,beta,gamma,delta])]
-        R5[verify_via_zkvm<br/>Alias for ZK<br/>Machine approval<br/>No human multisig<br/>Biggest innovation]
-        R6[Storage<br/>Finalized(domain,h)=root<br/>FinalizedFull={state_root,event_root}<br/>Evidence, DomainList]
-        R7[DomainProfile<br/>no score, only facts<br/>consensus_kind bft-like-3-of-5<br/>finality_kind Economic/Proven<br/>trust_model HonestMajority(5)<br/>required_depth, security_backing]
+    subgraph StellarReal["Stellar Testnet Real No Mocks"]
+        R1[finality registry register domain admit]
+        R2[submit bls 368B payload version gate]
+        R3[submit bls hardened FULL pairing check]
+        R4[submit zk 40B payload groth16 verify]
+        R5[verify via zkvm Machine approval No human]
+        R6[Storage Finalized FinalizedFull Evidence]
+        R7[DomainProfile no score only facts]
 
-        G1[settlement_gateway<br/>initialize admin, registry, token<br/>FeeConfig collector, fee_bps, min_fee]
-        G2[lock_and_relay<br/>from.require_auth()<br/>transfer to self<br/>payload_hash=sha256(asset||amount||recipient_on_source)<br/>nonce OutboundNonceFull++<br/>message_id deterministic<br/>ProcessedMessage]
-        G3[finalize_inbound<br/>id re-derive, expiry ledger.sequence<br/>HWM HighWater(source,target,sender)<br/>is_finalized cross-contract<br/>payload re-derive sha256(asset||amount||recipient)<br/>Merkle verify sorted hashing<br/>mark HWM, ProcessedMessage<br/>SAC mint]
-        G4[finalize_inbound_gasless<br/>INNOVATION: fee abstraction<br/>relayer pays XLM<br/>fee from source lock<br/>relayer.require_auth()<br/>amount-fee to recipient<br/>fee to relayer<br/>RelayerReward tracking<br/>User with 0 XLM can receive]
-        G5[burn_and_relay<br/>burn, outbound event]
-        G6[SAC wSRC:ISSUER<br/>set_admin(gateway)<br/>Anchor only issuer<br/>No custodial bridge]
+        G1[settlement gateway init admin registry token]
+        G2[lock and relay from auth transfer]
+        G3[finalize inbound HWM is finalized Merkle]
+        G4[finalize gasless fee abstraction relayer pays]
+        G5[burn and relay]
+        G6[SAC wSRC ISSUER set admin gateway]
     end
 
-    subgraph OffChainHardened [Off-Chain Hardened]
-        S1[Simulator API<br/>/blocks/latest<br/>/blocks/:h<br/>POST /lock<br/>GET /events?height<br/>GET /proof?kind=bls|zk&tamper&message_id<br/>GET /info]
-        RY[Relayer<br/>getLatestLedger real RPC<br/>polls sim /blocks/latest<br/>/proof BLS+ZK+ Merkle<br/>simulateTransaction dry-run<br/>Logs BLS aggregate, Merkle, HWM, ZK 4 pairings, gasless]
-        FE2[Frontend<br/>Freighter connect<br/>Friendbot fund<br/>7 panels<br/>Lock, BLS/ZK proof, Balance Horizon<br/>Finalize, Burn, Fault probes<br/>Profile no score<br/>buildFinalizeInboundTx]
-        AN2[Anchor Facade<br/>stellar.toml SEP-1 wSRC<br/>/info contracts explorer<br/>/health, /transactions, /deposit, /withdraw<br/>/sep6/info<br/>No validator keys]
+    subgraph OffChainHardened["Off Chain Hardened"]
+        S1[Simulator API blocks latest lock proof info]
+        RY[Relayer getLatestLedger poll sim Merkle ZK]
+        FE2[Frontend Freighter 7 panels Lock Proof Balance]
+        AN2[Anchor Facade stellar toml info health]
     end
 
-    B1 --> B2 --> B3 & B4 & B6
+    B1 --> B2
+    B2 --> B3
+    B2 --> B4
     B2 --> B5
+    B2 --> B6
     B3 --> S1
     B4 --> S1
     B5 --> S1
     B6 --> S1
     S1 --> RY
-    RY --> R2 & R3 & R4
+    RY --> R2
+    RY --> R3
+    RY --> R4
     R2 --> R6
     R3 --> R6
     R4 --> R6
     R5 --> R4
     R6 --> R7
-    R6 --> G3 & G4
-    G1 --> G2 --> G3
+    R6 --> G3
+    R6 --> G4
+    G1 --> G2
+    G2 --> G3
     G2 --> G4
     G3 --> G6
     G4 --> G6
     G5 --> G6
-    FE2 --> S1 & R2 & G3 & G4 & AN2
+    FE2 --> S1
+    FE2 --> R2
+    FE2 --> G3
+    FE2 --> G4
+    FE2 --> AN2
     AN2 --> G6
 ```
 
@@ -174,12 +185,11 @@ flowchart TB
 
 ```mermaid
 flowchart LR
-    H[Human Multisig<br/>3/5 sign<br/>Trust humans<br/>Custodial] -->|Replace| M[Machine zkVM<br/>BLS aggregate + Groth16<br/>Native hosts<br/>Trust math<br/>No human]
-
-    M --> BLS[BLS: e(sig,G2_gen)*e(-H,pubkey)==1<br/>on_curve, subgroup, hash_to_g1]
-    M --> ZK[ZK: e(A,B)*e(-alpha,beta)*e(-vk_x,gamma)*e(-C,delta)==1<br/>vk_x=IC0+Σ public_i*IC_i]
-
-    BLS & ZK --> SECURE[Secure Bridge<br/>Machine approves<br/>No human]
+    H[Human Multisig 3 of 5 sign Trust humans Custodial] --> M[Machine zkVM BLS Groth16 Native hosts Trust math No human]
+    M --> BLS[BLS pairing check on curve subgroup hash to g1]
+    M --> ZK[ZK pairing check 4 pairings vk x]
+    BLS --> SECURE[Secure Bridge Machine approves No human]
+    ZK --> SECURE
 ```
 
 ### 2.2 Gasless: No XLM Needed, Fee from Source Chain
@@ -195,27 +205,27 @@ flowchart LR
 
 ```mermaid
 sequenceDiagram
-    participant U as User (No XLM, only source chain asset)
+    participant U as User No XLM
     participant SRC as Source Chain
-    participant REL as Relayer (Has XLM)
+    participant REL as Relayer Has XLM
     participant REG as Finality Registry
     participant GW as Settlement Gateway
     participant SAC as SAC wSRC
     participant ST as Stellar
 
-    U->>SRC: Lock 110 (100 wants + 10 fee) for recipient G...<br/>payload_hash=sha256(wSRC||110||G...)
-    SRC->>SRC: Produce block, event_root Merkle, BLS aggregate sig
-    REL->>SRC: GET /proof?height=1&kind=bls
-    SRC-->>REL: payload 368B real aggregate, Merkle proof
-    REL->>REG: submit_finality_evidence_bls (machine verifies)
-    REG-->>REL: Attestation, Finalized
-    REL->>ST: Pay XLM fee for tx (0.001 XLM)
-    REL->>GW: finalize_inbound_gasless(relayer, message, merkle_proof, asset, 110, recipient, fee=10)
-    GW->>GW: Verify machine approval (is_finalized), HWM, Merkle, payload re-derive
-    GW->>SAC: mint(recipient, 100) -> User gets wSRC even with 0 XLM
-    GW->>SAC: mint(relayer, 10) -> Relayer reimbursed
+    U->>SRC: Lock 110 for recipient fee included
+    SRC->>SRC: Produce block event root Merkle BLS sig
+    REL->>SRC: GET proof height 1 kind bls
+    SRC-->>REL: payload 368B real aggregate Merkle proof
+    REL->>REG: submit bls evidence machine verifies
+    REG-->>REL: Attestation Finalized
+    REL->>ST: Pay XLM fee for tx
+    REL->>GW: finalize gasless relayer message asset 110 recipient fee 10
+    GW->>GW: Verify machine approval HWM Merkle payload
+    GW->>SAC: mint recipient 100 User gets wSRC even with 0 XLM
+    GW->>SAC: mint relayer 10 Relayer reimbursed
     GW->>GW: Track RelayerReward
-    SAC-->>U: User now has wSRC, can pay fees via wSRC->XLM swap or use wSRC directly
+    SAC-->>U: User now has wSRC
 ```
 
 **Production**: Use `claimable_balances` or `sponsorship` (CAP-33) for recipient without trustline: gateway creates claimable balance `claimable_balance_id` that recipient claims later when they have XLM, or relayer sponsors reserve via `begin_sponsoring_future_reserves`. Documented in `finalize_inbound_gasless`.
@@ -226,7 +236,7 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-    participant U as User (Freighter, maybe 0 XLM)
+    participant U as User Freighter
     participant FE as Frontend
     participant SIM as Source Simulator
     participant REL as Relayer
@@ -234,20 +244,20 @@ sequenceDiagram
     participant GW as Settlement Gateway
     participant SAC as SAC wSRC
 
-    U->>FE: Connect Freighter, amount 110 (100+10 fee), recipient G...
-    FE->>SIM: POST /lock {amount:110, recipient, sender}
-    SIM->>SIM: payload_hash=sha256(wSRC||110||recipient)<br/>message_id=sha256(source||target||h||nonce||payload_hash)<br/>event_root=binary Merkle sorted hashing<br/>BLS: H=G1*hash_scalar(h||state||event), sig=Σ sk_i·H
-    SIM-->>FE: {event, block_height:1}
-    FE->>SIM: GET /proof?height=1&kind=bls&message_id=...
-    SIM-->>FE: {payload_hex 368B real aggregate, merkle_proof siblings}
+    U->>FE: Connect Freighter amount 110 fee included recipient
+    FE->>SIM: POST lock amount 110 recipient sender
+    SIM->>SIM: payload hash message id event root Merkle BLS sig
+    SIM-->>FE: event block height 1
+    FE->>SIM: GET proof height 1 kind bls message id
+    SIM-->>FE: payload hex 368B real aggregate merkle proof
     FE->>REL: Request gasless mint
-    REL->>REG: submit_finality_evidence_bls(RawEvidence)
-    REG->>REG: version gate, digest replay, declared re-derive<br/>on_curve, subgroup, hash_to_g1 DST migrate-to-stellar-v1<br/>Optional full pairing e(sig,G2_gen)*e(-H,pubkey)==1
+    REL->>REG: submit bls evidence
+    REG->>REG: version gate digest replay declared rederive
     REG-->>REL: Attestation
-    REL->>GW: finalize_inbound_gasless(relayer, message, merkle_proof, asset, 110, recipient, fee=10)
-    GW->>GW: id re-derive, expiry, HWM, is_finalized cross-contract<br/>payload re-derive, Merkle verify sorted hashing<br/>mark HWM, ProcessedMessage
-    GW->>SAC: mint(recipient, 100) gasless
-    GW->>SAC: mint(relayer, 10) reward
+    REL->>GW: finalize gasless relayer message asset 110 recipient fee 10
+    GW->>GW: id rederive expiry HWM is finalized Merkle
+    GW->>SAC: mint recipient 100 gasless
+    GW->>SAC: mint relayer 10 reward
     SAC-->>U: wSRC 100 even with 0 XLM
 ```
 
