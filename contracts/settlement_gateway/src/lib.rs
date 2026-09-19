@@ -571,6 +571,34 @@ impl SettlementGateway {
             .get(&DataKey::RelayerReward(relayer))
             .unwrap_or(0)
     }
+
+    // Sponsored reserve - CAP-33 style: relayer sponsors recipient's reserve for trustline
+    // User with no XLM can still receive wSRC via sponsorship
+    pub fn finalize_inbound_sponsored(
+        env: Env,
+        sponsor: Address,
+        message: CrossDomainMessage,
+        merkle_proof: Bytes,
+        payload_asset: Address,
+        payload_amount: i128,
+        payload_recipient: Address,
+        fee_amount: i128,
+    ) -> Result<(), GatewayError> {
+        sponsor.require_auth();
+        // Sponsored: sponsor pays reserve for recipient's trustline (CAP-33)
+        // In Soroban, this would use begin_sponsoring_future_reserves
+        // For hackathon, we simulate by same logic as gasless but with sponsor tracking
+        Self::finalize_inbound_internal(
+            &env,
+            message,
+            merkle_proof,
+            payload_asset,
+            payload_amount,
+            payload_recipient,
+            Some(sponsor),
+            fee_amount,
+        )
+    }
 }
 
 #[cfg(test)]

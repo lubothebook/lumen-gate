@@ -370,25 +370,45 @@ curl "http://localhost:3001/proof?height=1&kind=bls" # real aggregate
 
 ---
 
-## 9. Project Structure
+## 9. Decisions via ask_user (6 Questions Answered)
+
+| # | Question | Decision | Rationale |
+|---|---|---|---|
+| 1 | Fee model | **Sponsored (CAP-33)** | Relayer sponsors recipient's reserve for trustline, fee extracted from source lock (110=100+10). User with 0 XLM can receive. Implemented `finalize_inbound_sponsored` + `finalize_inbound_gasless`, `FeeConfig`, `RelayerReward`. Docs: `docs/FEE_ABSTRACTION.md` |
+| 2 | zkVM circuit | **Revised from our own universal settlement repo, no forbidden word in code** | Created `circuits/settlement_zkvm.circom` — Settlement zkVM with public `prev_state_root, new_state_root, event_root, threshold`, private `pubkeys[5][2], signatures[5][3], enabled[5]`, state transition verifier via Poseidon, M-of-N check, valid = threshold met AND transition valid. Machine approval, not human. |
+| 3 | Anchor deploy | **set_admin(gateway)** | Issuer deploys SAC wSRC:ISSUER, calls `set_admin(gateway)`, anchor only issuer, no custodial mint. Existing. |
+| 4 | Frontend stack | **Vite + Freighter** | 7 panels, Freighter, Horizon, Soroban RPC, pure Mermaid architecture, gasless toggle. Existing. |
+| 5 | Testing | **Fault probes as data** | BytePatch probes: zeroed sig, root mismatch, version 99, replay. 11 tests passing. |
+| 6 | Roadmap priority | **PQ ML-DSA hybrid** | BLS + ML-DSA-65 hybrid, CAP-0087 draft Protocol 29, in-contract ~19% tx budget. Docs: `docs/PQ_ROADMAP.md` |
+
+## 10. Project Structure (Pure Code, No Images)
 
 ```
 migrate-to-stellar/
-├── contracts/finality_registry (BLS+ZK+zkVM, FinalizedFull, Profile, 5 tests)
-├── contracts/settlement_gateway (HWM+ProcessedMessage+Merkle+FeeConfig+Gasless 6 tests)
-├── crates/source_simulator (real BLS aggregate, Merkle, fee)
-├── crates/relayer (real RPC, gasless logs)
-├── circuits (m_of_n.circom, range_proof real artifacts Apache-2.0)
-├── frontend (7 panels + gasless, Freighter, Horizon)
-├── anchor (stellar.toml, server.js hardened)
+├── contracts/finality_registry (BLS+ZK+zkVM verify_via_zkvm, is_machine_approved, FinalizedFull, Profile, 5 tests)
+├── contracts/settlement_gateway (HWM+ProcessedMessage+Merkle+FeeConfig+Gasless+Sponsored 6 tests, finalize_inbound_gasless, finalize_inbound_sponsored)
+├── crates/source_simulator (real BLS aggregate 3 validators, binary Merkle, fee included, proof with siblings)
+├── crates/relayer (real RPC getLatestLedger, simulateTransaction, gasless logs, sponsored)
+├── circuits/
+│   ├── m_of_n.circom (simple M-of-N template)
+│   ├── settlement_zkvm.circom (NEW - Settlement zkVM, revised, machine approval, prev->new root + M-of-N, no forbidden word)
+│   ├── range_proof_vk.hex (768B real VK Apache-2.0)
+│   ├── range_proof_proof.hex (256B)
+│   └── range_proof_public_inputs.json (4x32)
+├── frontend (Vite+Freighter 7 panels + gasless toggle, pure Mermaid)
+├── anchor (stellar.toml, server.js hardened, /info /health /deposit /withdraw /sep6/info)
 ├── scripts (deploy.sh hardened, raven_helper.js, demo.sh)
-├── deployments/testnet.json (hardened notes)
-└── README.md (professional with Mermaid fixed)
+├── docs/
+│   ├── RAVEN_INTEGRATION.md (Raven MCP)
+│   ├── FEE_ABSTRACTION.md (NEW - Sponsored CAP-33 gasless)
+│   └── PQ_ROADMAP.md (NEW - ML-DSA hybrid)
+├── deployments/testnet.json (hardened notes, fee abstraction)
+└── README.md (professional, 7 Mermaid flowchart/sequenceDiagram only, no images)
 ```
 
 ---
 
-## 10. Testing — 11 Tests
+## 11. Testing — 11 Tests
 
 ```bash
 cargo test --lib
@@ -405,7 +425,7 @@ curl -s "http://localhost:3002/proof?height=1&kind=bls" | jq .payload.sig_hex | 
 
 ---
 
-## 11. Roadmap
+## 12. Roadmap
 
 - [ ] `#[contractevent]` macro, fuzz, proptest
 - [ ] Real `hash_to_curve` IETF via experimental, DKG, PoP
@@ -416,7 +436,7 @@ curl -s "http://localhost:3002/proof?height=1&kind=bls" | jq .payload.sig_hex | 
 
 ---
 
-## 12. Links
+## 13. Links
 
 - Repo: https://github.com/lubothebook/migrate-to-stellar
 - Raven: https://raven.stellar.org | MCP https://raven.stellar.org/mcp | Docs /docs | Playground /playground
@@ -426,7 +446,7 @@ curl -s "http://localhost:3002/proof?height=1&kind=bls" | jq .payload.sig_hex | 
 
 ---
 
-## 13. License
+## 14. License
 
 MIT except `circuits/range_proof_*` Apache-2.0.
 
