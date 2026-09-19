@@ -58,6 +58,11 @@ jobs:
           }
       - name: cargo fmt
         run: |
+          # Same story as clippy one step up: the pinned toolchain has no
+          # rustfmt component by default, and a missing cargo-fmt used to read
+          # as a diff. The first run through this step is what proved it -
+          # before, the job always died at clippy first.
+          rustup component add rustfmt --toolchain 1.98.1-x86_64-unknown-linux-gnu
           set -o pipefail
           cargo fmt --all -- --check 2>&1 | tee /tmp/fmt.log || {
             {
