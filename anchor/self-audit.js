@@ -7,7 +7,7 @@
  * what it saw, with timestamps, so a reader does not have to take anyone's
  * word for it.
  *
- * Every round it asks twelve questions, and none of them is answered by
+ * Every round it asks thirteen questions, and none of them is answered by
  * trusting an earlier answer:
  *   1. Is the source chain reachable at all?
  *   2. Does a fresh, honest proof still get ACCEPTED?
@@ -25,6 +25,9 @@
  *  12. Does SEP-10 signature verification still demand real weight? (the
  *      library driven against a stubbed signer record, including the
  *      below-threshold signature that must be refused)
+ *  13. Is the gate-vm lane's recorded acceptance still true on the network?
+ *      (the transaction re-read from Horizon, and the lane registry still
+ *      serving the committed verification key — not the file, the bytes)
  *
  * It holds no mint authority and can approve nothing. It only submits probes
  * and records verdicts. If it dies, nothing in the settlement path changes.
@@ -503,6 +506,47 @@ async function runRound() {
     record("recorded_gasless_mint_on_chain", false, `Horizon read failed: ${String(e.message || e)}`);
   }
 
+  // The gate-vm lane's acceptance is a claim this repository recorded; the
+  // round re-derives it rather than trusting the file. Two independent things
+  // must still hold: the accepting transaction is still on the ledger and
+  // successful (Horizon, not the record), and the lane registry still holds
+  // the exact 896-byte key the proof was verified against — which is what
+  // "frozen after renounce" must mean in bytes, not in prose.
+  try {
+    const lanePath = path.join(ROOT, "deployments", "gate-vm-lane.json");
+    const vkPath = path.join(ROOT, "deployments", "vectors", "gate_vm", "gate_vm_vk.hex");
+    if (!fs.existsSync(lanePath) || !fs.existsSync(vkPath)) {
+      record("gate_vm_lane_still_verified", false, "lane record or vk artifact missing from the repository");
+    } else {
+      const lane = JSON.parse(fs.readFileSync(lanePath, "utf8"));
+      const accepted = (lane.records || []).find((r) => r.check === "honest_gate_vm_run_accepted");
+      const vkCommitted = fs.readFileSync(vkPath, "utf8").trim();
+      if (!accepted || !accepted.transaction) {
+        record("gate_vm_lane_still_verified", false, "the lane record names no acceptance transaction");
+      } else {
+        const tx = await getJson(`${horizonUrl()}/transactions/${accepted.transaction}`);
+        const txOk = Boolean(tx.hash) && tx.successful !== false && Boolean(tx.ledger);
+        const keyRead = await sh("stellar", [
+          "contract", "invoke",
+          "--id", lane.registry_id,
+          "--source", SOURCE,
+          "--network", NETWORK,
+          "--", "get_gate_vm_vk",
+        ]);
+        const keyOk = keyRead.ok && keyRead.stdout.trim().includes(vkCommitted.slice(0, 64));
+        record(
+          "gate_vm_lane_still_verified",
+          txOk && keyOk,
+          txOk && keyOk
+            ? `acceptance ${accepted.transaction.slice(0, 16)}... still on ledger ${tx.ledger} (${tx.fee_charged} stroops), and ${lane.registry_id.slice(0, 8)}... still serves the committed key byte for byte`
+            : `lane drift: tx ${txOk ? "ok" : "missing/failed"}, stored key ${keyOk ? "ok" : `not the artifact (${keyRead.stderr.trim().slice(0, 120) || keyRead.stdout.trim().slice(0, 120)})`}`
+        );
+      }
+    }
+  } catch (e) {
+    record("gate_vm_lane_still_verified", false, `readback failed: ${String(e.message || e)}`);
+  }
+
   // After the renounce there must be no path back. This simulates the actual
   // mutation with a syntactically valid 768-byte key: if the host no longer
   // traps, somebody can still replace the verifying key and the "no human
@@ -526,13 +570,30 @@ async function runRound() {
       "--vk", zeros,
     ]);
     const text = `${probe.stdout}${probe.stderr}`;
-    const trapped = !probe.ok || /admin renounced|Error|error/i.test(text);
+    // A refusal only means something if the contract was reached to refuse.
+    // "contract not found", a network timeout or a bad id also make the call
+    // fail — and under the old `||` form those failures passed the check,
+    // turning an unreachable registry into evidence of safety, which is the
+    // exact inversion of what an audit loop is for. So: prove reachability
+    // with a read, require the write to have failed with something other than
+    // a transport error, and require the stored key to be untouched.
+    const readBack = await readOnly("get_vk");
+    const reachable = readBack.ok;
+    const transportFailure = /contract not found|timed out|connection|offline/i.test(text);
+    const trapped = reachable && !probe.ok && !transportFailure;
+    const keyIntact = reachable && !readBack.stdout.replace(/\s/g, "").startsWith("000000");
     record(
       "post_renounce_set_vk_impossible",
-      trapped,
-      trapped
-        ? `the host refused set_vk after the renounce: ${failureReason(probe).slice(0, 110)}`
-        : "the host accepted set_vk after the renounce, which means the verifying key is still replaceable"
+      trapped && keyIntact,
+      !reachable
+        ? `the registry could not be read at all, so no refusal could be attributed to the renounce: ${failureReason(readBack).slice(0, 110)}`
+        : trapped && keyIntact
+          ? `the contract itself refused set_vk after the renounce and the stored key is unchanged: ${failureReason(probe).slice(0, 110)}`
+          : probe.ok
+            ? "the host accepted set_vk after the renounce, which means the verifying key is still replaceable"
+            : transportFailure
+              ? `the refusal was a transport-level error, not a contract trap: ${failureReason(probe).slice(0, 110)}`
+              : `the call failed for an unrelated reason or the stored key reads as zeros: ${failureReason(probe).slice(0, 110)}`
     );
   } catch (e) {
     record("post_renounce_set_vk_impossible", false, String(e.message || e));

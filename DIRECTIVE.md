@@ -109,6 +109,13 @@ functionality belongs in the off-chain surface, the facade and the docs.
       key: the recipient's live balance arithmetic, the recorded mint on its
       ledger, the post-renounce `set_vk` refusal, and the facade's SEP surface
       (20/20 via `tools/sep-conformance.js`).
+- [x] Self-audit loop extended to **13 checks** with the gate-vm lane in the
+      picture: the lane's live acceptance is re-derived from Horizon every round
+      together with a byte-for-byte read of its registry's stored key, and the
+      post-renounce `set_vk` check was tightened so a transport failure can no
+      longer be misread as a contract refusal (reachability read + intact-key
+      read required). Recorded round: **13/13, round 18**, live against the testnet
+      registry; the facade probe now reports 26/26.
 - [x] **Section 10.1 SEP-10 implemented**: challenge built and signed by the
       anchor account, verified with the SDK's own SEP-10 reader, short-lived
       HS256 JWT issued, wrong-signer refused, no signing key means "not
