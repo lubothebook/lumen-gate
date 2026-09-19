@@ -36,3 +36,4 @@ __pycache__/
 
 # SEP-6 transaction records written at runtime by the facade
 deployments/sep6-transactions.json
+/build/
