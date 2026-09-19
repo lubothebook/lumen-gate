@@ -6,6 +6,7 @@ members = [
   "crates/source_simulator",
   "crates/relayer",
   "crates/domain_adapter",
+  "crates/execution_vm",
 ]
 resolver = "2"
 

@@ -13,6 +13,15 @@
 #   circuits/setup.sh step_chain_statement            # setup + honest proof
 #   circuits/setup.sh step_chain_statement --verify    # then verify the proof
 #
+# The powers-of-tau size is derived from the circuit that is being set up: the
+# smallest power of two that fits its constraint count. Four circuits of very
+# different sizes share this script, and a hard-coded size either fails for the
+# largest one or silently tells the ceremony less than it needs. The floor is
+# 2^13: the three smaller circuits were set up at that size, and their
+# verification keys are the ones frozen into deployments, so deriving a smaller
+# ceremony for them would produce keys that do not match what is deployed.
+# PTAU_POWER overrides the derivation when a specific ceremony is wanted.
+#
 # Outputs into build/:
 #   <circuit>_js/<circuit>.wasm     witness generator
 #   <circuit>.zkey                  proving key
@@ -25,7 +34,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT="$(pwd)"
 BUILD="${BUILD_DIR:-$ROOT/build}"
-POWER="${PTAU_POWER:-13}"           # 2^13 = 8192 >= the circuit's constraint count
+POWER="${PTAU_POWER:-auto}"
+POWER_FLOOR=13                      # the size the three earlier circuits were set up at
 SNARKJS="${SNARKJS:-$ROOT/node_modules/.bin/snarkjs}"
 CIRCUIT="${1:?usage: circuits/setup.sh <circuit-name>}"
 INPUT="${2:-$BUILD/${CIRCUIT}_input.json}"
@@ -39,6 +49,25 @@ mkdir -p "$BUILD"
 
 echo "== 1. circuit =="
 ./circuits/build.sh "$CIRCUIT"
+
+if [ "$POWER" = "auto" ]; then
+  # The constraint count is read from the r1cs that step 1 just wrote, so the
+  # number comes from the circuit rather than from a comment that can go stale.
+  CONSTRAINT_COUNT=$("$SNARKJS" r1cs info "$BUILD/${CIRCUIT}.r1cs" \
+    | sed -n 's/.*# of Constraints: *\([0-9]*\).*/\1/p' | tail -1)
+  if [ -z "$CONSTRAINT_COUNT" ]; then
+    echo "could not read the constraint count of $BUILD/${CIRCUIT}.r1cs" >&2
+    exit 1
+  fi
+  POWER=$POWER_FLOOR
+  SIZE=$((2 ** POWER))
+  # the margin is for the public inputs and the domain the setup adds on top
+  while [ "$SIZE" -lt "$((CONSTRAINT_COUNT + 1024))" ]; do
+    POWER=$((POWER + 1))
+    SIZE=$((SIZE * 2))
+  done
+  echo "circuit $CIRCUIT: $CONSTRAINT_COUNT constraints -> powers of tau 2^$POWER"
+fi
 
 echo
 echo "== 2. powers of tau (local ceremony, 2^$POWER) =="

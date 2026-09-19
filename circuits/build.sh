@@ -7,6 +7,7 @@
 #   settlement_statement_fixture.circom  the earlier single-statement fixture
 #   finality_statement.circom            the single-statement finality circuit
 #   step_chain_statement.circom          the multi-step chained circuit
+#   execution_trace.circom               the execution lane's trace circuit
 #
 # The include path is assembled at build time instead of being vendored into the
 # repository: circomlib is already a pinned dependency in package.json, and a
@@ -15,6 +16,10 @@
 #
 # Usage:
 #   circuits/build.sh                 # compile every circuit, write r1cs+wasm to build/
+#
+# The trace circuit is the largest of the four (about ten and a half thousand
+# constraints); its setup needs a 2^14 powers-of-tau file, which is why
+# circuits/setup.sh defaults to that size.
 #   circuits/build.sh step_chain_statement   # compile one
 #
 # Requires: circom 2.2.3 on PATH (or CIRCOM=/path/to/circom), npm install done.
@@ -50,7 +55,7 @@ fi
 
 targets=("$@")
 if [ ${#targets[@]} -eq 0 ]; then
-  targets=(settlement_statement_fixture finality_statement step_chain_statement)
+  targets=(settlement_statement_fixture finality_statement step_chain_statement execution_trace)
 fi
 
 for name in "${targets[@]}"; do

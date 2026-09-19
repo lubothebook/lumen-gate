@@ -258,6 +258,14 @@ pub enum DataKey {
     /// Last accepted multi-step chain for a domain. Kept apart from the domain
     /// record on purpose: see `submit_step_chain_zk`.
     StepChain(BytesN<32>),
+    /// Verification key of the execution lane's trace circuit. A third slot for
+    /// the same reason as the second: 1920 bytes cannot be mistaken for 896, but
+    /// keeping the slots apart means the lane's key is never read by a code path
+    /// that did not ask for it.
+    ExecutionVk,
+    /// Last accepted execution proof for a domain, kept apart from both the
+    /// domain record and the step-chain record.
+    Execution(BytesN<32>),
 }
 
 /// What the registry recorded for one accepted multi-step chain.
@@ -286,6 +294,44 @@ pub struct StepChainAttestation {
     pub start_root: BytesN<32>,
     pub end_root: BytesN<32>,
     pub event_root: BytesN<32>,
+    pub security: SecurityBacking,
+    pub evidence_digest: BytesN<32>,
+    pub adapter_version: u32,
+    pub evidence_version: u32,
+}
+
+/// What the registry recorded for one accepted execution proof.
+///
+/// `program_digest` is derived here, by the contract, from the program words the
+/// payload carried: it is a name for the program that ran, and it is only ever
+/// computed from bytes the contract parsed itself.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ExecutionRecord {
+    pub domain: BytesN<32>,
+    pub height: u64,
+    pub program_digest: BytesN<32>,
+    pub instruction_words: u64,
+    pub state_root: BytesN<32>,
+    pub initial_regs_root: BytesN<32>,
+    pub final_pc: u64,
+    pub steps_executed: u64,
+    pub gas_used: u64,
+    /// True, and always true: this lane records a verified execution and never
+    /// touches the roots the settlement path anchors on.
+    pub settlement_anchored: bool,
+}
+
+/// An attestation for the execution lane.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ExecutionAttestation {
+    pub domain: BytesN<32>,
+    pub height: u64,
+    pub program_digest: BytesN<32>,
+    pub state_root: BytesN<32>,
+    pub steps_executed: u64,
+    pub gas_used: u64,
     pub security: SecurityBacking,
     pub evidence_digest: BytesN<32>,
     pub adapter_version: u32,
@@ -1118,6 +1164,188 @@ impl FinalityRegistry {
         })
     }
 
+    // -----------------------------------------------------------------------
+    // Execution lane
+    // -----------------------------------------------------------------------
+    //
+    // Three properties separate this entrypoint from "verify a proof and trust
+    // the caller":
+    //
+    //   1. Every public input is bound, one by one, to a value this contract
+    //      derived itself -- the sixteen program words from the payload, the two
+    //      register-file roots from the payload, the program counter, the step
+    //      count and the gas from the payload, and the tag from its own
+    //      constant. A public input the contract does not bind is a value the
+    //      prover chose.
+    //   2. The payload is bounded before it is used: the instruction slots past
+    //      the code must be zero, every word must be decodable, the step count
+    //      must fit the circuit's row count, and the published gas must be
+    //      arithmetically possible.
+    //   3. It cannot borrow another lane's key, and it does not touch the
+    //      domain's settlement roots. A verified execution is not a verified
+    //      chain root, and the separation is in the storage layout, not in a
+    //      comment.
+
+    /// Bootstraps the execution lane's verification key. Admin-gated exactly
+    /// like `set_vk` and `set_step_chain_vk`, and permanently refused after
+    /// `renounce_admin`.
+    pub fn set_execution_vk(env: Env, admin: Address, vk: Bytes) {
+        if Self::is_admin_renounced(&env) {
+            panic!("admin renounced");
+        }
+        admin.require_auth();
+        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        if stored_admin != admin {
+            panic!("not admin");
+        }
+        // Explicit size limit. 1920 = alpha(64) + beta(128) + gamma(128) +
+        // delta(128) + 23 IC points (64 each), for 22 public inputs.
+        if vk.len() != EXECUTION_VK_LEN {
+            panic!("expected 1920-byte execution verification key");
+        }
+        env.storage().instance().set(&DataKey::ExecutionVk, &vk);
+    }
+
+    pub fn get_execution_vk(env: Env) -> Bytes {
+        env.storage()
+            .instance()
+            .get(&DataKey::ExecutionVk)
+            .unwrap_or(Bytes::new(&env))
+    }
+
+    pub fn get_execution_record(env: Env, domain: BytesN<32>) -> Option<ExecutionRecord> {
+        env.storage().persistent().get(&DataKey::Execution(domain))
+    }
+
+    /// Verifies an execution proof and records it.
+    pub fn submit_execution_zk(
+        env: Env,
+        evidence: RawEvidence,
+        proof: Bytes,
+        public_inputs: Vec<BytesN<32>>,
+    ) -> Result<ExecutionAttestation, RegistryError> {
+        let domain_key = compute_domain_key(&env, &evidence.adapter_id, &evidence.network);
+        let record: DomainRecord = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Domain(domain_key.clone()))
+            .ok_or(RegistryError::DomainNotFound)?;
+        if record.state == 0 || record.state >= 3 {
+            return Err(RegistryError::NotAdmitted);
+        }
+        if !record
+            .accepted_versions
+            .contains(&evidence.evidence_version)
+        {
+            return Err(RegistryError::VersionNotAccepted);
+        }
+
+        let digest = compute_evidence_digest(&env, &evidence);
+        if env
+            .storage()
+            .persistent()
+            .has(&DataKey::Evidence(digest.clone()))
+        {
+            return Err(RegistryError::EvidenceAlreadyProcessed);
+        }
+
+        // -- parse the payload and re-derive the declared fields --------------
+        let decoded = parse_execution_payload(&env, &evidence.payload)?;
+        if decoded.height != evidence.declared_height || decoded.state_root != evidence.declared_root {
+            return Err(RegistryError::DeclaredMismatch);
+        }
+
+        // -- explicit size limits, before any arithmetic ----------------------
+        if proof.len() != groth16::PROOF_SIZE {
+            return Err(RegistryError::InvalidProof);
+        }
+        if public_inputs.len() != EXECUTION_PUBLIC_INPUTS {
+            return Err(RegistryError::InvalidProof);
+        }
+        let vk: Bytes = env
+            .storage()
+            .instance()
+            .get(&DataKey::ExecutionVk)
+            .unwrap_or(Bytes::new(&env));
+        if vk.len() != EXECUTION_VK_LEN {
+            return Err(RegistryError::InvalidProof);
+        }
+
+        // -- bind every public input ------------------------------------------
+        // Order is fixed by the circuit and mirrored by the generated vectors:
+        //   0..16 program   16 initial_regs_root   17 final_regs_root
+        //   18 final_pc     19 steps_executed      20 gas_used   21 domain_tag
+        for index in 0..EXECUTION_PROGRAM_WORDS {
+            require_program_input(&public_inputs, index, decoded.program[index as usize])?;
+        }
+        require_root_input(&public_inputs, 16, &decoded.initial_regs_root)?;
+        require_root_input(&public_inputs, 17, &decoded.state_root)?;
+        require_scalar_input(&public_inputs, 18, decoded.final_pc)?;
+        require_scalar_input(&public_inputs, 19, decoded.steps_executed)?;
+        require_scalar_input(&public_inputs, 20, decoded.gas_used)?;
+        if public_inputs.get(21).unwrap() != execution_tag(&env) {
+            return Err(RegistryError::DeclaredMismatch);
+        }
+
+        // -- the trail only moves forward --------------------------------------
+        if let Some(previous) = env
+            .storage()
+            .persistent()
+            .get::<DataKey, ExecutionRecord>(&DataKey::Execution(domain_key.clone()))
+        {
+            if decoded.height <= previous.height {
+                return Err(RegistryError::EvidenceAlreadyProcessed);
+            }
+        }
+
+        if !groth16::verify(&env, &vk, &proof, &public_inputs) {
+            return Err(RegistryError::InvalidProof);
+        }
+
+        let program_digest = compute_program_digest(&env, &decoded.program);
+        let accepted = ExecutionRecord {
+            domain: domain_key.clone(),
+            height: decoded.height,
+            program_digest: program_digest.clone(),
+            instruction_words: decoded.instruction_words,
+            state_root: decoded.state_root.clone(),
+            initial_regs_root: decoded.initial_regs_root.clone(),
+            final_pc: decoded.final_pc,
+            steps_executed: decoded.steps_executed,
+            gas_used: decoded.gas_used,
+            settlement_anchored: false,
+        };
+        env.storage()
+            .persistent()
+            .set(&DataKey::Execution(domain_key.clone()), &accepted);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Evidence(digest.clone()), &true);
+
+        env.events().publish(
+            (Symbol::new(&env, "execution_verified"), domain_key.clone()),
+            (
+                decoded.height,
+                decoded.steps_executed,
+                decoded.gas_used,
+                program_digest.clone(),
+            ),
+        );
+
+        Ok(ExecutionAttestation {
+            domain: domain_key,
+            height: decoded.height,
+            program_digest,
+            state_root: decoded.state_root,
+            steps_executed: decoded.steps_executed,
+            gas_used: decoded.gas_used,
+            security: SecurityBacking::ZkProof,
+            evidence_digest: digest,
+            adapter_version: record.adapter_version,
+            evidence_version: evidence.evidence_version,
+        })
+    }
+
     pub fn list_domains(env: Env) -> Vec<BytesN<32>> {
         env.storage()
             .instance()
@@ -1169,6 +1397,9 @@ mod test_vectors;
 
 #[cfg(test)]
 mod step_chain_vectors;
+
+#[cfg(test)]
+mod execution_trace_vectors;
 
 // ---------------------------------------------------------------------------
 // Multi-step chained lane: payload parsing and public-input binding
@@ -1265,6 +1496,154 @@ fn require_root_input(
     Ok(())
 }
 
+// ---------------------------------------------------------------------------
+// Execution lane: payload parsing and public-input binding
+// ---------------------------------------------------------------------------
+//
+// The circuit this lane verifies proves what `crates/execution_vm` implements: a
+// program of at most sixteen packed instructions ran on a machine with eight
+// registers and sixteen words of memory, in at most twenty fetched steps, and
+// ended by executing a halt. The contract's job is the same as in the chained
+// lane and narrower than it sounds: bind every public input to a value the
+// contract derived from the payload or from registered state, and refuse
+// anything that does not describe a run the circuit could have produced.
+//
+// What this lane is NOT: it is not a proof about the settlement chain's roots,
+// and it does not move them. The final register file it commits is the machine's
+// own end state. Wiring that state into the settlement anchor is roadmap, and
+// saying so here is cheaper than implying otherwise.
+
+/// Fixed capacities of the compiled circuit.
+pub const EXECUTION_PAYLOAD_LEN: u32 = 232;
+pub const EXECUTION_PUBLIC_INPUTS: u32 = 22;
+pub const EXECUTION_VK_LEN: u32 = 1920;
+pub const EXECUTION_MAX_STEPS: u64 = 20;
+pub const EXECUTION_PROGRAM_WORDS: u32 = 16;
+
+/// The costing of one proof cannot exceed the machine's most expensive
+/// instruction charged on every row. A published cost above it describes no run.
+pub const EXECUTION_MAX_GAS: u64 = 3 * EXECUTION_MAX_STEPS;
+
+/// The largest packed instruction the circuit can decode: the decode equation
+/// leaves 55 bits for opcode, three five-bit register indices and a 32-bit
+/// immediate. A larger word has no decode, so a proof about it cannot exist and
+/// the contract refuses the payload rather than let a caller pay for one.
+pub const EXECUTION_MAX_PROGRAM_WORD: u64 = (1u64 << 55) - 1;
+
+/// The domain-separation tag compiled into the trace circuit, as a 32-byte
+/// big-endian field element. It differs from both the chained lane's tag and the
+/// single-statement lane's label.
+pub const EXECUTION_TAG_BYTES: [u8; 32] = [
+    0x00, 0xcf, 0x56, 0x2c, 0x45, 0xb7, 0xd4, 0x3f, 0x8a, 0x7e, 0x71, 0x01, 0x03, 0xa5, 0x1d, 0x92,
+    0xee, 0x08, 0x84, 0xf0, 0x7e, 0xb9, 0xdc, 0xb8, 0xa6, 0x1b, 0x1d, 0x91, 0x62, 0xef, 0x7d, 0xb4,
+];
+
+fn execution_tag(env: &Env) -> BytesN<32> {
+    BytesN::from_array(env, &EXECUTION_TAG_BYTES)
+}
+
+/// The fields this lane reads out of the payload.
+///
+/// Layout, 232 bytes, little-endian integers:
+///
+/// ```text
+///   0   8   height                  the domain's execution trail height
+///   8   32  state_root              == public input 17 (the final register file)
+///   40  32  initial_regs_root       == public input 16
+///   72  8   final_pc                == public input 18
+///   80  8   steps_executed          == public input 19
+///   88  8   gas_used                == public input 20
+///   96  8   instruction_words       how many of the sixteen slots are code
+///   104 128 program[16]             == public inputs 0..16, eight bytes each
+/// ```
+pub struct DecodedExecution {
+    pub height: u64,
+    pub state_root: BytesN<32>,
+    pub initial_regs_root: BytesN<32>,
+    pub final_pc: u64,
+    pub steps_executed: u64,
+    pub gas_used: u64,
+    pub instruction_words: u64,
+    pub program: [u64; 16],
+}
+
+/// Parses the execution payload. Any other length is a format error, so a
+/// payload with trailing bytes is refused rather than partially read.
+fn parse_execution_payload(env: &Env, payload: &Bytes) -> Result<DecodedExecution, RegistryError> {
+    if payload.len() != EXECUTION_PAYLOAD_LEN {
+        return Err(RegistryError::BadPayloadLength);
+    }
+    let height = read_u64_le(payload, 0);
+    if height == 0 {
+        return Err(RegistryError::InvalidPayload);
+    }
+    let final_pc = read_u64_le(payload, 72);
+    if final_pc >= EXECUTION_PROGRAM_WORDS as u64 {
+        return Err(RegistryError::InvalidPayload);
+    }
+    let steps_executed = read_u64_le(payload, 80);
+    if steps_executed == 0 || steps_executed > EXECUTION_MAX_STEPS {
+        return Err(RegistryError::InvalidPayload);
+    }
+    let gas_used = read_u64_le(payload, 88);
+    if gas_used > EXECUTION_MAX_GAS {
+        return Err(RegistryError::InvalidPayload);
+    }
+    let instruction_words = read_u64_le(payload, 96);
+    if instruction_words == 0 || instruction_words > EXECUTION_PROGRAM_WORDS as u64 {
+        return Err(RegistryError::InvalidPayload);
+    }
+
+    let mut program = [0u64; 16];
+    for index in 0..16u32 {
+        let word = read_u64_le(payload, 104 + index * 8);
+        if word > EXECUTION_MAX_PROGRAM_WORD {
+            return Err(RegistryError::InvalidPayload);
+        }
+        // The slots past the code are zero, which decodes to a halt: a program
+        // counter that runs off the end of the code stops instead of escaping,
+        // and a caller cannot hide instructions in the padding.
+        if (index as u64) >= instruction_words && word != 0 {
+            return Err(RegistryError::InvalidPayload);
+        }
+        program[index as usize] = word;
+    }
+
+    Ok(DecodedExecution {
+        height,
+        state_root: read_root(env, payload, 8),
+        initial_regs_root: read_root(env, payload, 40),
+        final_pc,
+        steps_executed,
+        gas_used,
+        instruction_words,
+        program,
+    })
+}
+
+/// Requires a public input to be the field encoding of one packed instruction.
+///
+/// The field encoding of an integer is 32 bytes big-endian with the leading 24
+/// bytes zero. Checking the bytes rather than the value is what makes this a
+/// binding: a non-canonical encoding of the same integer is refused too.
+fn require_program_input(
+    inputs: &Vec<BytesN<32>>,
+    index: u32,
+    expected: u64,
+) -> Result<(), RegistryError> {
+    require_scalar_input(inputs, index, expected)
+}
+
+/// The digest the contract names a program by: sha256 over the sixteen packed
+/// words, eight bytes each, little-endian.
+fn compute_program_digest(env: &Env, program: &[u64; 16]) -> BytesN<32> {
+    let mut buf = Bytes::new(env);
+    for word in program.iter() {
+        buf.append(&Bytes::from_array(env, &word.to_le_bytes()));
+    }
+    env.crypto().sha256(&buf).into()
+}
+
 /// Requires a public input to be the field encoding of a small integer.
 ///
 /// The circuit's public inputs arrive as 32-byte big-endian field elements, so
@@ -1296,6 +1675,7 @@ fn require_scalar_input(
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::execution_trace_vectors as vex;
     use crate::step_chain_vectors as vsc;
     use crate::test_vectors as v;
     extern crate std;
@@ -2230,6 +2610,486 @@ mod test {
             matches!(res, Err(Ok(RegistryError::DomainNotFound))),
             "got {:?}",
             res
+        );
+    }
+
+    // =====================================================================
+    // Execution lane
+    // =====================================================================
+
+    /// Vector layout, so the tests and the generated file cannot drift apart.
+    const EX_PROGRAM: usize = 0;
+    const EX_INITIAL_ROOT: usize = 16;
+    const EX_FINAL_ROOT: usize = 17;
+    const EX_FINAL_PC: usize = 18;
+    const EX_STEPS: usize = 19;
+    const EX_GAS: usize = 20;
+    const EX_TAG: usize = 21;
+
+    /// The program the generated vectors were proved for, instruction by
+    /// instruction. Written out here because it is the statement: if the circuit
+    /// or the assembler ever changes what a program assembles to, this test
+    /// fails rather than the fixture silently following along.
+    const EX_INSTRUCTION_WORDS: u64 = 13;
+
+    fn ex_vk(env: &Env) -> Bytes {
+        Bytes::from_slice(env, &decode_hex_var(&vex::VK_HEX))
+    }
+
+    fn ex_proof(env: &Env) -> Bytes {
+        Bytes::from_slice(env, &decode_hex_var(&vex::PROOF_HEX))
+    }
+
+    fn ex_inputs(env: &Env) -> Vec<BytesN<32>> {
+        let mut out = Vec::new(env);
+        for i in 0..vex::PUBLIC_INPUTS_HEX.len() {
+            out.push_back(BytesN::from_array(
+                env,
+                &decode_hex::<32>(vex::PUBLIC_INPUTS_HEX[i]),
+            ));
+        }
+        out
+    }
+
+    /// The integer a public input encodes: leading 24 bytes zero, low 8 big-endian.
+    fn public_u64(input: &BytesN<32>) -> u64 {
+        let mut raw = [0u8; 8];
+        for i in 0u32..8 {
+            raw[i as usize] = input.get(24 + i).unwrap_or(0);
+        }
+        // the leading bytes are asserted zero by the vectors themselves
+        for i in 0u32..24 {
+            assert_eq!(input.get(i).unwrap_or(1), 0, "public scalar must be canonical");
+        }
+        u64::from_be_bytes(raw)
+    }
+
+    /// The payload the circuit's public inputs describe.
+    fn ex_payload(env: &Env, height: u64) -> Bytes {
+        let inputs = ex_inputs(env);
+        let mut payload = Bytes::new(env);
+        payload.append(&Bytes::from_array(env, &height.to_le_bytes()));
+        payload.append(&Bytes::from_array(env, &inputs.get(EX_FINAL_ROOT as u32).unwrap().to_array()));
+        payload.append(&Bytes::from_array(env, &inputs.get(EX_INITIAL_ROOT as u32).unwrap().to_array()));
+        payload.append(&Bytes::from_array(
+            env,
+            &public_u64(&inputs.get(EX_FINAL_PC as u32).unwrap()).to_le_bytes(),
+        ));
+        payload.append(&Bytes::from_array(
+            env,
+            &public_u64(&inputs.get(EX_STEPS as u32).unwrap()).to_le_bytes(),
+        ));
+        payload.append(&Bytes::from_array(
+            env,
+            &public_u64(&inputs.get(EX_GAS as u32).unwrap()).to_le_bytes(),
+        ));
+        payload.append(&Bytes::from_array(env, &EX_INSTRUCTION_WORDS.to_le_bytes()));
+        for index in 0..EXECUTION_PROGRAM_WORDS {
+            let word = public_u64(&inputs.get(index).unwrap());
+            payload.append(&Bytes::from_array(env, &word.to_le_bytes()));
+        }
+        payload
+    }
+
+    fn ex_evidence(env: &Env, height: u64) -> RawEvidence {
+        let (adapter, network) = sc_domain(env);
+        let inputs = ex_inputs(env);
+        RawEvidence {
+            adapter_id: adapter,
+            evidence_version: 1,
+            network,
+            payload: ex_payload(env, height),
+            declared_height: height,
+            declared_root: BytesN::from_array(
+                env,
+                &inputs.get(EX_FINAL_ROOT as u32).unwrap().to_array(),
+            ),
+            submitter: Address::generate(env),
+        }
+    }
+
+    /// A registry with the execution lane's key bootstrapped.
+    fn ex_registry(env: &Env) -> (FinalityRegistryClient<'_>, Address, BytesN<32>) {
+        let contract_id = env.register(FinalityRegistry, ());
+        let client = FinalityRegistryClient::new(env, &contract_id);
+        let admin = Address::generate(env);
+        client.initialize(&admin);
+        let (adapter, network) = sc_domain(env);
+        let domain = client.register_domain(
+            &admin,
+            &adapter,
+            &network,
+            &10,
+            &1,
+            &Vec::from_array(env, [1u32]),
+        );
+        client.admit_domain(&admin, &domain);
+        client.set_execution_vk(&admin, &ex_vk(env));
+        (client, admin, domain)
+    }
+
+    #[test]
+    fn test_execution_vectors_are_the_layout_the_contract_expects() {
+        // 1920 = 64 (alpha) + 3 x 128 (beta, gamma, delta) + 23 x 64 (IC[0..22]).
+        assert_eq!(vex::VK_HEX.len(), (EXECUTION_VK_LEN as usize) * 2);
+        assert_eq!(vex::PROOF_HEX.len(), 256 * 2);
+        assert_eq!(
+            vex::PUBLIC_INPUTS_HEX.len(),
+            EXECUTION_PUBLIC_INPUTS as usize
+        );
+        // A second, independent statement of the tag.
+        assert_eq!(
+            vex::PUBLIC_INPUTS_HEX[EX_TAG],
+            "00cf562c45b7d43f8a7e710103a51d92ee0884f07eb9dcb8a61b1d9162ef7db4"
+        );
+    }
+
+    #[test]
+    fn test_execution_tag_matches_the_circuit_constant() {
+        // The tag is what stops a proof about one lane's statement being
+        // presented as a proof about another's. It is derived from
+        // "lumen-gate-execution-v1", a label neither of the other lanes uses.
+        let env = Env::default();
+        let expected =
+            decode_hex::<32>("00cf562c45b7d43f8a7e710103a51d92ee0884f07eb9dcb8a61b1d9162ef7db4");
+        assert_eq!(execution_tag(&env).to_array(), expected);
+    }
+
+    #[test]
+    fn test_execution_the_committed_program_is_the_one_that_ran() {
+        // The statement is "this program ran". The first four words are the
+        // loads and the first half of the loop; they are pinned here so that a
+        // fixture regenerated from a changed assembler cannot quietly keep
+        // passing.
+        let env = Env::default();
+        let inputs = ex_inputs(&env);
+        assert_eq!(public_u64(&inputs.get(0).unwrap()), 67109140);
+        assert_eq!(public_u64(&inputs.get(1).unwrap()), 33554964);
+        assert_eq!(public_u64(&inputs.get(2).unwrap()), 788);
+        assert_eq!(public_u64(&inputs.get(3).unwrap()), 532738);
+        // the padding slots are halt words
+        for index in EX_INSTRUCTION_WORDS as u32..EXECUTION_PROGRAM_WORDS {
+            assert_eq!(public_u64(&inputs.get(index).unwrap()), 0);
+        }
+        assert_eq!(public_u64(&inputs.get(EX_STEPS as u32).unwrap()), 16);
+        assert_eq!(public_u64(&inputs.get(EX_FINAL_PC as u32).unwrap()), 12);
+        assert_eq!(public_u64(&inputs.get(EX_GAS as u32).unwrap()), 25);
+    }
+
+    #[test]
+    fn test_execution_proof_verifies_in_host_and_is_recorded() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, _admin, domain) = ex_registry(&env);
+
+        let cpu_before = env.budget().cpu_instruction_cost();
+        let attestation = client.submit_execution_zk(
+            &ex_evidence(&env, 41),
+            &ex_proof(&env),
+            &ex_inputs(&env),
+        );
+        let cpu_after = env.budget().cpu_instruction_cost();
+        std::println!(
+            "[proving-system] execution lane: pairing check over a 256-byte proof and a \
+             1920-byte vk with 22 public inputs: {} cpu instructions (host model, Rust target)",
+            cpu_after.saturating_sub(cpu_before)
+        );
+        assert_eq!(attestation.height, 41);
+        assert_eq!(attestation.steps_executed, 16);
+        assert_eq!(attestation.gas_used, 25);
+        assert_eq!(attestation.security, SecurityBacking::ZkProof);
+
+        let recorded = client
+            .get_execution_record(&domain)
+            .expect("an accepted execution must be recorded");
+        assert_eq!(recorded.height, 41);
+        assert_eq!(recorded.steps_executed, 16);
+        assert_eq!(recorded.instruction_words, EX_INSTRUCTION_WORDS);
+        assert!(!recorded.settlement_anchored);
+    }
+
+    #[test]
+    fn test_execution_does_not_touch_what_settlement_anchors_on() {
+        // The boundary that makes a third lane safe: an execution proof says a
+        // program ran to a state it commits. It says nothing about the source
+        // chain's roots, so it must not move them.
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, _admin, domain) = ex_registry(&env);
+
+        let before = client.get_domain(&domain).expect("domain exists");
+        client.submit_execution_zk(&ex_evidence(&env, 42), &ex_proof(&env), &ex_inputs(&env));
+        let after = client.get_domain(&domain).expect("domain exists");
+
+        assert_eq!(before.last_height, after.last_height);
+        assert_eq!(before.last_root, after.last_root);
+        assert_eq!(before.last_event_root, after.last_event_root);
+        assert_eq!(after.last_security, SecurityBacking::None);
+    }
+
+    #[test]
+    fn test_execution_rejects_a_mutated_proof() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, _admin, _domain) = ex_registry(&env);
+
+        let proof = ex_proof(&env);
+        let mut swapped = Bytes::new(&env);
+        swapped.append(&proof.slice(192..256));
+        swapped.append(&proof.slice(64..192));
+        swapped.append(&proof.slice(0..64));
+        let res =
+            client.try_submit_execution_zk(&ex_evidence(&env, 43), &swapped, &ex_inputs(&env));
+        assert!(
+            matches!(res, Err(Ok(RegistryError::InvalidProof))),
+            "expected InvalidProof from the pairing check, got {:?}",
+            res
+        );
+    }
+
+    #[test]
+    fn test_execution_rejects_a_program_the_proof_does_not_cover() {
+        // A genuine proof for program P is not a proof for program P'. The
+        // contract binds the sixteen words before it spends a pairing, so this
+        // is caught as a declared mismatch rather than as a failed proof.
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, _admin, _domain) = ex_registry(&env);
+
+        let mut evidence = ex_evidence(&env, 44);
+        let mut payload = Bytes::new(&env);
+        // same layout, but word 1 of the program is a different instruction
+        let honest = ex_payload(&env, 44);
+        payload.append(&honest.slice(0..112));
+        payload.append(&Bytes::from_array(&env, &123456u64.to_le_bytes()));
+        payload.append(&honest.slice(120..EXECUTION_PAYLOAD_LEN));
+        evidence.payload = payload;
+
+        let res = client.try_submit_execution_zk(&evidence, &ex_proof(&env), &ex_inputs(&env));
+        assert!(
+            matches!(res, Err(Ok(RegistryError::DeclaredMismatch))),
+            "expected DeclaredMismatch, got {:?}",
+            res
+        );
+    }
+
+    #[test]
+    fn test_execution_rejects_a_rewritten_step_count() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, _admin, _domain) = ex_registry(&env);
+
+        let mut evidence = ex_evidence(&env, 45);
+        let honest = ex_payload(&env, 45);
+        let mut payload = Bytes::new(&env);
+        payload.append(&honest.slice(0..80));
+        payload.append(&Bytes::from_array(&env, &15u64.to_le_bytes()));
+        payload.append(&honest.slice(88..EXECUTION_PAYLOAD_LEN));
+        evidence.payload = payload;
+
+        let res = client.try_submit_execution_zk(&evidence, &ex_proof(&env), &ex_inputs(&env));
+        assert!(
+            matches!(res, Err(Ok(RegistryError::DeclaredMismatch))),
+            "expected DeclaredMismatch, got {:?}",
+            res
+        );
+    }
+
+    #[test]
+    fn test_execution_rejects_a_wrong_domain_tag() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, _admin, _domain) = ex_registry(&env);
+
+        let mut inputs = ex_inputs(&env);
+        let mut tampered = Vec::new(&env);
+        for index in 0..inputs.len() {
+            if index == EX_TAG as u32 {
+                tampered.push_back(BytesN::from_array(&env, &[1u8; 32]));
+            } else {
+                tampered.push_back(inputs.get(index).unwrap());
+            }
+        }
+        inputs = tampered;
+        let res =
+            client.try_submit_execution_zk(&ex_evidence(&env, 46), &ex_proof(&env), &inputs);
+        assert!(
+            matches!(res, Err(Ok(RegistryError::DeclaredMismatch))),
+            "expected DeclaredMismatch, got {:?}",
+            res
+        );
+    }
+
+    #[test]
+    fn test_execution_rejects_instructions_hidden_in_the_padding() {
+        // The slots past the code must be halt words. A payload that hides an
+        // instruction there is refused before any proof is looked at, because
+        // the circuit would not have committed it.
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, _admin, _domain) = ex_registry(&env);
+
+        let mut evidence = ex_evidence(&env, 47);
+        let honest = ex_payload(&env, 47);
+        let mut payload = Bytes::new(&env);
+        payload.append(&honest.slice(0..96));
+        payload.append(&Bytes::from_array(&env, &5u64.to_le_bytes()));
+        payload.append(&honest.slice(104..EXECUTION_PAYLOAD_LEN));
+        evidence.payload = payload;
+
+        let res = client.try_submit_execution_zk(&evidence, &ex_proof(&env), &ex_inputs(&env));
+        assert!(
+            matches!(res, Err(Ok(RegistryError::InvalidPayload))),
+            "expected InvalidPayload, got {:?}",
+            res
+        );
+    }
+
+    #[test]
+    fn test_execution_rejects_a_program_word_with_no_decode() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, _admin, _domain) = ex_registry(&env);
+
+        let mut evidence = ex_evidence(&env, 48);
+        let honest = ex_payload(&env, 48);
+        let mut payload = Bytes::new(&env);
+        payload.append(&honest.slice(0..104));
+        payload.append(&Bytes::from_array(
+            &env,
+            &(EXECUTION_MAX_PROGRAM_WORD + 1).to_le_bytes(),
+        ));
+        payload.append(&honest.slice(112..EXECUTION_PAYLOAD_LEN));
+        evidence.payload = payload;
+
+        let res = client.try_submit_execution_zk(&evidence, &ex_proof(&env), &ex_inputs(&env));
+        assert!(
+            matches!(res, Err(Ok(RegistryError::InvalidPayload))),
+            "expected InvalidPayload, got {:?}",
+            res
+        );
+    }
+
+    #[test]
+    fn test_execution_rejects_a_step_count_beyond_the_circuit() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, _admin, _domain) = ex_registry(&env);
+
+        let mut evidence = ex_evidence(&env, 49);
+        let honest = ex_payload(&env, 49);
+        let mut payload = Bytes::new(&env);
+        payload.append(&honest.slice(0..80));
+        payload.append(&Bytes::from_array(
+            &env,
+            &(EXECUTION_MAX_STEPS + 1).to_le_bytes(),
+        ));
+        payload.append(&honest.slice(88..EXECUTION_PAYLOAD_LEN));
+        evidence.payload = payload;
+
+        let res = client.try_submit_execution_zk(&evidence, &ex_proof(&env), &ex_inputs(&env));
+        assert!(
+            matches!(res, Err(Ok(RegistryError::InvalidPayload))),
+            "expected InvalidPayload, got {:?}",
+            res
+        );
+    }
+
+    #[test]
+    fn test_execution_rejects_a_public_input_vector_of_the_wrong_length() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, _admin, _domain) = ex_registry(&env);
+
+        let inputs = ex_inputs(&env);
+        let mut short = Vec::new(&env);
+        for index in 0..(EXECUTION_PUBLIC_INPUTS - 1) {
+            short.push_back(inputs.get(index).unwrap());
+        }
+        let res =
+            client.try_submit_execution_zk(&ex_evidence(&env, 50), &ex_proof(&env), &short);
+        assert!(
+            matches!(res, Err(Ok(RegistryError::InvalidProof))),
+            "expected InvalidProof, got {:?}",
+            res
+        );
+    }
+
+    #[test]
+    fn test_execution_cannot_borrow_another_lanes_key() {
+        // A registry that has the chained lane's key but not this lane's must
+        // refuse: the lengths differ, and the length is checked before the
+        // pairing, so the wrong key is never decoded as if it were the right one.
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(FinalityRegistry, ());
+        let client = FinalityRegistryClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        client.initialize(&admin);
+        let (adapter, network) = sc_domain(&env);
+        let domain = client.register_domain(
+            &admin,
+            &adapter,
+            &network,
+            &10,
+            &1,
+            &Vec::from_array(&env, [1u32]),
+        );
+        client.admit_domain(&admin, &domain);
+        client.set_step_chain_vk(&admin, &sc_vk(&env));
+
+        assert_eq!(client.get_execution_vk().len(), 0);
+        let res = client.try_submit_execution_zk(
+            &ex_evidence(&env, 51),
+            &ex_proof(&env),
+            &ex_inputs(&env),
+        );
+        assert!(
+            matches!(res, Err(Ok(RegistryError::InvalidProof))),
+            "expected InvalidProof with no execution key, got {:?}",
+            res
+        );
+    }
+
+    #[test]
+    fn test_execution_rejects_a_replayed_evidence_and_a_backwards_height() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, _admin, _domain) = ex_registry(&env);
+
+        let first = ex_evidence(&env, 52);
+        client.submit_execution_zk(&first, &ex_proof(&env), &ex_inputs(&env));
+
+        let replay = client.try_submit_execution_zk(&first, &ex_proof(&env), &ex_inputs(&env));
+        assert!(
+            matches!(replay, Err(Ok(RegistryError::EvidenceAlreadyProcessed))),
+            "expected EvidenceAlreadyProcessed, got {:?}",
+            replay
+        );
+
+        let backwards =
+            client.try_submit_execution_zk(&ex_evidence(&env, 5), &ex_proof(&env), &ex_inputs(&env));
+        assert!(
+            matches!(backwards, Err(Ok(RegistryError::EvidenceAlreadyProcessed))),
+            "expected the trail to refuse a height that does not advance, got {:?}",
+            backwards
+        );
+
+        let forward =
+            client.submit_execution_zk(&ex_evidence(&env, 53), &ex_proof(&env), &ex_inputs(&env));
+        assert_eq!(forward.height, 53);
+    }
+
+    #[test]
+    fn test_execution_admin_can_no_longer_change_the_key_after_renouncing() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, admin, _domain) = ex_registry(&env);
+        client.renounce_admin(&admin);
+        let res = client.try_set_execution_vk(&admin, &ex_vk(&env));
+        assert!(
+            res.is_err(),
+            "a renounced admin must not be able to set this lane's key either"
         );
     }
 }
