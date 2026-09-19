@@ -69,10 +69,24 @@ function txLink(hash) {
   return el('a', { class: 'explorer', href: EXPLORER_TX + hash, target: '_blank', rel: 'noreferrer', text: short(hash, 10) });
 }
 
+const LOG_PLACEHOLDER = [
+  'nothing yet in this session.',
+  '',
+  'Lock a block and this panel will show, line by line: the message id that',
+  'the event produced, the aggregate BLS signature the registry checks, and',
+  'every transaction hash the relayer confirmed.',
+].join('\n');
+
+function showLogPlaceholder() {
+  const box = $('txLog');
+  box.textContent = '';
+  box.append(el('span', { class: 'log-empty', text: LOG_PLACEHOLDER }));
+}
+
 function log(message, level = '') {
   const box = $('txLog');
+  if (box.querySelector('.log-empty')) box.textContent = '';
   const time = new Date().toISOString().slice(11, 19);
-  if (box.textContent.trim() === 'Ready.') box.textContent = '';
   box.append(el('span', { class: level, text: `[${time}] ${message}\n` }));
   box.scrollTop = box.scrollHeight;
 }
@@ -89,6 +103,46 @@ async function api(path, { method = 'GET', body, auth = false } = {}) {
     payload = { raw: text.slice(0, 400) };
   }
   return { ok: response.ok, status: response.status, payload };
+}
+
+
+// --------------------------------------------------------------- the lattice
+// The page background is the source chain: one cube per block at its own 60px
+// size. This lights up the cube under the pointer with a 4px frame. The frame
+// element sits below every surface in the document, so the black band and the
+// cards hide it on their own; the only reason this listens for the pointer at
+// all is to keep the work off the layout thread.
+function watchGrid() {
+  const frame = $('gridFrame');
+  const cell = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--cell')) || 60;
+  let queued = null;
+  let ticking = false;
+
+  const paint = () => {
+    ticking = false;
+    if (!queued) return;
+    const { x, y } = queued;
+    const under = document.elementFromPoint(x, y);
+    if (!under || under.closest('.band-wrap, .card, header, footer, dialog, .steps, .stat')) {
+      frame.classList.remove('on');
+      return;
+    }
+    const left = Math.floor(x / cell) * cell;
+    const top = Math.floor((window.scrollY + y) / cell) * cell - window.scrollY;
+    frame.style.transform = `translate3d(${left}px, ${top}px, 0)`;
+    frame.classList.add('on');
+  };
+
+  window.addEventListener('pointermove', (event) => {
+    queued = { x: event.clientX, y: event.clientY };
+    if (!ticking) {
+      ticking = true;
+      requestAnimationFrame(paint);
+    }
+  }, { passive: true });
+  window.addEventListener('pointerleave', () => frame.classList.remove('on'));
+  window.addEventListener('blur', () => frame.classList.remove('on'));
+  document.addEventListener('scroll', () => frame.classList.remove('on'), { passive: true });
 }
 
 // ------------------------------------------------------------------ nav
@@ -209,14 +263,15 @@ function renderFindings(status) {
   const list = $('findingsList');
   const findings = status.findings || [];
   list.textContent = '';
+  $('findingsCount').textContent = `${findings.length} recorded`;
   $('findingsSummary').textContent = findings.length === 0
     ? 'Nothing is recorded, which for a build this size usually means nobody looked.'
-    : `${findings.length} defects, kept in the deployment manifest instead of edited out of it. A build with no recorded defects is a build where nobody looked.`;
+    : 'A build with no recorded defects is a build where nobody looked. These are the real ones, kept in the deployment manifest instead of edited out of it.';
   for (const finding of findings) {
     const block = el('div', { class: 'finding' });
-    block.append(el('p', { class: 'mono xs', style: 'color:var(--faint); margin-top:16px', text: finding.id }));
-    block.append(el('p', { style: 'margin-top:6px', text: finding.found }));
-    block.append(el('p', {}, [el('strong', { text: 'Fix. ' }), document.createTextNode(finding.fix)]));
+    block.append(el('span', { class: 'id', text: finding.id }));
+    block.append(el('p', { text: finding.found }));
+    block.append(el('p', {}, [el('b', { text: 'Fix. ' }), document.createTextNode(finding.fix)]));
     list.append(block);
   }
 }
@@ -320,7 +375,7 @@ async function loadStatus() {
     : 'No source adapter is configured on this deployment, so this button is disabled rather than pretending to work.';
   $('lockBtn').disabled = !sourceReady;
 
-  $('operatorHint').textContent = state.operatorToken ? 'writes: token set for this tab' : 'writes: no operator token yet';
+  paintWriteState();
   $('footerChain').textContent = `${payload.chain?.horizon || ''}`.replace('https://', '');
   return payload;
 }
@@ -420,6 +475,41 @@ async function refreshWallet() {
   }
 }
 
+// ------------------------------------------------------------------ amounts
+// Amounts travel as base units because that is what the contracts take. Nobody
+// reads 137000000 as 13.7, so every amount field carries its own translation.
+const ASSET_DECIMALS = 7;
+
+function formatUnits(value) {
+  const [whole, fraction] = (value / 10 ** ASSET_DECIMALS).toFixed(ASSET_DECIMALS).split('.');
+  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  const trimmed = fraction.replace(/0+$/, '');
+  return trimmed ? `${grouped}.${trimmed}` : grouped;
+}
+
+function amountHint(inputId, hintId, tail) {
+  const input = $(inputId);
+  const hint = $(hintId);
+  const paint = () => {
+    const raw = input.value.trim();
+    const value = Number(raw);
+    if (raw === '' || !Number.isFinite(value) || !Number.isInteger(value) || value <= 0) {
+      hint.textContent = 'a positive whole number of base units';
+      hint.dataset.state = 'warn';
+      return;
+    }
+    hint.dataset.state = '';
+    hint.textContent = `= ${formatUnits(value)} wSRC ${tail}`;
+  };
+  input.addEventListener('input', paint);
+  paint();
+}
+
+function wireAmounts() {
+  amountHint('lockAmount', 'lockAmountHint', 'minted, minus the relayer fee');
+  amountHint('burnAmount', 'burnAmountHint', 'burned from your own balance');
+}
+
 // -------------------------------------------------------- inbound (lock)
 const STEP_IDS = { lock: 'bstep-lock', finality: 'bstep-finality', mint: 'bstep-mint' };
 
@@ -467,6 +557,7 @@ async function lock() {
   const event = payload.event || payload.events?.[0];
   state.lock = { height: event?.height ?? payload.block_height, event, events: payload.events || [] };
   step('lock', 'done', `lock observed at source height ${state.lock.height}`);
+  $('runStatus').textContent = `locked ${state.lock.events?.length || 1} event(s) at source height ${state.lock.height}`;
   log(`Locked. message_id ${event?.message_id}\n  nonce ${event?.nonce} - payload_hash ${event?.payload_hash}\n  ${payload.events?.length || 1} event(s) in block ${payload.block_height}, expiry height ${event?.expiry_height}`, 'ok');
   $('settleBtn').disabled = !state.status?.capabilities?.operator_relay?.enabled;
   await showProof(state.lock.height);
@@ -518,6 +609,7 @@ async function settle() {
   }
   if (receipts.length > 0) {
     step('mint', 'done', 'mint confirmed on Stellar');
+    $('runStatus').textContent = `pass finished: ${receipts.length} transaction(s) confirmed on Stellar`;
     log(`Explorer: ${EXPLORER_TX}${receipts[receipts.length - 1]}`, 'info');
   }
   $('settleBtn').disabled = false;
@@ -573,6 +665,16 @@ async function burn() {
 }
 
 // -------------------------------------------------------------- operator
+// Every surface that reports whether this tab may write reads from one place,
+// and it repaints the moment the token changes instead of waiting for the next
+// status poll to notice.
+function paintWriteState() {
+  const set = Boolean(state.operatorToken);
+  $('operatorHint').textContent = set ? 'writes: token set for this tab' : 'writes: no operator token yet';
+  $('operatorHintBtn').hidden = set;
+  $('opState').textContent = set ? 'A token is set for this tab.' : 'No token set: writes will be refused.';
+}
+
 function operatorDialog() {
   $('opToken').value = state.operatorToken;
   $('opState').textContent = state.operatorToken ? 'A token is set for this tab.' : 'No token set: writes will be refused.';
@@ -591,6 +693,18 @@ function wire() {
   $('lockBtn').addEventListener('click', () => lock().catch((error) => log(String(error), 'bad')));
   $('settleBtn').addEventListener('click', () => settle().catch((error) => log(String(error), 'bad')));
   $('copyCmdBtn').addEventListener('click', () => copyCommand());
+  $('clearLogBtn').addEventListener('click', () => showLogPlaceholder());
+  $('operatorHintBtn').addEventListener('click', operatorDialog);
+  wireAmounts();
+  $('demoRecipientBtn').addEventListener('click', () => {
+    const demo = state.status?.accounts?.gasless_recipient || state.status?.accounts?.end_user;
+    if (!demo) {
+      log('The manifest in this deployment carries no demo account to fill in.', 'warn');
+      return;
+    }
+    $('lockRecipient').value = demo;
+    log(`Recipient set to the manifest's demo account ${demo}.`, 'info');
+  });
   $('useWalletBtn').addEventListener('click', async () => {
     const pub = state.wallet || (await connectWallet());
     if (pub) $('lockRecipient').value = pub;
@@ -610,6 +724,8 @@ function wire() {
     state.operatorToken = $('opToken').value.trim();
     const persisted = store.set('lumen.operatorToken', state.operatorToken);
     if (!persisted) log('The browser refused session storage, so the token is kept in memory for this page only.', 'warn');
+    paintWriteState();
+    log(state.operatorToken ? 'Operator token set for this tab. Writes will carry it from now on.' : 'Token cleared: this tab is read-only again.');
     $('operatorDialog').close();
     loadStatus();
   });
@@ -617,14 +733,17 @@ function wire() {
     state.operatorToken = '';
     store.clear('lumen.operatorToken');
     $('opToken').value = '';
-    $('opState').textContent = 'Token cleared.';
+    paintWriteState();
+    log('Token cleared: this tab is read-only again.');
     loadStatus();
   });
 }
 
 wire();
 watchSections();
+watchGrid();
 resetSteps();
+showLogPlaceholder();
 loadStatus()
   .then(async (status) => {
     if (!status) return null;

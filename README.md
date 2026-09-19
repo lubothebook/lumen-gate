@@ -94,7 +94,7 @@ REGISTRY_ID=CCXJDQMTJUGXKNFOQPC25IYVOAVWDMLJBNQYX75MAREHV7MZMU5OSEN4 \
 
 **It holds no mint authority.** It cannot approve anything, it cannot change the verifying key, and it is not a new trusted party in the settlement path — it only asks the contract questions and writes down the answers. If it stops running, nothing about settlement changes; you just stop getting fresh evidence.
 
-The latest recorded round is **7/7** (`deployments/self-audit.json`, round 4): source chain reachable, honest evidence accepted, replay rejected, tampered signature rejected, registry admin renounced, **gateway admin renounced**, console wiring consistent. Both admin checks work by simulating the admin action and requiring the host to trap — a probe with no verdict is recorded as a failure, because a check that reports success on an empty output is worse than no check at all. The registry's admin capability was given up permanently with `renounce_admin`, which is the last setup step — after that nobody, including the deployer, can change the verifying key or add a domain.
+The latest recorded round is **7/7** (`deployments/self-audit.json`, round 6): source chain reachable, honest evidence accepted, replay rejected, tampered signature rejected, registry admin renounced, **gateway admin renounced**, console wiring consistent. Both admin checks work by simulating the admin action and requiring the host to trap — a probe with no verdict is recorded as a failure, because a check that reports success on an empty output is worse than no check at all. The registry's admin capability was given up permanently with `renounce_admin`, which is the last setup step — after that nobody, including the deployer, can change the verifying key or add a domain.
 
 ### What this round of work broke, and what that found
 
@@ -277,9 +277,15 @@ A nonce at or below the mark is rejected and only a higher nonce advances the ma
 
 The console is built on one rule: **every value on screen comes from somewhere that can be checked.** Addresses come from the deployment manifest through the API layer, the last finalized block comes from a live simulation of the deployed registry, balances come from Horizon, and the audit table comes from the record the loop writes. Nothing is typed in by hand.
 
-The visual language comes from the project's own assets. The page background is the **source chain**: one square per block, drawn from the project tile, running the full height of the document. It is interrupted exactly once, by the wallet console, which is the only part of the page that can move value. The header and favicon use the project wordmark and mark.
+The visual language comes from the project's own assets. The page background is the **source chain**: one cube per block, drawn from the project tile, running the full height of the document and interrupted exactly once. Three details are deliberate:
 
-The wallet sits below the overview and the explanation of how settlement works, on purpose: a reader should arrive at a wallet already knowing what it is about to do. It has the two directions as tabs, an account panel that reads real balances, and a live step readout (`Lock`, `Finality`, `Mint`) whose state comes from the responses, not from a hard-coded sequence.
+- **The cubes are the project's own pixels, not a redrawing.** The tile is 60x60 and it is painted at 60x60 (`background-size: 60px 60px` with `image-rendering: pixelated`). Nothing is upscaled, so the grid on screen is the asset, cell for cell.
+- **The grid reacts to the pointer.** Moving across it snaps a 60x60 frame to the cube under the cursor: a literal 4-pixel inner border (`box-shadow: inset 0 0 0 4px`), aligned to the same lattice, so what lights up is one block. It is painting only, never a control, and it disappears where there is nothing to point at — over the black band, the cards, the header and the footer.
+- **The grid stops on a line you can read.** The wallet band opens with the boundary strip: *source chain stops here / settlement boundary / Stellar testnet below*. Above that line is the source chain and read-only evidence; below it is the only surface on the page that can move value.
+
+The header and favicon use the project wordmark and mark.
+
+The wallet sits below the overview and the explanation of how settlement works, on purpose: a reader should arrive at a wallet already knowing what it is about to do. It has the two directions as tabs, an account panel that reads real balances, and a live step readout (`Lock`, `Finality`, `Mint`) whose state comes from the responses, not from a hard-coded sequence. Amounts are entered in base units because that is what the contracts take, so each amount field carries its own translation under it (`137000000` → `= 13.7 wSRC minted, minus the relayer fee`) and refuses a fraction or a zero with a reason instead of a silent failure. The card header states whether this tab may write, and setting the operator token repaints that state immediately rather than waiting for the next status poll.
 
 **What it refuses to do.** A control this deployment cannot honour is disabled with the reason printed under it, never offered and then failed:
 
@@ -356,7 +362,14 @@ Three processes, one machine. The API functions run through a small stand-in so 
 
 ```bash
 # 1. source chain (the simulator that plays the source network)
-./target/debug/source_simulator --port 8080
+#    SOURCE_ASSET_ID must be the SAC this deployment mints (the relayer refuses
+#    to run otherwise); SOURCE_SENDER is the source account the lock event
+#    carries. The gateway's nonce high-water mark is keyed on
+#    (source domain, target domain, sender), so a fresh sender is how a demo is
+#    replayed against a live gateway.
+SOURCE_ASSET_ID=<the SAC contract id from deployments/testnet.json> \
+  SOURCE_SENDER=<any funded source-chain G address> \
+  ./target/debug/source_simulator --port 8080
 
 # 2. the serverless layer, locally
 SOURCE_URL=http://127.0.0.1:8080 \
@@ -366,8 +379,11 @@ SOURCE_URL=http://127.0.0.1:8080 \
 
 # 3. the anchor facade (discovery, manifest, audit surface, relayer trigger)
 LUMEN_ALLOW_RELAY=1 OPERATOR_TOKEN=<pick-one> SIM_URL=http://127.0.0.1:8080 \
-  STELLAR_RELAYER_ADDRESS=<relayer G address> RELAYER_FEE=1000000 \
+  STELLAR_SOURCE_ACCOUNT=<stellar-cli key name the relayer signs with> \
+  STELLAR_RELAYER_ADDRESS=<that key's G address> RELAYER_FEE=1000000 \
   node anchor/server.js                 # listens on 8081
+# the facade hands the relayer the SAC id from its own constants, so the
+# asset-id check in step 1 is the only place that id has to be typed
 
 # 4. the console
 cd frontend && npm install

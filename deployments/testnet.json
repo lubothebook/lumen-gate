@@ -9,7 +9,7 @@
   "accounts": {
     "deployer_and_relayer": "GBYFDKP4KLQ575HTJRDTHF4HUIVXAQLJNEZMWYJ5HBY3C3GDSPX5H4FR",
     "end_user": "GD6Z33PJZXS4V75JRXHD6YQNCWDJKB72JGGSGVXQM4USF4SWVDBXG4E3",
-    "relayer_only": "GBDJAEDH5KA4GFZQV3BAD54GN6GS3S3MS23R6SE2RUMHZBIYVMQJZTHD",
+    "relayer_only": "GCPVJ6Z5DZA3KZ3WOJRIDNLKEMTKMBR6HDZEUSFXKOYX5Q7BG6VLVCAK",
     "gasless_recipient": "GCN65ER7FFAKQCECCWMUQVNGK5AQQIBON6KIJBO5FIYTHLXV4EFGVYGM"
   },
   "contracts": {
@@ -313,28 +313,64 @@
     "arithmetic": "(8.7 - 0.1) + (8.7000001 - 0.1) = 17.2000001 wSRC received, 0.2 wSRC to the relayer"
   },
   "console_wallet_round_trip": {
-    "what": "a browser-only run of the whole flow: operator token entered in the wallet console, lock created with one click, and the relayer pass triggered from the page. No terminal was used for any step the interface exposes.",
-    "driver": "headless chromium against the dev server, so the assertions are made on the rendered page rather than on the API",
-    "source_height": 48,
+    "what": "the same browser-only run repeated against the hardened console: operator token entered in the page, lock created with one click, relayer pass triggered from the page, and the four resulting transactions read back from Horizon. No terminal was used for any step the interface exposes.",
+    "driver": "headless chromium against the dev server; every number below was asserted on the rendered page",
+    "source_height": 5,
+    "source_sender": "GCIX6HTVRGKDMHV7NL5FR47L37SETNH6S3HUKEMGWMVS5I4PLZTXENPL",
     "events_in_block": 3,
     "merkle_depth": 2,
     "steps": {
-      "lock": "done at source height 48",
-      "finality": "done, registry recorded height 48",
+      "lock": "done at source height 5, 3 events in the block",
+      "finality": "done, registry recorded the height and the page read the record back",
       "mint": "done, three transactions confirmed"
     },
     "transactions": [
-      "887c7af024a6ece05f02288f9aafe24d3a53ebc33b50c0447a469ac3ee0529bb",
-      "97215ba232efe8f4f6c053cac44ab755be339ae8a099a3d815a5b4a661fc4029",
-      "bff382a7fc15e3203d12d6393701d3cb547206f868675e488d7596f7f2800c0e",
-      "f5fb010fee7fc7fc575bd6fde4cdc794ea1d34667f627cee92753f1f9b8e9ee3"
+      "08c5f77e159611c46384fffb2d63742a1bb3ead4c0347b4f104f1c07c81dd35e",
+      "0213281f07ea0608154d71f2d63e9f873ab570df09efddec5ef00fed205e9a92",
+      "32b094150b7817439c14f6e4cfb71afbd7c28bda1346f94890e6aac7467460e4",
+      "e159ea23cab0fc091bfcbf424b776b1a4b1befd0cee196d454ca3d5a54585279"
     ],
-    "note": "the page reported each step from the response it received, not from a hard-coded state: the finality step reads the registry record back through /api/finality after the pass"
+    "ledgers": [
+      4764388,
+      4764389,
+      4764390,
+      4764391
+    ],
+    "arithmetic": "each mint moved 13.7000000 wSRC out of the locked amount: 13.6000000 to the recipient and 0.1000000 to the relayer, so the recipient's XLM never moved and the relayer paid the network fee",
+    "balances_after": {
+      "gasless_recipient_wsrc": "200.3000013",
+      "gasless_recipient_xlm": "1.5000000",
+      "relayer_wsrc": "0.3000000",
+      "relayer_xlm": "9999.9563345",
+      "relayer_trustline_tx": "a8c2b64304bf009ecbcd9a73fa778e00a96faf34a82ff39a136a07e8559b5fa0"
+    },
+    "note": "the first attempt of this round was refused before it reached the chain: the relayer refuses to run when the simulator's asset id is not the SAC this deployment mints, and the facade now passes that id itself instead of relying on an operator to remember it"
   },
   "interface_state": {
     "language": "the page background is the source chain: one square per block, using the project's own tile. It runs the full height of the document and is interrupted once, by the wallet console, which is the only part of the page that can move value",
     "console_position": "deliberately placed below the overview and the settlement explanation, so a reader arrives at the wallet knowing what it is about to do",
     "wordmark": "the header and favicon use the project's own assets, embedded as data URIs so the page renders with no network at all",
     "capability_gating": "the lock button is disabled when no source adapter is configured, the settle button when no operator is configured, and the reason is printed under the control rather than shown as a failure after the click"
-  }
+  },
+  "console_wallet_round_trip_history": [
+    {
+      "what": "a browser-only run of the whole flow: operator token entered in the wallet console, lock created with one click, and the relayer pass triggered from the page. No terminal was used for any step the interface exposes.",
+      "driver": "headless chromium against the dev server, so the assertions are made on the rendered page rather than on the API",
+      "source_height": 48,
+      "events_in_block": 3,
+      "merkle_depth": 2,
+      "steps": {
+        "lock": "done at source height 48",
+        "finality": "done, registry recorded height 48",
+        "mint": "done, three transactions confirmed"
+      },
+      "transactions": [
+        "887c7af024a6ece05f02288f9aafe24d3a53ebc33b50c0447a469ac3ee0529bb",
+        "97215ba232efe8f4f6c053cac44ab755be339ae8a099a3d815a5b4a661fc4029",
+        "bff382a7fc15e3203d12d6393701d3cb547206f868675e488d7596f7f2800c0e",
+        "f5fb010fee7fc7fc575bd6fde4cdc794ea1d34667f627cee92753f1f9b8e9ee3"
+      ],
+      "note": "the page reported each step from the response it received, not from a hard-coded state: the finality step reads the registry record back through /api/finality after the pass"
+    }
+  ]
 }

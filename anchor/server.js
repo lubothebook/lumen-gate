@@ -173,6 +173,11 @@ function runRelayer(height) {
       ...process.env,
       SIM_URL,
       STELLAR_NETWORK: process.env.STELLAR_NETWORK || 'testnet',
+      // The relayer refuses to run when the source simulator's asset id does not
+      // match the SAC this deployment mints, so it is handed the id from the
+      // same constant the rest of the facade reports. An operator can still
+      // override it, but the default can no longer be wrong-by-omission.
+      SOURCE_ASSET_ID: process.env.SOURCE_ASSET_ID || TOKEN_ID,
       STELLAR_SOURCE_ACCOUNT: process.env.STELLAR_SOURCE_ACCOUNT || 'lumen-relayer',
       STELLAR_RELAYER_ADDRESS: process.env.STELLAR_RELAYER_ADDRESS || '',
       RELAYER_FEE: process.env.RELAYER_FEE || '1000000',
