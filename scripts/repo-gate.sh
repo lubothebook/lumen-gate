@@ -30,12 +30,14 @@ echo "repository gate"
 # ---------------------------------------------------------------------------
 # 1. The retired brand name appears nowhere.
 #
-# The needle is assembled from fragments instead of being written out, because
-# the rule is that the string itself does not exist in this repository -- and a
-# gate script is still a file in this repository. Checking for a string without
-# containing it is the entire trick.
+# The needle is stored base64-encoded and decoded at run time, the same way the
+# region and currency terms below are, because the rule is that the name -- and
+# the three-letter fragment it is built from -- exist nowhere in this
+# repository, and a gate script is still a file in this repository. Checking for
+# a string without containing it is the entire trick, and assembling the needle
+# from quoted fragments does not count: the fragments are the string.
 # ---------------------------------------------------------------------------
-needle="$(printf '%s%s' 'bud' 'lum')"
+needle="$(decode YnVkbHVt)"
 hits="$(git grep -Ini -- "$needle" -- . ':!Cargo.lock' 2>/dev/null | head -20)"
 if [ -z "$hits" ]; then
   pass "the retired brand name appears in no tracked file"
