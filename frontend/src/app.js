@@ -486,11 +486,36 @@ async function connectWallet() {
   }
   try {
     const access = await (freighter.requestAccess ? freighter.requestAccess() : freighter.getPublicKey());
-    const pub = typeof access === 'string' ? access : access.address;
+    const pub = typeof access === 'string' ? access : access && access.address;
+    if (!pub) {
+      // Newer Freighter builds resolve with { error } on a refusal instead of
+      // throwing. Say that out loud instead of rendering "undefined" as an
+      // address, which used to read as a broken connection.
+      const why = access && access.error ? String(access.error) : 'the popup was closed without an approval';
+      $('walletNote').textContent = `Freighter did not share an address: ${why}`;
+      log(`Wallet connection was not approved: ${why}`, 'warn');
+      return null;
+    }
     state.wallet = pub;
     $('walletChip').textContent = short(pub, 6);
     $('connectBtn').textContent = 'Reconnect';
     log(`Wallet connected: ${pub}`, 'ok');
+    // An advisory network check: a wallet pointed at Mainnet can still be
+    // read here, but every signature it makes would be for the wrong
+    // passphrase, and the failure would only surface much later.
+    if (freighter.getNetwork) {
+      try {
+        const net = await freighter.getNetwork();
+        const name = typeof net === 'string' ? net : net && net.network;
+        if (name && String(name).toUpperCase() !== 'TESTNET') {
+          $('walletNote').textContent = `Connected, but Freighter is set to ${name}. Switch the wallet to Testnet before burning.`;
+          log(`Freighter is on ${name}, not Testnet: receiving still works, switch before you burn.`, 'warn');
+        }
+      } catch (networkError) {
+        // Some Freighter versions refuse getNetwork until they are unlocked;
+        // the hint is advisory, so a refusal here stays silent.
+      }
+    }
     await refreshWallet();
     return pub;
   } catch (error) {
@@ -721,8 +746,14 @@ async function burn() {
     const signed = await freighter.signTransaction(prepared.toXDR(), { networkPassphrase: NETWORK_PASSPHRASE, address: state.wallet });
     const xdr = typeof signed === 'string' ? signed : signed.signedTxXdr;
     if (!xdr) throw new Error('Freighter returned no signed transaction');
-    const submitted = await module.server.sendTransaction(prepared);
-    log(`Submitted: ${JSON.stringify(submitted).slice(0, 300)}`, 'ok');
+    // The bytes that go to the network are the ones Freighter signed, never
+    // the still-unsigned prepared transaction: sending `prepared` here would
+    // be refused with tx_bad_auth and the burn would look like a wallet bug.
+    const submitted = await module.submitSoroban(xdr);
+    if (submitted && submitted.status && submitted.status !== 'PENDING' && submitted.status !== 'SUCCESS') {
+      throw new Error(`the RPC refused the submission: ${submitted.errorResult ? JSON.stringify(submitted.errorResult) : submitted.status}`);
+    }
+    log(`Submitted: ${submitted.hash || JSON.stringify(submitted).slice(0, 300)}`, 'ok');
     await refreshWallet();
   } catch (error) {
     log(`Burn failed: ${error && error.message ? error.message : error}`, 'bad');

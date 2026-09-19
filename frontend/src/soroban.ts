@@ -274,3 +274,9 @@ export async function submitClassic(signedXdr: string): Promise<string> {
   const result = await horizon.submitTransaction(transaction as any);
   return result.hash;
 }
+
+/** Submits an already-signed Soroban transaction to the RPC. */
+export async function submitSoroban(signedXdr: string): Promise<any> {
+  const transaction = StellarSdk.TransactionBuilder.fromXDR(signedXdr, NETWORK_PASSPHRASE);
+  return server.sendTransaction(transaction as any);
+}
