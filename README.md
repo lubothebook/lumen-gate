@@ -364,6 +364,8 @@ A nonce at or below the mark is rejected and only a higher nonce advances the ma
 
 ## The interface
 
+Pictures of the corrections described in this section, with the before and after of the same commit range side by side, are in [`design/`](design/README.md). They exist because their absence was a defect: this round changed the strips, the frame and the disabled-button reasons, shipped the code and the checks — and kept its screenshots outside the repository, so from inside the repository "the design changed" was a sentence you had to take on trust. Nothing else in this file works that way, and neither should that.
+
 The console is built on one rule: **every value on screen comes from somewhere that can be checked.** Addresses come from the deployment manifest through the API layer, the last finalized block comes from a live simulation of the deployed registry, balances come from Horizon, and the audit table comes from the record the loop writes. The receipts card below it is the strictest case: generated at build time from `deployments/*.json`, no fetch, and an em-dash wherever the receipts record nothing. Nothing is typed in by hand — and nothing is quietly invented where a receipt is silent.
 
 The visual language comes from the project's own assets. The page background is the **source chain**: one cube per block, drawn from the project tile, running the full height of the document and interrupted exactly once. Three details are deliberate:
