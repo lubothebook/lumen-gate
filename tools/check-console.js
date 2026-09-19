@@ -67,6 +67,7 @@ const assetExpectations = [
   { file: 'grid-tile.png', label: 'grid tile' },
   { file: 'logo-mark.png', label: 'logo mark' },
   { file: 'wordmark.png', label: 'wordmark' },
+  { file: 'lumen-gate-banner.png', label: 'hero banner' },
   { file: 'favicon.png', label: 'favicon' },
 ];
 let embeddedCount = 0;

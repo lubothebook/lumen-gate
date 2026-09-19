@@ -238,6 +238,20 @@ function pill(id, ok, label, detail) {
   if (detail) node.title = detail;
 }
 
+// Stellar amounts arrive with seven decimals (40.8000003). The face of the
+// page shows a rounded reading; the exact value stays one hover away, in the
+// cell's title, and in the receipt detail.
+function fmtAmount(raw) {
+  const n = Number(raw);
+  if (raw === undefined || raw === null || raw === '' || !Number.isFinite(n)) {
+    return { ui: String(raw ?? '-'), full: String(raw ?? '-') };
+  }
+  return {
+    ui: n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+    full: String(raw),
+  };
+}
+
 function setStat(valueId, subId, value, sub, mono) {
   const node = $(valueId);
   node.textContent = value ?? '-';
@@ -302,26 +316,31 @@ function renderReceipts(status) {
   body.textContent = '';
   const receipts = status.receipts || {};
   const named = [
-    ['registry initialize', receipts.registry_initialize],
-    ['register_domain', receipts.register_domain],
-    ['set_bls_policy', receipts.set_bls_policy],
-    ['admit_domain', receipts.admit_domain],
-    ['renounce_admin (registry)', receipts.renounce_admin],
-    ['renounce_admin (gateway)', receipts.gateway_renounce_admin],
-    ['forward mint', receipts.forward_mint_height_32 || receipts['forward_mint']],
-    ['reverse burn', receipts.burn_and_relay],
-    ['console round trip: BLS anchor', receipts.registry_bls_accepted_height_1_console_run],
-    ['console round trip: mint 1 of 3', receipts.console_mint_1_of_3],
-    ['console round trip: mint 2 of 3', receipts.console_mint_2_of_3],
-    ['console round trip: mint 3 of 3', receipts.console_mint_3_of_3],
+    ['registry initialize', receipts.registry_initialize, null],
+    ['register_domain', receipts.register_domain, null],
+    ['set_bls_policy', receipts.set_bls_policy, 'BLS'],
+    ['admit_domain', receipts.admit_domain, null],
+    ['renounce_admin (registry)', receipts.renounce_admin, null],
+    ['renounce_admin (gateway)', receipts.gateway_renounce_admin, null],
+    ['finality accepted, height 91', receipts.bls_finality_accepted_height_91, 'BLS'],
+    ['finality accepted, height 91', receipts.zk_finality_accepted_height_91, 'ZK'],
+    ['forward mint', receipts.forward_mint_height_32 || receipts['forward_mint'], 'BLS'],
+    ['reverse burn', receipts.burn_and_relay, null],
+    ['console round trip: BLS anchor', receipts.registry_bls_accepted_height_1_console_run, 'BLS'],
+    ['console round trip: mint 1 of 3', receipts.console_mint_1_of_3, null],
+    ['console round trip: mint 2 of 3', receipts.console_mint_2_of_3, null],
+    ['console round trip: mint 3 of 3', receipts.console_mint_3_of_3, null],
   ].filter(([, hash]) => hash);
   if (status.gasless?.transaction) named.push(['gasless mint, zero-XLM recipient', status.gasless.transaction]);
   if (named.length === 0) {
     body.append(el('tr', {}, [el('td', { colspan: '2', class: 'muted', text: 'no receipts recorded' })]));
     return;
   }
-  for (const [label, hash] of named) {
-    body.append(el('tr', {}, [el('td', { text: label }), el('td', {}, [txLink(hash)])]));
+  for (const [label, hash, method] of named) {
+    const labelCell = el('td');
+    if (method) labelCell.append(el('span', { class: `lane-chip ${method.toLowerCase()}`, text: method }), document.createTextNode(' '));
+    labelCell.append(document.createTextNode(label));
+    body.append(el('tr', {}, [labelCell, el('td', {}, [txLink(hash)])]));
   }
 }
 
@@ -342,7 +361,34 @@ function renderFindings(status) {
   }
 }
 
+function relTime(iso) {
+  const t = Date.parse(iso || '');
+  if (!t) return 'at an unknown time';
+  const s = Math.max(0, (Date.now() - t) / 1000);
+  if (s < 90) return 'just now';
+  const m = Math.round(s / 60);
+  if (m < 120) return `${m} min ago`;
+  const h = Math.round(m / 60);
+  if (h < 48) return `${h} h ago`;
+  return `${Math.round(h / 24)} d ago`;
+}
+
+function paintAuditBadge() {
+  const stamp = state.auditLatest;
+  if (!stamp) return;
+  $('auditBadge').textContent = `Self-audit: ${stamp.result}`;
+  $('auditBadgeSub').textContent = `${stamp.rounds} round(s) recorded - latest ${relTime(stamp.finishedAt)}`;
+  $('auditBadgeDot').className = `dot ${stamp.allPassed ? 'ok' : 'bad'}`;
+}
+
 function renderAudit(audit) {
+  state.auditLatest = {
+    result: audit?.result || (audit?.latest ? `${audit.latest.checks_passed}/${audit.latest.checks_total}` : '-'),
+    allPassed: Boolean(audit?.all_passed ?? audit?.latest?.all_passed),
+    finishedAt: audit?.last_check || audit?.latest?.finished_at || null,
+    rounds: audit?.rounds_recorded ?? (Array.isArray(audit?.history) ? audit.history.length : 0),
+  };
+  paintAuditBadge();
   const body = $('auditRows');
   body.textContent = '';
   const history = audit?.history || [];
@@ -394,7 +440,7 @@ async function loadStatus() {
         contracts: { registry: deployment.registryId, gateway: deployment.gatewayId, wrapped_asset: deployment.tokenId, asset: 'wSRC' },
         domain: { key: deployment.sourceDomainKey },
       });
-      setStat('statRegistry', 'statRegistrySub', short(deployment.registryId, 8), 'static manifest', true);
+      setStat('statRegistry', 'statRegistrySub', deployment.registryId, 'static manifest', true);
       setStat('statFinality', 'statFinalitySub', '-', 'no API layer in this build');
       $('settleNote').textContent = 'No API layer in this build: start one with node tools/api-dev-server.js, or deploy the functions to Vercel.';
       $('lockBtn').disabled = true;
@@ -415,7 +461,7 @@ async function loadStatus() {
     el('span', { class: 'net-short', text: payload.network || 'testnet' })
   );
 
-  setStat('statRegistry', 'statRegistrySub', short(payload.contracts?.registry, 8), `read live at ledger ${payload.chain?.latest_ledger ?? '?'}`, true);
+  setStat('statRegistry', 'statRegistrySub', payload.contracts?.registry || '-', `read live at ledger ${payload.chain?.latest_ledger ?? '?'}`, true);
   setStat('statAudit', 'statAuditSub', payload.audit?.result || '-', payload.audit ? `${payload.audit.rounds_recorded} round(s) recorded` : 'no record');
   setStat('statFindings', 'statFindingsSub', String(payload.honesty?.findings_recorded ?? '-'), 'recorded in the deployment manifest');
 
@@ -434,12 +480,14 @@ async function loadStatus() {
     ? 'This deployment can relay: the button runs one relayer pass at the height you locked. The relayer signs and pays.'
     : 'This deployment cannot relay by itself: no operator URL and token are configured here. Locking still works; use "Copy the command instead" to settle it with the local relayer.';
   $('settleBtn').disabled = !relayReady || !state.lock;
+  $('settleBtn').title = relayReady ? (state.lock ? '' : 'Lock something first: settlement settles a specific lock.') : 'No operator URL and token are configured here, so this deployment cannot relay.';
 
   const sourceReady = Boolean(payload.capabilities?.source_chain?.configured);
   $('sourceNote').textContent = sourceReady
     ? 'Source adapter configured. Locks created here become real events on the simulated source chain, with real BLS evidence behind them.'
     : 'No source adapter is configured on this deployment, so this button is disabled rather than pretending to work.';
   $('lockBtn').disabled = !sourceReady;
+  $('lockBtn').title = sourceReady ? '' : 'No source adapter is configured on this deployment. Locking is disabled on purpose.';
 
   paintWriteState();
   $('footerChain').textContent = `${payload.chain?.horizon || ''}`.replace('https://', '');
@@ -474,6 +522,38 @@ async function queryFinality(height) {
   }
   setStat('statFinality', 'statFinalitySub', record.last_height || '-', backing ? `backing: ${backing}` : 'no finality recorded yet');
   return payload;
+}
+
+// ------------------------------------------------------- trust evidence
+// The renounce hashes live in the deployment manifest that ships with the
+// page, so this panel works even with no API layer at all - the same file the
+// postbuild copies into dist/deployments.
+async function loadTrustEvidence() {
+  try {
+    const manifest = await (await fetch('deployments/testnet.json')).json();
+    const receipts = manifest.receipts || {};
+    for (const [id, hash] of [
+      ['renounceRegistry', receipts.renounce_admin],
+      ['renounceGateway', receipts.gateway_renounce_admin],
+    ]) {
+      const anchor = $(id);
+      if (!anchor) continue;
+      if (!hash) {
+        anchor.textContent = 'not recorded in this manifest';
+        anchor.removeAttribute('href');
+        continue;
+      }
+      // The hash is written in full, and it opens the transaction itself.
+      anchor.textContent = hash;
+      anchor.href = `${EXPLORER_TX}${hash}`;
+    }
+  } catch (error) {
+    log(`Trust evidence could not be read: ${error && error.message ? error.message : error}`, 'warn');
+    for (const id of ['renounceRegistry', 'renounceGateway']) {
+      const anchor = $(id);
+      if (anchor) anchor.textContent = 'unavailable in this build';
+    }
+  }
 }
 
 // ---------------------------------------------------------------- wallet
@@ -541,18 +621,22 @@ async function refreshWallet() {
 
     const body = $('walletKv');
     body.textContent = '';
-    const row = (label, unit, value, cls) => {
+    const row = (label, unit, value, cls, title) => {
       const tr = el('tr');
       const left = el('td', {}, [document.createTextNode(label)]);
       if (unit) left.append(el('span', { class: 'unit', text: unit }));
       const right = el('td', { text: value });
       if (cls) right.className = cls;
+      if (title) right.title = `exact: ${title}`;
       tr.append(left, right);
       return tr;
     };
-    body.append(row('XLM', '', native ? native.balance : '-'));
-    body.append(row('Spendable XLM', 'after reserve', spendable ?? '-', Number(spendable) > 0 ? 'ok' : 'warn'));
-    body.append(row(asset, 'wrapped asset', wrapped ? wrapped.balance : `no trustline for ${asset}`, wrapped ? '' : 'warn'));
+    const xlm = fmtAmount(native && native.balance);
+    const spend = fmtAmount(spendable);
+    body.append(row('XLM', '', native ? xlm.ui : '-', null, native ? xlm.full : null));
+    body.append(row('Spendable XLM', 'after reserve', spendable !== null ? spend.ui : '-', Number(spendable) > 0 ? 'ok' : 'warn', spendable !== null ? spend.full : null));
+    const wrappedAmount = wrapped ? fmtAmount(wrapped.balance) : null;
+    body.append(row(asset, 'wrapped asset', wrappedAmount ? wrappedAmount.ui : `no trustline for ${asset}`, wrapped ? '' : 'warn', wrappedAmount ? wrappedAmount.full : null));
 
     $('walletKind').textContent = 'connected: you can burn, and receive';
     const link = $('walletLink');
@@ -765,6 +849,20 @@ async function burn() {
 // Every surface that reports whether this tab may write reads from one place,
 // and it repaints the moment the token changes instead of waiting for the next
 // status poll to notice.
+// Every async action parks its button in a visible pending state, so a slow
+// RPC round trip never reads as a frozen page.
+async function withBusy(btn, fn) {
+  if (!btn || btn.classList.contains('busy')) return;
+  btn.classList.add('busy');
+  btn.setAttribute('aria-busy', 'true');
+  try {
+    await fn();
+  } finally {
+    btn.classList.remove('busy');
+    btn.removeAttribute('aria-busy');
+  }
+}
+
 function paintWriteState() {
   const set = Boolean(state.operatorToken);
   $('operatorHint').textContent = set ? 'writes: token set for this tab' : 'writes: no operator token yet';
@@ -988,8 +1086,8 @@ async function cashoutStatus() {
 }
 
 function wire() {
-  $('lockBtn').addEventListener('click', () => lock().catch((error) => log(String(error), 'bad')));
-  $('settleBtn').addEventListener('click', () => settle().catch((error) => log(String(error), 'bad')));
+  $('lockBtn').addEventListener('click', () => withBusy($('lockBtn'), () => lock().catch((error) => log(String(error), 'bad'))));
+  $('settleBtn').addEventListener('click', () => withBusy($('settleBtn'), () => settle().catch((error) => log(String(error), 'bad'))));
   $('copyCmdBtn').addEventListener('click', () => copyCommand());
   $('clearLogBtn').addEventListener('click', () => showLogPlaceholder());
   $('operatorHintBtn').addEventListener('click', operatorDialog);
@@ -1007,26 +1105,26 @@ function wire() {
     $('lockRecipient').value = demo;
     log(`Recipient set to the manifest's demo account ${demo}.`, 'info');
   });
-  $('useWalletBtn').addEventListener('click', async () => {
+  $('useWalletBtn').addEventListener('click', () => withBusy($('useWalletBtn'), async () => {
     const pub = state.wallet || (await connectWallet());
     if (pub) $('lockRecipient').value = pub;
-  });
-  $('connectBtn').addEventListener('click', () => connectWallet());
-  $('balanceBtn').addEventListener('click', () => refreshWallet());
+  }));
+  $('connectBtn').addEventListener('click', () => withBusy($('connectBtn'), () => connectWallet()));
+  $('balanceBtn').addEventListener('click', () => withBusy($('balanceBtn'), () => refreshWallet()));
   $('walletLink').addEventListener('click', () => {});
-  $('burnBtn').addEventListener('click', () => burn());
-  $('queryBtn').addEventListener('click', () => queryFinality($('heightQuery').value.trim()));
+  $('burnBtn').addEventListener('click', () => withBusy($('burnBtn'), () => burn()));
+  $('queryBtn').addEventListener('click', () => withBusy($('queryBtn'), () => queryFinality($('heightQuery').value.trim())));
   $('heightQuery').addEventListener('keydown', (event) => {
     if (event.key === 'Enter') queryFinality($('heightQuery').value.trim());
   });
   $('tabInbound').addEventListener('click', () => showTab('inbound'));
   $('tabOutbound').addEventListener('click', () => showTab('outbound'));
   $('tabCashout').addEventListener('click', () => showTab('cashout'));
-  $('cashoutQuoteBtn').addEventListener('click', () => cashoutReadAnchor().catch((error) => log(String(error), 'bad')));
-  $('cashoutAuthBtn').addEventListener('click', () => cashoutAuthenticate().catch((error) => log(String(error), 'bad')));
-  $('cashoutStartBtn').addEventListener('click', () => cashoutStart().catch((error) => log(String(error), 'bad')));
-  $('cashoutPayBtn').addEventListener('click', () => cashoutPay().catch((error) => log(String(error), 'bad')));
-  $('cashoutStatusBtn').addEventListener('click', () => cashoutStatus().catch((error) => log(String(error), 'bad')));
+  $('cashoutQuoteBtn').addEventListener('click', () => withBusy($('cashoutQuoteBtn'), () => cashoutReadAnchor().catch((error) => log(String(error), 'bad'))));
+  $('cashoutAuthBtn').addEventListener('click', () => withBusy($('cashoutAuthBtn'), () => cashoutAuthenticate().catch((error) => log(String(error), 'bad'))));
+  $('cashoutStartBtn').addEventListener('click', () => withBusy($('cashoutStartBtn'), () => cashoutStart().catch((error) => log(String(error), 'bad'))));
+  $('cashoutPayBtn').addEventListener('click', () => withBusy($('cashoutPayBtn'), () => cashoutPay().catch((error) => log(String(error), 'bad'))));
+  $('cashoutStatusBtn').addEventListener('click', () => withBusy($('cashoutStatusBtn'), () => cashoutStatus().catch((error) => log(String(error), 'bad'))));
   $('operatorBtn').addEventListener('click', operatorDialog);
   $('opSave').addEventListener('click', () => {
     state.operatorToken = $('opToken').value.trim();
@@ -1056,6 +1154,11 @@ watchSections();
 watchGrid();
 resetSteps();
 showLogPlaceholder();
+loadTrustEvidence();
+setInterval(paintAuditBadge, 30000);
+setInterval(() => {
+  loadStatus().then((status) => (status ? loadAuditHistory() : null)).catch(() => {});
+}, 300000);
 loadStatus()
   .then(async (status) => {
     if (!status) return null;

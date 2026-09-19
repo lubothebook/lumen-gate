@@ -338,6 +338,38 @@ functionality belongs in the off-chain surface, the facade and the docs.
       placeholder address could still win; a live run whose `STELLAR_NETWORK`
       disagrees with the manifest's network aborts before signing.
 
+- [x] Console burn path submits the bytes Freighter signed. The prepared
+      transaction was being sent unsigned after a successful signature, so
+      every outbound burn failed with `tx_bad_auth`; the signed XDR now goes
+      through `submitSoroban`, a refused submission surfaces its reason, and a
+      Freighter refusal in the newer `{ error }` shape is reported as a
+      refusal instead of rendering `undefined` as the connected address. An
+      advisory `getNetwork()` check warns when the wallet is not on Testnet
+      before the first signature is asked for.
+- [x] Homepage re-composed on one design system: every text block sits on its
+      own black strip with the lattice - and the pointer frame - living in the
+      gaps; the header is reduced to the small corner mark on no background;
+      the header's pill navigation moved to the footer as plain backgroundless
+      buttons; the submitted banner artwork is embedded byte for byte at the
+      centre of the hero (`frontend/public/lumen-gate-banner.png`, pinned by
+      check-console like the other four assets); `image-rendering: pixelated`
+      is scoped back to the tile so glyphs render smooth; the lattice frame
+      glides between cubes instead of teleporting; the registry stat writes
+      the contract id in full.
+- [x] Trust model visible without knowing any URL: a panel on the homepage
+      writes both `renounce_admin` transaction hashes in full (registry and
+      gateway) with explorer links, read from the shipped deployment manifest
+      so it works even with no API layer; a self-audit badge shows the latest
+      result with a relative timestamp and refreshes on a timer; the BLS lane
+      and the Groth16 quorum-statement lane carry distinct permanent labels,
+      and the receipts table badges which method verified which receipt,
+      including both lanes' acceptance of height 91.
+- [x] Review polish: Stellar's seven-decimal amounts render rounded on the
+      face of the page with the exact value on the cell's title; every async
+      button parks in a visible pending state while it waits; disabled
+      capability buttons carry their reason in the note underneath and on the
+      control's own title attribute.
+
 ### Still missing (stated, not hidden)
 
 - [ ] Production validator set: the BLS lane runs 3 demo keys with a threshold
