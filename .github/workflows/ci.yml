@@ -42,7 +42,20 @@ jobs:
       - name: cargo test
         run: cargo test --workspace
       - name: cargo clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: |
+          # The setup action installs a bare toolchain; clippy is not
+          # guaranteed to be part of it. Make the requirement explicit rather
+          # than let a missing binary read as an exit-1 mystery. And since
+          # log downloads need repository admin rights, failures are
+          # republished as annotations, which every collaborator can see.
+          rustup component add clippy --toolchain 1.98.1-x86_64-unknown-linux-gnu
+          set -o pipefail
+          cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tee /tmp/clippy.log || {
+            tail -n 40 /tmp/clippy.log | python3 -c 'import sys
+          for line in sys.stdin:
+              print("::error::" + line.rstrip().replace("%", "%25"))'
+            exit 1
+          }
       - name: cargo fmt
         run: cargo fmt --all -- --check
 
