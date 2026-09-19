@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
-echo "=== Trust Stellar, Move to Stellar Demo ==="
-echo "This script demos the full flow without needing Freighter"
+echo "=== Lumen Gate Demo ==="
+echo "This script inspects the local source/proof flow; it does not mint on Stellar."
 
 SIM_URL=${SIM_URL:-http://localhost:3001}
 echo "Simulator URL: $SIM_URL"
@@ -16,7 +16,8 @@ curl -s $SIM_URL/blocks/latest | jq .
 
 echo ""
 echo "[3] Lock on source (100 wSRC)"
-LOCK_RES=$(curl -s -X POST $SIM_URL/lock -H "Content-Type: application/json" -d '{"amount":100,"recipient":"G-TEST-RECIPIENT","sender":"demo"}')
+RECIPIENT=${RECIPIENT:-GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF}
+LOCK_RES=$(curl -s -X POST $SIM_URL/lock -H "Content-Type: application/json" -d "{\"amount\":100,\"recipient\":\"$RECIPIENT\",\"sender\":\"$RECIPIENT\"}")
 echo $LOCK_RES | jq .
 HEIGHT=$(echo $LOCK_RES | jq -r .block_height)
 echo "New height: $HEIGHT"
@@ -26,7 +27,7 @@ echo "[4] Get BLS proof for height $HEIGHT"
 curl -s "$SIM_URL/proof?height=$HEIGHT&kind=bls" | jq . | head -40
 
 echo ""
-echo "[5] Get ZK proof for height $HEIGHT (real Groth16)"
+echo "[5] Get development Groth16 fixture for height $HEIGHT"
 curl -s "$SIM_URL/proof?height=$HEIGHT&kind=zk" | jq . | head -40
 
 echo ""
@@ -38,10 +39,14 @@ echo "  Should be rejected with InvalidSignature in contract"
 echo "  - Bad root (mismatch)"
 curl -s "$SIM_URL/proof?height=$HEIGHT&kind=bls&tamper=root" | jq .declared_root
 echo "  Should be rejected with DeclaredMismatch"
+echo ""
+echo "  - Groth16 bad root (mismatch)"
+curl -s "$SIM_URL/proof?height=$HEIGHT&kind=zk&tamper=root" | jq .declared_root
+echo "  Should be rejected with DeclaredMismatch before pairing"
 
 echo ""
 echo "[7] Soroban testnet RPC check (real Stellar connection)"
 curl -s -X POST https://soroban-testnet.stellar.org -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":1,"method":"getLatestLedger","params":{}}' | head -20
 
 echo ""
-echo "Demo complete. For full UI, run frontend: cd frontend && npm install && npm run dev"
+echo "Inspection complete; no Stellar mint was submitted. For full UI, run frontend: cd frontend && npm install && npm run dev"

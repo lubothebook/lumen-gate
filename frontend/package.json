@@ -1,5 +1,5 @@
 {
-  "name": "migrate-to-stellar-frontend",
+  "name": "lumen-gate-frontend",
   "version": "0.1.0",
   "type": "module",
   "scripts": {

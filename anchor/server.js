@@ -40,7 +40,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.url === '/health') {
-    jsonResponse(res, {status: 'ok', port: PORT, sim_url: SIM_URL, registry: REGISTRY_ID, gateway: GATEWAY_ID, time: new Date().toISOString()});
+    jsonResponse(res, {status: (REGISTRY_ID.includes('PLACEHOLDER') || GATEWAY_ID.includes('PLACEHOLDER') || TOKEN_ID.includes('PLACEHOLDER')) ? 'configuration_required' : 'ok', port: PORT, sim_url: SIM_URL, registry: REGISTRY_ID, gateway: GATEWAY_ID, time: new Date().toISOString()});
     return;
   }
 
@@ -60,17 +60,18 @@ const server = http.createServer(async (req, res) => {
     let profile = null;
     if (!REGISTRY_ID.includes('PLACEHOLDER')) {
       profile = {
-        note: "Would call registry.get_profile(domain) via RPC",
+        note: "Registry profile is queried by the relayer; this facade reports the configured domain until a read-only RPC account is supplied.",
         domain: "source-testnet",
         rpc: RPC_URL,
       };
     }
 
     jsonResponse(res, {
-      anchor: "Trust Stellar, Move to Stellar Anchor - Hardened",
-      description: "Anchor-attached settlement layer — neutral finality-proof infra, no custodial bridge, machine-approved via zkVM",
+      anchor: "Lumen Gate Anchor",
+      description: "Anchor-attached settlement layer — neutral finality-proof infrastructure for source-chain settlement",
       network: "testnet",
-      version: "0.2.0-hardened",
+      deployment_status: (REGISTRY_ID.includes('PLACEHOLDER') || GATEWAY_ID.includes('PLACEHOLDER') || TOKEN_ID.includes('PLACEHOLDER')) ? "configuration_required" : "configured; verify receipts",
+      version: "0.3.0",
       contracts: {
         registry: REGISTRY_ID,
         gateway: GATEWAY_ID,
@@ -92,10 +93,10 @@ const server = http.createServer(async (req, res) => {
           issuer: ISSUER,
           desc: "Wrapped Source Chain, minted only after BLS12-381 aggregate or Groth16 BN254 finality proof",
           sac_admin: GATEWAY_ID,
-          trust_model: "HonestMajority { set_size: 5 } for BLS (3 validators, 2 required), Trustless for ZK (Groth16 BN254 via bn254_multi_pairing_check)",
-          finality_kind: "EconomicFinality (BLS) / Proven (ZK)",
+          trust_model: "DemoOnly { set_size: 3, threshold: 2 } for BLS; proof-based path pending root-bound circuit fixture",
+          finality_kind: "EconomicFinality (BLS) / Proven only after root-bound ZK fixture",
           required_depth: 2,
-          status: "testnet",
+          status: (REGISTRY_ID.includes('PLACEHOLDER') || GATEWAY_ID.includes('PLACEHOLDER') || TOKEN_ID.includes('PLACEHOLDER')) ? "not_deployed" : "configured; verify receipts",
           is_asset_anchored: false,
           anchor_asset_type: "crypto",
         }
@@ -103,13 +104,14 @@ const server = http.createServer(async (req, res) => {
       domains: [
         {
           network: "source-testnet",
-          adapter_id: "hash(source-chain-bls-v1)",
-          state: "Active",
-          consensus_kind: "bft-like-3-of-5",
-          finality_kind: "Economic",
-          trust_model: "HonestMajority(5)",
-          last_finalized: latestBlock,
-          security_backing: "SignatureSet 3-of-5 or ZkProof groth16-bn254",
+          adapter_id: "3dcbf6f582455337083d5f6d36721f6d63d47af0bef870a043c02aca7850dac9",
+          state: (REGISTRY_ID.includes('PLACEHOLDER') || GATEWAY_ID.includes('PLACEHOLDER')) ? "NotDeployed" : "Configured; verify receipts",
+          consensus_kind: "deterministic-2-of-3-demo",
+          finality_kind: "EconomicFinality (demo BLS)",
+          trust_model: "DemoOnly(3; threshold 2)",
+          last_finalized: null,
+          simulator_latest: latestBlock,
+          security_backing: "SignatureSet 2-of-3 or ZkProof groth16-bn254",
           required_depth: 2,
           profile: profile,
         }
@@ -134,14 +136,13 @@ const server = http.createServer(async (req, res) => {
         deposit: "/deposit?asset=wSRC&account=G...",
         withdraw: "/withdraw?asset=wSRC&account=G...",
         sep6_info: "/sep6/info",
-        sep24_info: "/.well-known/stellar.toml has SEP24 endpoint",
         note: "This anchor does NOT run source chain validators. It relies on cryptographic finality proofs verified on Soroban via native BLS12-381 (bls12_381_g1_is_in_subgroup, hash_to_g1, pairing_check) and BN254 (bn254_multi_pairing_check) host functions."
       },
       hardening: {
-        bls: "Real BLS aggregate: 3 validators, sk=1,2,3, H=hash(height||state_root||event_root) -> G1, sig=agg(sk_i*H), pubkey=agg(sk_i*G2). On-chain checks: on_curve, in_subgroup, hash_to_g1, optional full pairing e(sig,G2_gen)*e(-H,pubkey)==1",
+        bls: "Real BLS aggregate: demo 2-of-3 validators, sk=1,2,3, H=RFC 9380 hash_to_g1(height||state_root||event_root), sig=agg(sk_i*H), pubkey pinned in the domain policy. On-chain checks: on_curve, in_subgroup and full pairing.",
         merkle: "Binary Merkle tree for event_root, proof verification with sorted hashing, leaf=sha256(message_id||payload_hash)",
         hwm: "High-water-mark replay protection (source_domain,target_domain,sender)->highest_nonce, plus message_id processed set",
-        zk: "Real Groth16 range proof from stellar-zkstream (Apache-2.0), 768-byte VK, 256-byte proof, 4 public inputs, verified via bn254_multi_pairing_check",
+        zk: "BN254 verifier uses native multi-pairing; the checked-in range-proof fixture remains a development artifact until its public root is bound.",
         sac: "SAC set_admin to gateway, mint only after finality proof, no custodial bridge",
         negative_tests: ["zeroed sig must refuse", "declared_root mismatch must refuse", "version 99 must refuse", "replay same nonce must refuse"]
       }
@@ -154,7 +155,7 @@ const server = http.createServer(async (req, res) => {
     const id = url.searchParams.get('id') || 'unknown';
     jsonResponse(res, {
       id,
-      status: "pending -> completed after finality proof (BLS or ZK)",
+      status: "metadata_only; inspect the linked explorer transaction for the signed receipt",
       stellar_explorer: `https://stellar.expert/explorer/testnet/tx/${id}`,
       registry: REGISTRY_ID,
       gateway: GATEWAY_ID,
@@ -167,7 +168,7 @@ const server = http.createServer(async (req, res) => {
     jsonResponse(res, {
       deposit: {
         wSRC: {
-          enabled: true,
+          enabled: false,
           authentication_required: false,
           min_amount: 1,
           max_amount: 1000000,
@@ -177,14 +178,15 @@ const server = http.createServer(async (req, res) => {
       },
       withdraw: {
         wSRC: {
-          enabled: true,
+          enabled: false,
           authentication_required: false,
           min_amount: 1,
           max_amount: 1000000,
         }
       },
       fee: { enabled: false },
-      features: { account_creation: true, claimable_balances: true }
+      features: { account_creation: false, claimable_balances: false },
+      note: "SEP-6 operations remain disabled until a real authenticated anchor backend is connected."
     });
     return;
   }
@@ -198,8 +200,8 @@ const server = http.createServer(async (req, res) => {
       account,
       how: "1. Lock on source chain via POST /lock on simulator, 2. Relayer submits finality proof to Soroban (real BLS aggregate + Merkle), 3. Gateway mints wSRC to your Stellar account after HWM and payload_hash re-derive checks",
       steps: [
-        `POST ${SIM_URL}/lock {amount, recipient: "${account}", sender: "demo-user"}`,
-        `GET ${SIM_URL}/proof?height=latest&kind=bls (real BLS aggregate 3 validators)`,
+        `POST ${SIM_URL}/lock {amount, recipient: "${account}", sender: "${account}"}`,
+        `GET ${SIM_URL}/proof?height=latest&kind=bls (real BLS aggregate, demo 2-of-3 keys)`,
         `Submit to finality_registry.submit_finality_evidence_bls (on_curve, in_subgroup, hash_to_g1)`,
         `Optional hardened: submit_bls_hardened with full pairing e(sig,G2_gen)*e(-H,pubkey)==1`,
         `Call settlement_gateway.finalize_inbound with CrossDomainMessage, Merkle proof, asset, amount, recipient (HWM check, payload_hash re-derive, Merkle verification)`,
@@ -210,7 +212,7 @@ const server = http.createServer(async (req, res) => {
       gateway: GATEWAY_ID,
       rpc_url: RPC_URL,
       explorer: `https://stellar.expert/explorer/testnet/contract/${GATEWAY_ID}`,
-      note: "Anchor does not custody bridge keys. Mint authority is in gateway contract. BLS uses real aggregate sig, ZK uses real Groth16 bn254_multi_pairing_check. All Stellar side is real testnet."
+      note: "Anchor does not custody bridge keys. Mint authority is in gateway contract. BLS uses the real aggregate path when deployed; the checked-in ZK fixture remains development-only until its source root is bound. This checkout is not live until contract IDs and receipts are configured."
     });
     return;
   }
@@ -226,11 +228,12 @@ const server = http.createServer(async (req, res) => {
       steps: [
         `Call settlement_gateway.burn_and_relay(from, amount, recipient_on_source, target_domain, expiry) via Freighter`,
         `Gateway burns wSRC, emits Burn event with message_id derived from content (source_domain,target_domain,nonce,payload_hash)`,
-        `Relayer watches Burn event, submits proof to source chain (simulator POST /unlock)`,
+        `Relayer watches the live Burn event Bytes payload through Soroban RPC and submits it to the source simulator (POST /burn-unlock)`,
         `Source chain releases locked asset`,
       ],
       gateway: GATEWAY_ID,
       registry: REGISTRY_ID,
+      status: "requires a running live relayer; it consumes gateway burn events through Soroban RPC and posts one-time /burn-unlock to the source simulator",
     });
     return;
   }

@@ -1,0 +1,22 @@
+<svg width="1504" height="448" viewBox="0 0 1504 448" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Lumen Gate</title>
+  <desc id="desc">Lumen Gate wordmark on a black background.</desc>
+  <rect width="1504" height="448" fill="#000"/>
+  <g stroke="#F7F7F5" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <!-- Lumen wordmark -->
+    <path d="M237 222V258C237 270 244 278 257 278H309"/>
+    <path d="M347 222V258C347 270 355 278 368 278H378C391 278 398 270 398 258V222"/>
+    <path d="M443 278V222M443 248C443 231 452 222 466 222C480 222 488 231 488 247V278M488 248C488 231 497 222 511 222C525 222 533 231 533 247V278"/>
+    <path d="M620 252H554C554 234 567 222 585 222C604 222 620 234 620 251C620 267 606 278 587 278C567 278 554 267 554 251"/>
+    <path d="M650 278V222M650 249C650 231 660 222 676 222C692 222 701 231 701 248V278"/>
+    <!-- Stellar-inspired gate mark -->
+    <circle cx="870" cy="249" r="56"/>
+    <path d="M799 279L944 202"/>
+    <path d="M799 301L944 225"/>
+    <!-- GATE -->
+    <path d="M1053 222C1044 214 1032 210 1019 210C992 210 976 226 976 249C976 273 992 289 1019 289C1031 289 1043 285 1053 278V249H1023"/>
+    <path d="M1084 278L1114 210L1144 278M1096 251H1133"/>
+    <path d="M1161 210H1241M1201 210V278"/>
+    <path d="M1266 210V278H1314M1266 244H1305M1266 210H1314"/>
+  </g>
+</svg>

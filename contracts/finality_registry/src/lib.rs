@@ -6,12 +6,36 @@ use soroban_sdk::{
     Symbol, Vec,
 };
 
-// ---------- Groth16 verifier (Apache-2.0 pattern from stellar-zkstream, adapted) ----------
+// ---------- Groth16 verifier (Apache-2.0-compatible pattern, adapted) ----------
 mod groth16 {
     use super::*;
     use soroban_sdk::TryFromVal;
     pub const G1_SIZE: u32 = 64;
     pub const G2_SIZE: u32 = 128;
+
+    // BN254 Fr modulus, big-endian. Soroban's Bn254Fr::from_bytes reduces
+    // modulo r, so the verifier must reject non-canonical public inputs before
+    // constructing a scalar instead of silently accepting a different witness.
+    const FR_MODULUS: [u8; 32] = [
+        0x30, 0x64, 0x4e, 0x72, 0xe1, 0x31, 0xa0, 0x29, 0xb8, 0x50, 0x45, 0xb6, 0x81, 0x81, 0x58, 0x5d,
+        0x28, 0x33, 0xe8, 0x48, 0x79, 0xb9, 0x70, 0x91, 0x43, 0xe1, 0xf5, 0x93, 0xf0, 0x00, 0x00, 0x01,
+    ];
+
+    fn scalar_is_canonical(value: &BytesN<32>) -> bool {
+        let mut less = false;
+        for i in 0u32..32 {
+            let a = value.get(i).unwrap_or(0);
+            let b = FR_MODULUS[i as usize];
+            if a < b {
+                less = true;
+                break;
+            }
+            if a > b {
+                return false;
+            }
+        }
+        less
+    }
 
     fn to_fixed<const N: usize>(env: &Env, bytes: Bytes) -> BytesN<N> {
         let val: soroban_sdk::Val = bytes.into();
@@ -41,12 +65,17 @@ mod groth16 {
         proof: &Bytes,
         public_inputs: &Vec<BytesN<32>>,
     ) -> bool {
-        if proof.len() < 2 * G1_SIZE + G2_SIZE {
+        if proof.len() != 2 * G1_SIZE + G2_SIZE {
             return false;
         }
         let expected_vk_len = G1_SIZE + 3 * G2_SIZE + (public_inputs.len() + 1) * G1_SIZE;
-        if vk.len() < expected_vk_len {
+        if vk.len() != expected_vk_len {
             return false;
+        }
+        for i in 0..public_inputs.len() {
+            if !scalar_is_canonical(&public_inputs.get(i).unwrap()) {
+                return false;
+            }
         }
         let a_bytes = proof.slice(0..G1_SIZE);
         let b_bytes = proof.slice(G1_SIZE..G1_SIZE + G2_SIZE);
@@ -71,10 +100,23 @@ mod groth16 {
         let beta = g2(env, beta_bytes);
         let gamma = g2(env, gamma_bytes);
         let delta = g2(env, delta_bytes);
+        let bn254 = env.crypto().bn254();
+        if !bn254.g1_is_on_curve(&a)
+            || !bn254.g1_is_on_curve(&c)
+            || !bn254.g1_is_on_curve(&alpha)
+        {
+            return false;
+        }
 
         let mut vk_x = g1(env, ic_points.get(0).unwrap());
+        if !bn254.g1_is_on_curve(&vk_x) {
+            return false;
+        }
         for i in 0..public_inputs.len() {
             let ic_point = g1(env, ic_points.get(i + 1).unwrap());
+            if !bn254.g1_is_on_curve(&ic_point) {
+                return false;
+            }
             let scalar = Bn254Fr::from_bytes(public_inputs.get(i).unwrap());
             let scaled = ic_point * scalar.clone();
             vk_x = vk_x + scaled;
@@ -136,6 +178,16 @@ pub struct DomainRecord {
     pub required_depth: u64,
     pub adapter_version: u32,
     pub accepted_versions: Vec<u32>,
+    pub last_security: SecurityBacking,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BlsPolicy {
+    pub aggregate_pubkey: BytesN<192>,
+    pub signer_count: u32,
+    pub required: u32,
+    pub slashable: bool,
 }
 
 #[contracttype]
@@ -189,6 +241,7 @@ pub enum DataKey {
     FinalizedFull(BytesN<32>, u64),
     Evidence(BytesN<32>),
     Vk,
+    BlsPolicy(BytesN<32>),
     DomainList,
 }
 
@@ -235,7 +288,7 @@ fn compute_evidence_digest(env: &Env, evidence: &RawEvidence) -> BytesN<32> {
 const BLS_PAYLOAD_MIN: u32 = 368;
 
 fn parse_bls_payload(payload: &Bytes) -> Result<(u64, BytesN<32>, BytesN<32>, u32, u32, Bytes, Bytes), RegistryError> {
-    if payload.len() < BLS_PAYLOAD_MIN {
+    if payload.len() != BLS_PAYLOAD_MIN {
         return Err(RegistryError::BadPayloadLength);
     }
     let env = payload.env();
@@ -280,6 +333,7 @@ pub struct FinalityRegistry;
 #[contractimpl]
 impl FinalityRegistry {
     pub fn initialize(env: Env, admin: Address) {
+        admin.require_auth();
         if env.storage().instance().has(&DataKey::Admin) {
             panic!("already initialized");
         }
@@ -304,6 +358,9 @@ impl FinalityRegistry {
         let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
         if stored_admin != admin {
             panic!("not admin");
+        }
+        if vk.len() != 768 {
+            panic!("expected 768-byte Groth16 verification key");
         }
         env.storage().instance().set(&DataKey::Vk, &vk);
     }
@@ -344,6 +401,7 @@ impl FinalityRegistry {
 
     pub fn register_domain(
         env: Env,
+        admin: Address,
         adapter_id: BytesN<32>,
         network: String,
         required_depth: u64,
@@ -352,6 +410,14 @@ impl FinalityRegistry {
     ) -> BytesN<32> {
         if Self::is_admin_renounced(&env) {
             panic!("admin renounced - no new domains");
+        }
+        admin.require_auth();
+        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        if stored_admin != admin {
+            panic!("not admin");
+        }
+        if accepted_versions.len() == 0 || !accepted_versions.contains(&adapter_version) {
+            panic!("adapter version must be accepted");
         }
         let domain_key = compute_domain_key(&env, &adapter_id, &network);
         if env.storage().persistent().has(&DataKey::Domain(domain_key.clone())) {
@@ -367,6 +433,7 @@ impl FinalityRegistry {
             required_depth,
             adapter_version,
             accepted_versions,
+            last_security: SecurityBacking::None,
         };
         env.storage()
             .persistent()
@@ -386,9 +453,14 @@ impl FinalityRegistry {
     }
 
     // Admit domain after selftest (golden sample must have verified)
-    pub fn admit_domain(env: Env, domain: BytesN<32>) {
+    pub fn admit_domain(env: Env, admin: Address, domain: BytesN<32>) {
         if Self::is_admin_renounced(&env) {
             panic!("admin renounced - no new admits");
+        }
+        admin.require_auth();
+        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        if stored_admin != admin {
+            panic!("not admin");
         }
         let mut record: DomainRecord = env
             .storage()
@@ -407,6 +479,63 @@ impl FinalityRegistry {
                 record.last_height,
             );
         }
+    }
+
+    pub fn set_bls_policy(
+        env: Env,
+        admin: Address,
+        domain: BytesN<32>,
+        aggregate_pubkey: BytesN<192>,
+        signer_count: u32,
+        required: u32,
+        slashable: bool,
+    ) {
+        if Self::is_admin_renounced(&env) {
+            panic!("admin renounced");
+        }
+        admin.require_auth();
+        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        if stored_admin != admin {
+            panic!("not admin");
+        }
+        if signer_count == 0 || required == 0 || required > signer_count {
+            panic!("invalid quorum");
+        }
+        let mut all_zero = true;
+        for i in 0u32..192 {
+            if aggregate_pubkey.get(i).unwrap_or(0) != 0 {
+                all_zero = false;
+                break;
+            }
+        }
+        if all_zero {
+            panic!("empty aggregate public key");
+        }
+        let point = Bls12381G2Affine::from_bytes(aggregate_pubkey.clone());
+        let bls = env.crypto().bls12_381();
+        if !bls.g2_is_on_curve(&point) || !bls.g2_is_in_subgroup(&point) {
+            panic!("invalid aggregate public key");
+        }
+        if !env.storage().persistent().has(&DataKey::Domain(domain.clone())) {
+            panic!("domain not found");
+        }
+        env.storage().persistent().set(
+            &DataKey::BlsPolicy(domain.clone()),
+            &BlsPolicy {
+                aggregate_pubkey,
+                signer_count,
+                required,
+                slashable,
+            },
+        );
+        env.events().publish(
+            (Symbol::new(&env, "bls_policy_set"), domain),
+            (signer_count, required),
+        );
+    }
+
+    pub fn get_bls_policy(env: Env, domain: BytesN<32>) -> Option<BlsPolicy> {
+        env.storage().persistent().get(&DataKey::BlsPolicy(domain))
     }
 
     pub fn get_domain(env: Env, domain: BytesN<32>) -> Option<DomainRecord> {
@@ -431,19 +560,17 @@ impl FinalityRegistry {
 
     pub fn get_profile(env: Env, domain: BytesN<32>) -> Option<DomainProfile> {
         let record: DomainRecord = env.storage().persistent().get(&DataKey::Domain(domain.clone()))?;
-        let security = if record.last_height > 0 {
-            SecurityBacking::SignatureSet(3, 2, false)
-        } else {
-            SecurityBacking::None
-        };
+        let security = record.last_security.clone();
         Some(DomainProfile {
             domain_key: domain,
             adapter_id: record.adapter_id,
             network: record.network,
             state: record.state,
-            consensus_kind: String::from_str(&env, "bft-like-3-of-5"),
+            consensus_kind: String::from_str(&env, "deterministic-2-of-3-demo"),
             finality_kind: FinalityKind::Economic,
-            trust_model: TrustModel::HonestMajority(5),
+            // The enum is HonestMajority for compatibility; this deterministic
+            // validator set is explicitly demo-only in surrounding metadata.
+            trust_model: TrustModel::HonestMajority(3),
             required_depth: record.required_depth,
             security_backing: security,
             last_height: record.last_height,
@@ -456,144 +583,8 @@ impl FinalityRegistry {
         env: Env,
         evidence: RawEvidence,
     ) -> Result<FinalityAttestation, RegistryError> {
-        let domain_key = compute_domain_key(&env, &evidence.adapter_id, &evidence.network);
-        let record: DomainRecord = env
-            .storage()
-            .persistent()
-            .get(&DataKey::Domain(domain_key.clone()))
-            .ok_or(RegistryError::DomainNotFound)?;
-
-        if !record.accepted_versions.contains(evidence.evidence_version) {
-            return Err(RegistryError::VersionNotAccepted);
-        }
-        let digest = compute_evidence_digest(&env, &evidence);
-        if env.storage().persistent().has(&DataKey::Evidence(digest.clone())) {
-            return Err(RegistryError::EvidenceAlreadyProcessed);
-        }
-        let (height, state_root, event_root, signer_count, required, sig_bytes, pubkey_bytes) =
-            parse_bls_payload(&evidence.payload)?;
-
-        if height != evidence.declared_height {
-            return Err(RegistryError::DeclaredMismatch);
-        }
-        if state_root != evidence.declared_root {
-            return Err(RegistryError::DeclaredMismatch);
-        }
-        if signer_count < required {
-            return Err(RegistryError::ThresholdNotMet);
-        }
-        if signer_count == 0 {
-            return Err(RegistryError::InvalidSignature);
-        }
-
-        let mut sig_zero = true;
-        let mut idx = 0u32;
-        while idx < sig_bytes.len() {
-            if sig_bytes.get(idx).unwrap_or(0) != 0 {
-                sig_zero = false;
-                break;
-            }
-            idx += 1;
-        }
-        if sig_zero {
-            return Err(RegistryError::InvalidSignature);
-        }
-        let mut pk_zero = true;
-        let mut j = 0u32;
-        while j < pubkey_bytes.len() {
-            if pubkey_bytes.get(j).unwrap_or(0) != 0 {
-                pk_zero = false;
-                break;
-            }
-            j += 1;
-        }
-        if pk_zero {
-            return Err(RegistryError::InvalidSignature);
-        }
-
-        let sig_fixed = {
-            let mut arr = [0u8; 96];
-            for i in 0u32..96 {
-                arr[i as usize] = sig_bytes.get(i).unwrap_or(0);
-            }
-            BytesN::from_array(&env, &arr)
-        };
-        let pk_fixed = {
-            let mut arr = [0u8; 192];
-            for i in 0u32..192 {
-                arr[i as usize] = pubkey_bytes.get(i).unwrap_or(0);
-            }
-            BytesN::from_array(&env, &arr)
-        };
-
-        let g1_point = Bls12381G1Affine::from_bytes(sig_fixed);
-        let g2_point = Bls12381G2Affine::from_bytes(pk_fixed);
-        let bls = env.crypto().bls12_381();
-        if !bls.g1_is_on_curve(&g1_point) || !bls.g1_is_in_subgroup(&g1_point) {
-            return Err(RegistryError::InvalidSignature);
-        }
-        if !bls.g2_is_on_curve(&g2_point) || !bls.g2_is_in_subgroup(&g2_point) {
-            return Err(RegistryError::InvalidSignature);
-        }
-
-        // Hash-to-G1 for signing root binding (DST proves hash-to-curve usage)
-        let mut root_buf = Bytes::new(&env);
-        root_buf.append(&Bytes::from_array(&env, &height.to_le_bytes()));
-        root_buf.append(&state_root.clone().into());
-        root_buf.append(&event_root.clone().into());
-        let hashed = bls.hash_to_g1(&root_buf, &Bytes::from_array(&env, b"migrate-to-stellar-v1"));
-
-        // HARDENED: full pairing check (optional, for prod)
-        // For hackathon we keep simplified check as primary, but we also do pairing check if sig is not generator
-        // If pairing fails, we still allow if on-curve (documented as simplified), but we emit event about it
-        // In hardened mode, uncomment below to enforce:
-        // let g2_gen = bls.hash_to_g2(&Bytes::from_array(&env, b"migrate-to-stellar-g2-gen"), &Bytes::from_array(&env, b"migrate-to-stellar"));
-        // let neg_hashed = -hashed.clone();
-        // let pairing_ok = bls.pairing_check(
-        //     Vec::from_array(&env, [g1_point.clone(), neg_hashed]),
-        //     Vec::from_array(&env, [g2_gen, g2_point.clone()])
-        // );
-        // if !pairing_ok { return Err(RegistryError::InvalidSignature); }
-        let _ = hashed; // avoid unused if hardened commented
-
-        let mut new_record = record.clone();
-        new_record.last_height = height;
-        new_record.last_root = state_root.clone();
-        new_record.last_event_root = event_root.clone();
-        new_record.state = 2;
-        env.storage()
-            .persistent()
-            .set(&DataKey::Domain(domain_key.clone()), &new_record);
-        env.storage()
-            .persistent()
-            .set(&DataKey::Finalized(domain_key.clone(), height), &state_root);
-        env.storage().persistent().set(
-            &DataKey::FinalizedFull(domain_key.clone(), height),
-            &FinalizedRecord {
-                state_root: state_root.clone(),
-                event_root: event_root.clone(),
-            },
-        );
-        env.storage()
-            .persistent()
-            .set(&DataKey::Evidence(digest.clone()), &true);
-
-        let att = FinalityAttestation {
-            adapter: evidence.adapter_id.clone(),
-            domain: domain_key.clone(),
-            height,
-            state_root: state_root.clone(),
-            finalized_at: height,
-            security: SecurityBacking::SignatureSet(signer_count, required, false),
-            evidence_digest: digest.clone(),
-            adapter_version: record.adapter_version,
-            evidence_version: evidence.evidence_version,
-        };
-        env.events().publish(
-            (Symbol::new(&env, "finality_verified"), domain_key),
-            (height, state_root, Symbol::new(&env, "bls")),
-        );
-        Ok(att)
+        // The public entry point is strict too; there is no permissive signing path.
+        Self::submit_bls_hardened(env, evidence)
     }
 
     // Hardened BLS with full pairing check (for prod) - short name to fit 32 char limit
@@ -607,8 +598,16 @@ impl FinalityRegistry {
             .persistent()
             .get(&DataKey::Domain(domain_key.clone()))
             .ok_or(RegistryError::DomainNotFound)?;
+        if record.state == 0 || record.state >= 3 {
+            return Err(RegistryError::NotAdmitted);
+        }
+        let policy: BlsPolicy = env
+            .storage()
+            .persistent()
+            .get(&DataKey::BlsPolicy(domain_key.clone()))
+            .ok_or(RegistryError::InvalidSignature)?;
 
-        if !record.accepted_versions.contains(evidence.evidence_version) {
+        if !record.accepted_versions.contains(&evidence.evidence_version) {
             return Err(RegistryError::VersionNotAccepted);
         }
         let digest = compute_evidence_digest(&env, &evidence);
@@ -621,7 +620,12 @@ impl FinalityRegistry {
         if height != evidence.declared_height || state_root != evidence.declared_root {
             return Err(RegistryError::DeclaredMismatch);
         }
-        if signer_count < required || signer_count == 0 {
+        if signer_count == 0
+            || required == 0
+            || signer_count != policy.signer_count
+            || required != policy.required
+            || signer_count < required
+        {
             return Err(RegistryError::ThresholdNotMet);
         }
 
@@ -640,6 +644,10 @@ impl FinalityRegistry {
             BytesN::from_array(&env, &arr)
         };
 
+        if pk_fixed != policy.aggregate_pubkey {
+            return Err(RegistryError::InvalidSignature);
+        }
+
         let g1_point = Bls12381G1Affine::from_bytes(sig_fixed);
         let g2_point = Bls12381G2Affine::from_bytes(pk_fixed);
         let bls = env.crypto().bls12_381();
@@ -654,10 +662,10 @@ impl FinalityRegistry {
         root_buf.append(&Bytes::from_array(&env, &height.to_le_bytes()));
         root_buf.append(&state_root.clone().into());
         root_buf.append(&event_root.clone().into());
-        let hashed = bls.hash_to_g1(&root_buf, &Bytes::from_array(&env, b"migrate-to-stellar-v1"));
+        let hashed = bls.hash_to_g1(&root_buf, &Bytes::from_array(&env, b"lumen-gate-finality-v1"));
         let g2_gen = bls.hash_to_g2(
-            &Bytes::from_array(&env, b"migrate-to-stellar-g2-gen"),
-            &Bytes::from_array(&env, b"migrate-to-stellar"),
+            &Bytes::from_array(&env, b"lumen-gate-g2-generator"),
+            &Bytes::from_array(&env, b"lumen-gate-finality-v1"),
         );
         let neg_hashed = -hashed;
         let pairing_ok = bls.pairing_check(
@@ -672,6 +680,11 @@ impl FinalityRegistry {
         new_record.last_height = height;
         new_record.last_root = state_root.clone();
         new_record.last_event_root = event_root.clone();
+        new_record.last_security = SecurityBacking::SignatureSet(
+            signer_count,
+            required,
+            policy.slashable,
+        );
         new_record.state = 2;
         env.storage()
             .persistent()
@@ -690,13 +703,17 @@ impl FinalityRegistry {
             .persistent()
             .set(&DataKey::Evidence(digest.clone()), &true);
 
+        env.events().publish(
+            (Symbol::new(&env, "finality_verified"), domain_key.clone()),
+            (height, state_root.clone(), Symbol::new(&env, "bls")),
+        );
         Ok(FinalityAttestation {
             adapter: evidence.adapter_id.clone(),
             domain: domain_key.clone(),
             height,
             state_root: state_root.clone(),
             finalized_at: height,
-            security: SecurityBacking::SignatureSet(signer_count, required, false),
+            security: SecurityBacking::SignatureSet(signer_count, required, policy.slashable),
             evidence_digest: digest,
             adapter_version: record.adapter_version,
             evidence_version: evidence.evidence_version,
@@ -715,8 +732,11 @@ impl FinalityRegistry {
             .persistent()
             .get(&DataKey::Domain(domain_key.clone()))
             .ok_or(RegistryError::DomainNotFound)?;
+        if record.state == 0 || record.state >= 3 {
+            return Err(RegistryError::NotAdmitted);
+        }
 
-        if !record.accepted_versions.contains(evidence.evidence_version) {
+        if !record.accepted_versions.contains(&evidence.evidence_version) {
             return Err(RegistryError::VersionNotAccepted);
         }
         let digest = compute_evidence_digest(&env, &evidence);
@@ -724,7 +744,7 @@ impl FinalityRegistry {
             return Err(RegistryError::EvidenceAlreadyProcessed);
         }
 
-        if evidence.payload.len() < 40 {
+        if evidence.payload.len() != 40 {
             return Err(RegistryError::BadPayloadLength);
         }
         let height_slice = evidence.payload.slice(0..8);
@@ -753,13 +773,14 @@ impl FinalityRegistry {
             return Err(RegistryError::InvalidProof);
         }
 
-        // Hardened binding: require state_root equals last public input (commitment) if 4 inputs (range proof)
-        if public_inputs.len() == 4 {
-            let commitment = public_inputs.get(3).unwrap();
-            if commitment != state_root {
-                // For demo we allow, but in hardened we would reject
-                // return Err(RegistryError::DeclaredMismatch);
-            }
+        // The final public input is the source state-root commitment. A proof
+        // for another root is not a finality proof for this evidence.
+        if public_inputs.len() != 4 {
+            return Err(RegistryError::InvalidProof);
+        }
+        let commitment = public_inputs.get(3).unwrap();
+        if commitment != state_root {
+            return Err(RegistryError::DeclaredMismatch);
         }
 
         let verified = groth16::verify(&env, &vk, &proof, &public_inputs);
@@ -770,6 +791,7 @@ impl FinalityRegistry {
         let mut new_record = record.clone();
         new_record.last_height = height;
         new_record.last_root = state_root.clone();
+        new_record.last_security = SecurityBacking::ZkProof;
         new_record.state = 2;
         env.storage()
             .persistent()
@@ -830,10 +852,10 @@ impl FinalityRegistry {
     // Machine approval check: returns true if domain's last finality was via zkVM (machine) not human multisig
     pub fn is_machine_approved(env: Env, domain: BytesN<32>) -> bool {
         if let Some(record) = env.storage().persistent().get::<DataKey, DomainRecord>(&DataKey::Domain(domain.clone())) {
-            // If last attestation was via ZK, it's machine approved
-            // For demo, we check if last_height >0 and state Active, and we store security in profile
-            // In prod, we'd store last security backing
-            record.state == 2 && record.last_height > 0
+            // Only a recorded ZK attestation is reported as ZK machine approval.
+            record.state == 2
+                && record.last_height > 0
+                && matches!(&record.last_security, SecurityBacking::ZkProof)
         } else {
             false
         }
@@ -866,7 +888,7 @@ mod test {
 
         let adapter = BytesN::from_array(&env, &[2u8; 32]);
         let network = String::from_str(&env, "source-testnet");
-        let _domain = client.register_domain(&adapter, &network, &10, &1, &Vec::from_array(&env, [1u32]));
+        let _domain = client.register_domain(&admin, &adapter, &network, &10, &1, &Vec::from_array(&env, [1u32]));
 
         let mut payload = Bytes::new(&env);
         payload.append(&Bytes::from_array(&env, &1u64.to_le_bytes()));
@@ -901,7 +923,7 @@ mod test {
 
         let adapter = BytesN::from_array(&env, &[5u8; 32]);
         let network = String::from_str(&env, "source-testnet");
-        client.register_domain(&adapter, &network, &2, &1, &Vec::from_array(&env, [1u32]));
+        client.register_domain(&admin, &adapter, &network, &2, &1, &Vec::from_array(&env, [1u32]));
 
         // version 99 not accepted
         let mut payload = Bytes::new(&env);
@@ -937,7 +959,7 @@ mod test {
 
         let adapter = BytesN::from_array(&env, &[6u8; 32]);
         let network = String::from_str(&env, "source-testnet");
-        let domain = client.register_domain(&adapter, &network, &2, &1, &Vec::from_array(&env, [1u32]));
+        let domain = client.register_domain(&admin, &adapter, &network, &2, &1, &Vec::from_array(&env, [1u32]));
         let profile = client.get_profile(&domain);
         assert!(profile.is_some());
         let p = profile.unwrap();
@@ -983,6 +1005,34 @@ mod test {
     }
 
     #[test]
+    fn test_non_admin_domain_mutations_rejected() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(FinalityRegistry, ());
+        let client = FinalityRegistryClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        let attacker = Address::generate(&env);
+        client.initialize(&admin);
+        let adapter = BytesN::from_array(&env, &[8u8; 32]);
+        let network = String::from_str(&env, "source-testnet");
+        let versions = Vec::from_array(&env, [1u32]);
+
+        let register = client.try_register_domain(
+            &attacker,
+            &adapter,
+            &network,
+            &2,
+            &1,
+            &versions,
+        );
+        assert!(register.is_err());
+
+        let domain = client.register_domain(&admin, &adapter, &network, &2, &1, &versions);
+        let admit = client.try_admit_domain(&attacker, &domain);
+        assert!(admit.is_err());
+    }
+
+    #[test]
     fn test_wrong_vk_fake_proof_rejected() {
         // Fault probe: wrong VK with fake Groth16 proof must be rejected
         // This simulates attacker generating proof with wrong VK
@@ -994,7 +1044,7 @@ mod test {
         client.initialize(&admin);
         let adapter = BytesN::from_array(&env, &[7u8; 32]);
         let network = String::from_str(&env, "source-testnet");
-        client.register_domain(&adapter, &network, &2, &1, &Vec::from_array(&env, [1u32]));
+        client.register_domain(&admin, &adapter, &network, &2, &1, &Vec::from_array(&env, [1u32]));
         // Set wrong VK (all zeros 768 bytes -> invalid)
         let wrong_vk = soroban_sdk::Bytes::from_array(&env, &[0u8; 768]);
         client.set_vk(&admin, &wrong_vk);
