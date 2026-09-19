@@ -1,417 +1,383 @@
-# Lumen Gate — Kalıcı Uygulama Direktifi
+# Lumen Gate — Standing Directive
 
-## 0. Belgenin rolü
+## 0. Role of this document (protocol: read first)
 
-Bu belge projenin tek yetkili uygulama direktifidir. Her çalışma oturumunun
-başında okunur; oturum sonunda yalnızca gerçekten tamamlanan maddeler Bölüm 3'te
-işaretlenir. Kod, test ve canlı ağ çıktısı bu belgede yazan kararlarla uyumlu
-olmalıdır.
-
-Repo içinde ikinci bir ana direktif tutulmaz. Bu dosya dışındaki eski direktif
-kopyaları oluşturulmayacak; varsa içerikleri bu dosyaya alınarak kaldırılacaktır.
-
-Projenin görünen ve teknik ürün adı **Lumen Gate**'tir. README başlığı, Türkçe
-README, UI başlığı, anchor metadata'sı, CLI çıktıları, paket adları ve yorumlar
-bu adı kullanır. Repo'nun mevcut GitHub yolu teknik bir URL olarak kalabilir;
-ürün adı olarak kullanılmaz.
-
-Kaynak zincir için yalnızca `source chain`, `source-chain`, `source_domain` veya
-`SOURCE_DOMAIN` gibi nötr ifadeler kullanılacaktır. Belirli bir dış zincirin
-markası, doğrulanmamış ekosistem istatistiği veya başkasının ürün adı demo
-protokolüne bağlanmayacaktır.
-
-Bu proje için iki kesin yazım kuralı vardır:
-
-- Yasaklı eski marka adı hiçbir dosyada, yorumda, değişken adında, README'de,
-  UI metninde veya commit mesajında yer almayacak.
-- Proje adı ile kriptografik namespace birbirine karıştırılmayacak. Yeni
-  namespace `lumen-gate-finality-v1` olacaktır; bu değişiklik canlı kontrat
-  deploy edilmeden önce yapılmalıdır. Canlı kontrat varsa eski namespace
-  değiştirilmez, migration planı yazılır.
-
----
-
-## 1. Hackathon hedefi ve ürün kararı
-
-Lumen Gate, anchor'ın arkasına takılan **nötr yerleşim ve finality-proof
-katmanı**dır. Konumlandırma cümlesi:
-
-> Bir anchor kendi validator ağını veya her kaynak zincir için ayrı köprüyü
-> işletmek zorunda kalmadan, kaynak zincir finality kanıtlarını Soroban'da
-> doğrulatır; doğrulama başarılıysa kendi ihraç ettiği temsil varlığın mint,
-> burn ve karşı tarafa bırakma işlemlerini çalıştırır.
-
-Bu ürün klasik anlamda custody tutan bir köprü değildir:
-
-- Anchor issuer, müşteri ilişkisi, rezerv ve uyum süreçlerinin sahibidir.
-- Lumen Gate domain registry, kanıt doğrulama ve settlement akışını sağlar.
-- Relayer yalnızca kanıtı ve işlemi taşır; mint yetkisi anchor anahtarında değil,
-  doğrulama sonrası çalışan Soroban gateway kontratındadır.
-- Kaynak zincir 36 saatlik demo için simüle edilebilir. Gerçek ve zorunlu
-  entegrasyon Stellar Testnet Soroban RPC, Horizon ve deploy edilmiş kontratlar
-  tarafındadır.
-- Demo varlığı nötr `wSRC` kodunu kullanabilir; bu kod ürün adı veya dış zincir
-  markası değildir.
-
-Hedef etkinlik: [Rise In x Stellar Pro Hackathon](https://www.risein.com/programs/stellar-pro-hackathon).
-Resmi sayfadaki çerçeveye göre proje Genesis parkurunun gerçek Stellar
-entegrasyonu ve çalışan ürün beklentisini karşılamalıdır. Submission herkes için
-zorunludur; canlı jüri sunumu shortlist edilen projeler içindir. Sunumda,
-önceden bilinen bir domain-adapter tasarımını Stellar/Soroban'a özgü kodla
-uyguladığımız dürüstçe söylenecektir.
+- This file is the single authoritative directive for the project. There is no
+  second "main directive" anywhere in the repository. Older directive files and
+  any duplicates are merged into this one and deleted; nothing that contradicts
+  this document may exist as a parallel source of truth.
+- Every work session begins by reading this file, especially Section 3 (Status).
+  Section 3 is updated at the end of the session. Work that is already done is
+  never redesigned from scratch or renamed for its own sake; it is built upon.
+- The product name is fixed: **Lumen Gate**. It is used in the README title,
+  the repository description, the UI title, the anchor metadata, CLI output,
+  package names and the deploy name. The repository URL is a technical path and
+  is not a product name.
+- Two absolute writing rules apply repo-wide:
+  1. The retired brand name (and any explicit or implicit derivative of it)
+     never appears in any file, comment, variable, README, UI string, commit
+     message or log line. Verified with a grep gate in CI.
+  2. Nothing that ties this project to a country, region or national identity
+     appears anywhere: no localised language files, no localised persona, no
+     location-specific anchor, no regional framing. The product speaks English
+     and is network-native, not place-native.
+- The source chain is referred to only as `source chain`, `source-chain`,
+  `source_domain` or `SOURCE_DOMAIN`. No external chain's brand, unverified
+  ecosystem statistic or third-party product name is attached to the demo
+  protocol.
+- The project is developed continuously on a single branch, `main`. Work is
+  committed and pushed to `main` as it happens so that parallel sessions (human
+  or automated) can see the latest state and continue from it. No long-lived
+  feature branches, no "big bang" merges.
 
 ---
 
-## 2. Başarı kriterleri ve gösterilecek akış
+## 1. Purpose and the two claims that must hold live
 
-Submission öncesi iki iddia gerçek testnet çıktısıyla gösterilmelidir:
+The application exists to prove two claims, really and on-chain:
 
-1. **Makine onaylı settlement:** Mint kararı insan multisig'ine değil,
-   Soroban'da doğrulanan BLS pairing veya Groth16/BN254 pairing sonucuna dayanır.
-2. **Kullanıcı için ücret soyutlama:** Stellar'da XLM'i olmayan yeni bir
-   kullanıcı, kaynak zincirde ücret dahil kilitleme yapar; fonlanmış relayer
-   işlemi gönderir ve kullanıcı hedef varlığı alır. Bunun gerçekten canlı
-   çalıştığı kanıtlanamazsa iddia README ve sunumdan çıkarılır.
+1. **Machine-approved settlement.** The mint decision depends on no human
+   signature, no multisig and no private bridge database; only on cryptographic
+   evidence verified inside Soroban (BLS12-381 aggregate signature and/or a
+   Groth16/BN254 proof). The last human capability in the setup path is
+   permanently given up with `renounce_admin`, and that renounce is a recorded,
+   verifiable transaction.
+2. **Gasless user.** Someone with zero spendable XLM on Stellar can receive the
+   asset, because the Stellar network fee is advanced by a relayer and repaid
+   out of the source-chain lock in the source asset.
 
-Tek mutlu yol demosu:
-
-1. Anchor `stellar.toml` ve `/info` ile tanıtılır.
-2. Kullanıcı kaynak zincirde `amount = hedef miktar + relayer ücreti` kilitler.
-3. Kaynak simülatörü yeni blok, `state_root`, `event_root`, lock message ve
-   Merkle leaf üretir.
-4. Relayer BLS veya ZK kanıtını alır.
-5. Relayer gerçek Soroban RPC ile kanıtı `finality_registry` kontratına yollar.
-6. Kontrat kanıtı doğrular, finalized root'u ve event'i kaydeder.
-7. Relayer gerçek gateway çağrısını gönderir; gateway mesaj kimliğini, payload
-   hash'ini, Merkle proof'u, expiry'yi ve nonce HWM'yi kontrol eder.
-8. Gateway SAC üzerinde kullanıcıya mint eder ve gasless akışta relayer
-   ödülünü ayrı event/storage kaydıyla verir.
-9. Kullanıcı burn başlatır; relayer gateway event'ini izler, kaynak simülatörü
-   unlock işlemini yalnızca bir kez kabul eder.
-10. Aynı mesaj veya daha düşük nonce tekrar gönderildiğinde işlem reddedilir.
-
-İkinci mutlu yol, aynı kaynağın `kind=zk` seçeneğiyle Groth16 kanıtı kullanır.
-Demo ekranında BLS, ZK ve ters yön ayrı butonlar değil, aynı message envelope ve
-settlement akışının güvenlik seçenekleri olarak gösterilir.
+Both claims must be demonstrable, live and non-fake, before submission. If a
+claim cannot be demonstrated, the corresponding sentence is removed from the
+README rather than softened. A feature that does not work is never written as if
+it works.
 
 ---
 
-## 3. Mevcut repo durumu — 2026-09-19 snapshot
+## 2. Architecture (kept, not rewritten)
 
-Bu bölüm gözlemlenen repo durumudur; çalıştırılmamış bir komut başarılı kabul
-edilmez. Bu çalışma ortamında `cargo` bulunmadığı için Rust testleri henüz bu
-oturumda çalıştırılmamıştır.
+- Soroban contracts: `finality_registry` (BLS lane, Groth16/BN254 lane, domain
+  registry, explicit evidence parsing, no `assume valid` branch, admin
+  permanently renounced) and `settlement_gateway` (message envelope, Merkle
+  proof of the specific source event, nonce high-water-mark replay protection,
+  `FeeConfig`, `finalize_inbound_gasless`, `finalize_inbound_sponsored`,
+  `burn_and_relay`, admin permanently renounced).
+- Proof lanes: BLS12-381 using the Protocol 22 native CAP-0059 host functions
+  (curve, subgroup and full pairing checks); Groth16/BN254 using the native
+  `bn254_multi_pairing_check`. The ZK lane is a quorum-and-root-binding
+  statement proof, not a signature proof, and settlement never anchors on it.
+- Off-chain: `source_simulator` (real BLS aggregation, binary Merkle tree, lock
+  amount includes the fee), `relayer` (real Soroban RPC `getLatestLedger`,
+  `simulateTransaction`, `getEvents`, receipt confirmation), `frontend`
+  (Freighter, capability-gated panels), `anchor` facade (SEP-1 metadata,
+  SEP-10 authentication, minimal real SEP-6 surface, self-audit read surface,
+  operator-gated relay trigger), serverless `api/` layer for the hosted console.
+- Tests: contract unit tests plus behavioural fault probes (zeroed signature,
+  tampered signature, root mismatch, version gate, replay, wrong verifying key,
+  post-renounce admin calls) and a continuously running self-audit loop.
 
-### Mevcut ve korunacak fikirler
-
-- [x] `contracts/finality_registry` ve `contracts/settlement_gateway` Soroban
-      kontrat iskeletleri var.
-- [x] `source_simulator`, `relayer`, Vite frontend ve anchor facade iskeletleri
-      var.
-- [x] Raw evidence, domain key, finalized record, cross-domain message, Merkle
-      leaf ve nonce HWM veri modelleri mevcut.
-- [x] `finality_registry` içinde BLS host çağrıları ve Groth16/BN254 pairing
-      verifier kalıbı bulunuyor.
-- [x] Gateway'de fee config, gasless/sponsored çağrı isimleri, SAC mint/burn ve
-      relayer reward kayıtları bulunuyor.
-- [x] Admin renounce için bir fonksiyon ve fault-probe test/snapshot dosyaları
-      eklenmiş.
-- [x] Bu direktif tek ana direktif dosyasıdır; ek direktif dosyası
-      oluşturulmayacaktır.
-
-### Henüz canlı veya güvenilir kabul edilmeyecek noktalar
-
-- [ ] `deployments/testnet.json` halen placeholder ID'ler içeriyor; canlı
-      registry, gateway ve SAC deployment kanıtı yok.
-- [ ] `relayer` için gerçek signed Soroban CLI ve gateway çağrısı kodu yazıldı;
-      ancak CLI'nin RawEvidence/struct/BytesN encoding'i ve receipt parsing'i
-      bu ortamda doğrulanmadı.
-- [ ] Registry ve gateway mutation yolları admin authorization ve kalıcı
-      renounce kontrolleri içeriyor; Rust derleme ve Testnet renounce receipt'i
-      henüz yok.
-- [ ] BLS payload public key'i domain policy'ye sabitleniyor ve kaynak
-      simülatörü RFC 9380/hash-to-curve + full pairing canonical şemayı üretiyor;
-      contract build ve canlı pairing receipt'i henüz yok.
-- [ ] Mevcut Groth16 fixture'ı statik development range-proof örneğidir;
-      registry public root mismatch'i reddeder, fakat fixture henüz dinamik
-      source root ve gateway event root'una bağlı finality kanıtı değildir.
-- [ ] Gateway'deki Merkle doğrulaması, finalized event root ile doğru leaf ve
-      sibling yönlerini kodda kontrol ediyor; canlı uçtan uca mint receipt'i ve
-      çok-leaf Testnet kanıtı henüz yok.
-- [x] `burn_and_relay` sonrası relayer'ın gerçek gateway `burn` event'ini
-      Soroban RPC'den okuyup Bytes payload'ı çözmesi ve kaynak simülatöründeki
-      tek-seferlik `/burn-unlock` çağrısını yapması yazıldı; gerçek receipt ve
-      live Testnet run'ı toolchain erişimi bekliyor.
-- [x] Browser kodunda sabit `localhost` kullanımı canlı preview için relative
-      URL ve Vite proxy ile değiştirildi.
-- [ ] Taze, hiç fonlanmamış testnet keypair ile gasless mint kanıtı henüz canlı
-      çekim olarak kabul edilmemelidir.
-- [x] README'de canlı deployment, test sayısı ve dış servis istatistikleri
-      doğrulanmadan kesin başarı rozeti kullanılmıyor.
+Existing components are extended, not replaced. The live deployment is frozen
+by design: the verifying key, the BLS policy, the domain list and the gateway
+fee configuration are immutable on testnet because both admins are renounced.
+Contract source semantics therefore must not change (a changed contract would
+invalidate the recorded WASM hash); additive tests are allowed, and new
+functionality belongs in the off-chain surface, the facade and the docs.
 
 ---
 
-## 4. Karar verilmiş mimari
+## 3. Status (updated at the end of every session)
 
-### 4.1 `finality_registry`
+### Done
 
-Registry iki kanıt yolunu aynı adapter sözleşmesine bağlar:
+- [x] BLS12-381 verification lane with native host functions, including the
+      full pairing check (`submit_finality_evidence_bls`, `submit_bls_hardened`).
+- [x] Groth16/BN254 verification lane with native multi-pairing, honestly
+      labelled as a quorum/root-binding proof rather than a signature proof.
+- [x] Message envelope, nonce high-water-mark and Merkle replay protection,
+      proven live on testnet (replay rejected with `#9 EvidenceAlreadyProcessed`).
+- [x] Gasless mint proven live: recipient holding exactly its minimum reserve
+      and zero spendable XLM; recipient balance byte-for-byte unchanged, relayer
+      repaid in the wrapped asset.
+- [x] Reverse path proven live: burn on Stellar, canonical event decoded
+      through Soroban RPC, one-time source unlock.
+- [x] Registry **and** gateway admin renounced on-chain, with a second renounce
+      and a post-renounce `set_vk` proven to be refused.
+- [x] Frontend console, Freighter, relayer and anchor facade wired end to end;
+      the console itself drives the round trip and is capability-gated.
+- [x] Self-audit loop live, latest recorded round all checks passing, visible
+      through `/self-audit`.
+- [x] README explains machine approval from first principles ("How approval
+      works, from the ground up") and draws the honest boundary at "Is this a
+      zkVM? No".
+- [x] Project name is Lumen Gate everywhere; grep gate for the retired brand
+      name returns empty.
+- [x] Single directive file (this document).
 
-```text
-RawEvidence { adapter_id, evidence_version, network, payload,
-              declared_height, declared_root, submitter }
-FinalityAttestation { domain, height, state_root, security, evidence_digest }
-```
+### Not done yet / still to harden
 
-Her adapter için:
-
-- `domain_key = sha256(adapter_id || network)`
-- kabul edilen evidence version aralığı,
-- gereken confirmation depth,
-- BLS aggregate public key ve quorum bilgisi,
-- ZK verification key ve circuit version
-  bootstrap sırasında kaydedilir.
-
-`declared_height` ve `declared_root` her zaman payload'dan yeniden çıkarılır.
-Mismatch, kısa payload, unknown version, duplicate digest, geçersiz eğri noktası,
-subgroup hatası veya pairing failure `Err` döndürür; hiçbir yol varsayılan olarak
-valid kabul etmez.
-
-BLS yolu:
-
-- Demo validator kümesi 2-of-3 olarak açıkça test-only işaretlenir.
-- Signer secret key'leri repoya konmaz; local demo fixture üretimi dışında canlı
-  key yönetimi dokümante edilir.
-- Aggregate public key domain kaydındaki beklenen key ile eşleştirilir.
-- `hash_to_g1` için `lumen-gate-finality-v1` DST, BLS G1/G2 curve + subgroup
-  kontrolleri ve full native pairing zorunludur.
-- Permissive on-curve-only yöntem güvenlik iddiası olarak kullanılmaz.
-
-ZK yolu:
-
-- Küçük, amaca özel Circom devresi kullanılır; büyük bir kaynak zincir VM'si
-  Soroban'a taşınmaz.
-- Public input'lar kanıtlanan height/root/message commitment ile açıkça
-  bağlanır.
-- Verification key deployment öncesi sabitlenir; proof ve VK boyutu ile
-  circuit version README'de yazılır.
-- Soroban native `bn254_multi_pairing_check` gerçek doğrulama noktasıdır.
-- Trusted setup hackathon kısaltması olabilir; tek katılımcılı fixture üretim
-  ortamı olarak belirtilir, production ceremony gibi sunulmaz.
-
-Admin modeli:
-
-1. Deploy eden bootstrap admin registry'yi başlatır.
-2. VK, domain, quorum ve örnek self-test kaydedilir.
-3. Admin olmayan çağrılar `set_vk`, domain kayıt/değişiklik ve admit için
-   reddedilir.
-4. Self-test ve canlı kanıt görüldükten sonra `renounce_admin` çağrılır.
-5. Admin adresi ve yetkisi kalıcı olarak etkisizleştirilir; event ve transaction
-   hash deployment manifest'ine yazılır.
-6. Renounce sonrasında VK veya domain politikasını değiştirmek yeni kontrat ve
-   açık migration gerektirir.
-
-### 4.2 `settlement_gateway`
-
-Mesaj kimliği içerikten türetilir ve aşağıdaki alanları kapsar:
-
-```text
-(source_domain, target_domain, source_height, event_index, nonce,
- sender, recipient, payload_hash, kind, expiry_height)
-```
-
-Replay koruması yön ve gönderici başına tek HWM ile uygulanır:
-
-```text
-(source_domain, target_domain, sender) -> highest_processed_nonce
-```
-
-`nonce <= highest` reddedilir; yalnızca daha ileri nonce HWM'yi taşır. Message
-ID kaydı ek savunma/idempotency içindir, HWM'nin yerine geçmez.
-
-Inbound mint sırası:
-
-1. message id yeniden hesapla.
-2. expiry ve `kind` kontrol et.
-3. registry'de ilgili source height/root finalized mı kontrol et.
-4. payload hash'i asset, amount ve recipient'dan yeniden hesapla.
-5. event leaf + sibling Merkle proof'u finalized event root'a karşı doğrula.
-6. HWM'yi atomik olarak ilerlet.
-7. SAC mint et; gasless ise miktarı kullanıcı ve relayer ödülü olarak böl.
-8. `Mint`, `RelayerReward` ve hata event'lerini yayınla.
-
-Outbound burn/lock mesajı aynı envelope'ı kullanır. Gateway outbound mesajı
-processed saymaz; karşı domain'in unlock işlemi kendi HWM'si ile ayrı bir kez
-çalışır. Bu ayrım çift yakma ve çift serbest bırakma hatasını önler.
-
-`burn` event data'sı generated-client bağımlılığını azaltmak için `Bytes` olarak
-şu sabit formatta yayınlanır: `amount:i128 LE | source_height:u64 LE |
-nonce:u64 LE | expiry_height:u64 LE | target_domain:32 | payload_hash:32 |
-recipient_len:u32 LE | recipient:bytes`. Relayer bu XDR `SCV_BYTES` değerini
-Soroban RPC'den çözer ve source simulator `/burn-unlock` endpoint'ine yalnızca
-bir kez iletir. Simülatör payload hash'ini token id, amount ve recipient'dan
-yeniden üretir; gerçek source consensus iddiası yapmaz.
-
-### 4.3 Anchor facade
-
-Anchor için entegrasyon yüzeyi:
-
-- SEP-1 `stellar.toml` içinde gerçek testnet asset ve issuer metadata'sı,
-- `/info`, `/health`, `/transactions` ve açıkça desteklenen deposit/withdraw
-  bilgisi,
-- domain profile: consensus kind, finality kind, trust model, required depth,
-  security backing; puan uydurulmaz,
-- issuer hesabı ve rezerv operasyonu anchor'da kalır,
-- SAC admin'i settlement gateway'e devredilir,
-- anchor validator veya bridge multisig işletmez.
-
-Anchor facade çalışmayan SEP endpoint'lerini çalışıyormuş gibi ilan etmez.
-
-### 4.4 Off-chain bileşenler
-
-- `source_simulator`: deterministic block/event/Merkle üretir, BLS ve
-  quarantined development ZK fixture sağlar, inbound lock ve one-time reverse
-  burn-unlock state machine'lerini tutar.
-- `relayer`: simulator lock event'lerini izler; gerçek Soroban RPC'de
-  `getLatestLedger` ve gateway `burn` event polling yapar, kurulu Stellar
-  CLI'nin imzalı contract invoke yoluyla registry/gateway işlemlerini gönderir
-  ve burn Bytes payload'ını source simulator `/burn-unlock` endpoint'ine bir kez
-  iletir. CLI encoding, receipt confirmation ve live Testnet run'ı bu snapshot'ta
-  ayrıca doğrulanmalıdır. Private key yalnızca environment/secret store'dan gelir.
-- `frontend`: Freighter ile kullanıcı cüzdanını bağlar, kanıt türünü seçer,
-  gerçek explorer/RPC linklerini gösterir, BLS/ZK fault probe'larını görünür
-  kılar. Preview ortamında browser'dan `localhost` çağrısı yapmaz.
-- `anchor`: facade ve metadata sunar; simulator backend-to-backend erişiminde
-  localhost kullanılabilir, browser-facing endpoint'ler public veya proxied
-  olmalıdır.
+- [ ] Anchor facade professionalisation, see Section 10. SEP-10 first, since it
+      is the precondition for authenticated SEP-6.
+- [ ] The submission-grade pack's stale paragraph: README still lists
+      "still required" items that are already done (deployment, receipts,
+      renounce, unfunded-account test). Rewrite it to describe what is actually
+      outstanding.
+- [ ] Fixed relayer fee (`0.1 wSRC`) is not market-priced against the real XLM
+      network fee. Acceptable simplification, but it must stay labelled as one.
+- [ ] Validator secret keys are demo constants (`1, 2, 3`); production needs a
+      DKG. Marked in the README, tracked as roadmap.
+- [ ] No bond, fee or slashing economics. Out of scope for this hackathon and
+      stays out, stated plainly.
 
 ---
 
-## 5. Uygulama planı — plan onayından sonra kod sırası
+## 4. Hardening backlog (priority order this round)
 
-### Faz 0 — isim ve dokümantasyon
+### 4.1 Admin and verifying-key trust gap (implemented, keep probing)
 
-- Tüm görünen ürün adını Lumen Gate yap.
-- Eski ürün adı ve yasaklı marka taramasını CI/script haline getir.
-- README.md ve README.tr.md'yi yalnızca doğrulanabilir iddialarla yenile.
-- Tek deployment manifest şeması ve demo komutlarını tanımla.
+`admin` was a bootstrap role only: it set the verifying key, the BLS policy and
+the domain admission, then `renounce_admin` permanently removed it on both the
+registry and the gateway. The proof must stay visible in the demo:
+"admin renounced, tx hash: …", and the self-audit loop re-probes it every round
+by simulating the admin call and requiring the host to trap.
 
-### Faz 1 — registry güven kökü
+### 4.2 Real zero-XLM claim (implemented, keep re-proving)
 
-- `register_domain`, `admit_domain`, `set_vk` authorization kontrollerini
-  tamamla.
-- Domain başına BLS verification key/quorum sakla.
-- `renounce_admin` sonrası bütün mutation yollarını test et.
-- Evidence parser'ı canonical length/encoding/version kurallarıyla sıkılaştır.
+The live receipt is a recipient account at exactly its minimum reserve with zero
+spendable XLM, whose XLM balance is identical before and after the mint. The
+claim in the README must keep the honest qualifier: gasless means *zero spendable
+XLM*, not zero setup — a Stellar account with a trustline for the wrapped asset
+is still required, and the outbound direction is not gasless.
 
-### Faz 2 — BLS canlı doğrulama
+### 4.3 Fault probes (extend with facade probes)
 
-- Native Soroban BLS API'nin testnet protocol desteğini gerçek RPC'de doğrula.
-- Kaynak simülatör ve kontrat için aynı hash-to-curve, DST, byte order ve
-  aggregate public key fixture'ını kullan.
-- Full pairing ile bir happy path ve değişmiş signature/root/wrong key ile
-  üç negative path çalıştır.
-- Eski permissive fonksiyonu ya kaldır ya da yalnızca açıkça insecure test
-  helper olarak tut; README'de güvenli yol olarak göstermeme.
+Contract-side probes already cover zeroed signature, tampered signature, root
+mismatch, version gate, replay, forged Groth16 proof, wrong verifying key,
+non-admin mutation and post-renounce attempts. This round adds facade-side
+probes to the same loop, so the integration surface is audited continuously too:
+SEP-10 challenge/verify, SEP-6 schema completeness, error-envelope consistency,
+and rate-limit enforcement.
 
-### Faz 3 — Groth16/BN254 canlı doğrulama
+### 4.4 Statistics and badges
 
-- Devreyi state root ve message commitment'a bağla.
-- VK/proof/public input dönüşümünü Soroban `BytesN` boyutlarıyla sabitle.
-- Native multi-pairing ile happy path, wrong VK, modified proof, root mismatch
-  negative testleri ekle.
-- Lisans ve trusted setup kaynağını `docs/` içinde açıkça yaz.
-
-### Faz 4 — settlement ve ters yön
-
-- Lock -> finalized proof -> mint -> burn -> source unlock akışını tek message
-  ID üzerinden tamamla.
-- HWM'nin nonce 0, ileri nonce, düşük nonce, aynı message ve expiry senaryolarını
-  test et.
-- Merkle proof sibling yönü, tek leaf ve çok leaf testlerini canlı kanıtla.
-- Gasless reward accounting ile sponsored reserve davranışını birbirinden ayır;
-  gerçekten desteklenmeyen classic-account iddiasını yazma.
-
-### Faz 5 — gerçek Testnet deployment
-
-- Admin, issuer, relayer ve demo kullanıcı hesaplarını ayrı tut.
-- Registry ve gateway WASM'larını build et; SAC deploy et; gateway'e admin ver.
-- Domain/VK/self-test setup işlemlerini gönder; `renounce_admin` çağır.
-- Contract ID, network passphrase, tx hash, admin-renounce hash ve explorer
-  linklerini `deployments/testnet.json` içine yaz.
-- Placeholder varsa demo script canlı başarı kodu döndürmemeli.
-
-### Faz 6 — relayer, anchor ve frontend
-
-- Relayer'ın gerçekten imzalayıp gönderdiği transaction receipt'i sakla.
-- Anchor `/info` ile canlı contract/profile verisini birleştir.
-- Frontend'de source lock, proof choice, registry verification, gateway mint,
-  zero-XLM evidence, burn/unlock ve negative probe panellerini bağla.
-- Jürinin tek terminal komutuyla çalıştırabileceği `scripts/demo.sh` hazırlansın.
-
-### Faz 7 — son doğrulama
-
-- `cargo fmt --check`, `cargo test --workspace`, contract WASM build, frontend
-  build ve anchor smoke test.
-- Local negative matrix ve testnet happy path.
-- Tüm repo taraması: ürün adı, eski ürün adı, yasaklı marka, placeholder
-  contract ID ve localhost browser çağrıları.
-- README'deki test sayısı ve canlı iddialar log çıktılarıyla eşleştirilir.
+Every number that appears in the README must be reproducible from the
+repository or from a receipt file. If a badge or an ecosystem statistic cannot
+be re-verified at submission time, it is removed rather than kept. No
+"verified"-style badge over an unverified figure.
 
 ---
 
-## 6. Test ve canlı kanıt matrisi
+## 5. The gasless flow (settled design; do not re-derive)
 
-Minimum tamamlanma matrisi:
+- The user locks `amount = desired + fee` on the source chain.
+- Evidence (BLS or ZK) is produced and verified inside `finality_registry`
+  (machine approval).
+- The relayer pays the real Stellar transaction fee in XLM and calls
+  `finalize_inbound_gasless`.
+- The recipient receives `desired`; the relayer receives the fee in the source
+  asset; `RelayerReward` is accounted.
+- The recipient needs no XLM and no spendable balance. A trustline for the
+  wrapped asset is required, because Stellar assets cannot be held without one.
 
-| Alan | Mutlu yol | Reddedilen yol | Canlı kanıt |
-| --- | --- | --- | --- |
-| Registry admin | bootstrap + setup | non-admin, renounced admin | tx hash + event |
-| BLS | valid aggregate + full pairing | wrong sig, wrong key, root mismatch | registry attestation |
-| Groth16 | valid proof + public root | wrong VK, modified proof, root mismatch | pairing result/event |
-| HWM | nonce 0 ve ileri nonce | replay ve düşük nonce | stored HWM + error |
-| Merkle | single/multi leaf | sibling/root mismatch | gateway receipt |
-| Gasless | fresh zero-XLM recipient | missing sponsor/invalid fee | recipient balance + relayer reward |
-| Reverse flow | burn -> source unlock | duplicate unlock | source event/state |
-| Anchor | `/health`, `/info`, SEP-1 | placeholder endpoint | HTTP response + explorer |
-
-Rust testleri unit/integration seviyesindedir; testnet kanıtı onların yerine
-geçmez. Soroban mock testleri gerçek ağı taklit ediyor diye canlı entegrasyon
-olarak yazılamaz.
+The Stellar network fee is physically paid in XLM by the relayer — that is a
+protocol rule and it is not being circumvented. What the design changes is *who
+pays* and *who is repaid*: the relayer advances the fee and is repaid out of the
+locked source-chain amount, so the user's XLM balance is untouched.
 
 ---
 
-## 7. Bilerek bırakılan sınırlar ve tehdit modeli
+## 6. Standing checklist (before every submission)
 
-Bu hackathon sürümü audit-grade değildir:
-
-- Kaynak zincir simülatördür; dış zincir consensus'ı gerçek değildir.
-- Validator seti ve secret key yönetimi demo amaçlıdır; 2-of-3 production quorum
-  değildir.
-- Groth16 trusted setup kısa ve test amaçlı olabilir.
-- ML-DSA veya başka post-quantum imza katmanı bu sürümde yoktur.
-- Bond, fee market, slashing, fraud proof ve validator rotation yoktur.
-- Anchor rezervleri, KYC ve uyum katmanı off-chain'dir.
-- Relayer tekil olabilir; relayer kötü niyetli olsa bile kanıt doğrulama onu
-  mint kararının güven kökü yapmamalıdır.
-- Admin renounce öncesi bootstrap anahtarı kritik risktir; renounce sonrası
-  değişiklik migration gerektirir.
-- Testnet asset gerçek para değildir ve production bridge güvenliği iddiası
-  değildir.
-
-README, bu sınırları saklamaz. Çalışmayan bir özellik tamamlandı gibi
-anlatılamaz.
+- [ ] Repo-wide grep for the retired brand name returns nothing.
+- [ ] Repo-wide grep for country/region references returns nothing.
+- [ ] The repository contains exactly one directive file (this one).
+- [ ] All user-facing text, docs and commit messages are English.
+- [ ] Admin renounce is recorded and re-probed by the self-audit loop.
+- [ ] The zero-XLM flow is re-proven with a fresh, unfunded keypair.
+- [ ] Every README claim maps to a file, a receipt or a re-runnable command.
+- [ ] `cargo test --workspace` passes and the count in the README matches.
+- [ ] The anchor facade's SEP claims match what the facade actually serves
+      (Section 10), including explicit "not implemented" markers.
+- [ ] The self-audit loop runs, and its latest round is readable from the API
+      surface and the console.
+- [ ] Everything is committed and pushed to `main`.
 
 ---
 
-## 8. Oturum durumu güncelleme kuralı
+## 7. Submission framing (honest, and it stays honest)
 
-Her oturum sonunda yalnızca aşağıdaki üç sınıftan biri kullanılacaktır:
+The hackathon track asks for a working product built on Stellar with real
+integration. This repository satisfies that, and the framing in the presentation
+stays exactly this: *"we applied a design pattern we already knew to
+Stellar-specific primitives, writing the Soroban implementation from scratch."*
+The demo leads with testnet receipts rather than with unverifiable ecosystem
+badges or security adjectives. The source chain may be a deterministic
+simulator; every Stellar-side step is real.
 
-- **Tamamlandı:** kod/test/canlı receipt ile doğrulandı.
-- **Kısmi:** kod var fakat canlı veya negatif kanıt eksik.
-- **Bekliyor:** planlandı, uygulanmadı.
+---
 
-Bir madde tamamlandı işaretlenmeden önce ilgili komut ve sonucu kısa şekilde
-Bölüm 3'e eklenir. Yeni bir güvenlik veya kapsam kararı alınırsa önce bu belgeye
-karar olarak yazılır, sonra koda geçirilir.
+## 8. README explainer: how approval works without a human
+
+The README carries a section that explains approval from the ground up for a
+reader who does not know cryptography, including: what a normal bridge does
+(validators sign, a relayer collects signatures, the destination chain trusts
+people), how aggregate BLS signatures are checked with a single pairing equation
+inside Soroban, what a Groth16 proof is and why its verification is constant
+size and constant cost, and why a renounced verifying key means there is no key
+left that could override what the math already decided. The section is
+maintained alongside the code; if the mechanism changes, the text changes.
+
+---
+
+## 9. Self-audit loop (continuous proof, not a one-off test)
+
+The fault probes run continuously, not only in CI. Every round the loop:
+
+1. accepts a freshly produced valid evidence set and confirms acceptance;
+2. submits the malformed variants and confirms each is refused;
+3. probes the admin capability on both contracts and requires the host to trap;
+4. probes the anchor facade's SEP-10, SEP-6, error-envelope and rate-limit
+   behaviour (Section 10);
+5. writes the result, with a timestamp, to a machine-readable record.
+
+The record is served read-only by the facade and rendered in the console as
+"last check: <time>, N/N checks passed". The loop has no authority: it observes
+and reports, and it creates no new admin-like power. The line to use with judges:
+*"the system did not only prove once that it runs without a human; it keeps
+proving it, live, on its own."*
+
+---
+
+## 10. Anchor facade: professionalisation (priority this round)
+
+The facade must stop reading like a hackathon API and behave like a real
+Stellar anchor's service surface. Order of work: 10.1 first (it is the
+precondition for 10.2), then 10.3 and 10.4, then 10.5.
+
+### 10.1 SEP-10 web authentication (highest priority)
+
+- `GET /v1/sep10/auth?account=G...&home_domain=&client_domain=` returns a
+  challenge transaction, signed by the anchor's signing key, carrying the
+  Stellar network passphrase and a short validity window, with
+  `web_auth_domain` and the optional client-domain signature handled.
+- `POST /v1/sep10/auth` accepts the signed challenge, verifies that the account
+  really signed it (`verifyChallengeTxSigners` against the same network
+  passphrase), and on success returns a short-lived JWT plus its expiry.
+- The JWT is the user layer; the operator token stays the operator layer. Write
+  endpoints require one or the other; neither is a substitute for the other.
+- If no signing key is configured, SEP-10 reports "not configured" and refuses —
+  it never issues a challenge it cannot sign or verify.
+
+### 10.2 Real, minimal SEP-6
+
+- `GET /v1/sep6/info` describes the deposit and withdraw capabilities that truly
+  exist, using official field names (`enabled`, `authentication_required`,
+  `min_amount`, `max_amount`, `fee_fixed`, `fee_percent`, `fields`).
+- `GET /v1/deposit` and `GET /v1/withdraw` return official SEP-6 fields (`how`,
+  `id`, `eta`, `min_amount`, `max_amount`, `fee_fixed`, `extra_info`) and create
+  a real transaction record that is later reconciled against live evidence: the
+  source-chain events for deposits, and a burn transaction verified through
+  Soroban RPC `getTransaction` for withdrawals.
+- `GET /v1/transactions` returns records in the SEP-6 `transaction` schema with
+  the documented statuses; records only advance when the underlying evidence is
+  observed on-chain, never because a client asserted it.
+- Anything still absent (SEP-12 KYC, SEP-24 hosted flow, fiat rails) is marked
+  `not_implemented` explicitly, with no placeholder that looks like a feature.
+
+### 10.3 Full SEP-1 compliance in `stellar.toml`
+
+Checked against the official field list: `VERSION`, `NETWORK_PASSPHRASE`,
+`SIGNING_KEY`, `ACCOUNTS`, `HORIZON_URL`, `WEB_AUTH_ENDPOINT`, `[DOCUMENTATION]`
+with `ORG_NAME`/`ORG_URL`/`ORG_DESCRIPTION`, and `[[CURRENCIES]]` with `code`,
+`issuer`, `display_decimals`, `name`, `desc`, `is_asset_anchored`,
+`anchor_asset_type`, `status`, `conditions`. Because the demo asset is a test
+asset, `is_asset_anchored` is `false` and the description says plainly that this
+is a testnet deployment. Values are facts; a `stellar.toml` that advertises
+something the service cannot deliver is worse than an empty one.
+
+### 10.4 One consistent error envelope and explicit versioning
+
+- Every endpoint answers with
+  `{ "error": { "code": "...", "message": "...", "details": {...} } }` for
+  failures, including 404, 405, 429 and 5xx.
+- Canonical routes live under `/v1/...` so that future breaking changes are
+  possible; the unversioned paths remain as aliases so nothing that integrates
+  today breaks silently.
+
+### 10.5 Rate limiting on public reads
+
+Public read endpoints (`/self-audit`, `/api/finality`, `/info`, `/deposit`,
+`/withdraw`, `/transactions`) get a simple per-IP limit (default 60 requests per
+minute, env-tunable) with `X-RateLimit-*` headers and a 429 in the standard
+envelope. The operator token continues to protect writes.
+
+---
+
+## 11. Fee mechanism and the proving-system framing
+
+### 11.1 Where the fee really comes from
+
+The Stellar network fee is physically paid by the relayer in XLM — a protocol
+rule. The relayer is repaid in the source asset out of the locked amount
+(recorded receipt: relayer paid 137,293 stroops; recipient XLM identical before
+and after). The honest limitation to keep in the README: **the relayer fee is a
+fixed amount chosen at submission time, not real-time market pricing.**
+
+### 11.2 "Is this a zkVM? No" — keep the words, deepen the substance
+
+The statement is technically correct and stays. A fixed-statement Groth16
+circuit is not a virtual machine: there is no instruction set, no memory model,
+no commitment to a guest program and no witness that replays execution. Relabel
+it and a technical judge can pull the claim apart exactly where the project
+credits itself with honesty; that costs more than the label gains.
+
+Preferred path: do not change the label, deepen the narrative. Explain what a
+real zkVM proof would require — a multi-column execution trace, per-step
+transition constraints, a memory argument with a permutation or Merkle-based
+commitment, and a commitment to the guest program — and state that this project
+made a deliberate MVP-scope choice instead. Second path, only if time allows:
+genuinely widen the circuit to prove a chained state transition over N
+consecutive headers. Then the label would change because the engineering did.
+
+---
+
+## 12. Language, attribution and repository hygiene
+
+- All repository content is English: code, comments, docs, UI strings, commit
+  messages, README, directive. Localised documentation files are removed.
+- The retired brand name, and nothing that hints at it, appears anywhere. The
+  same applies to any third-party product name for the source chain.
+- Design patterns taken from external reference material are re-expressed as
+  neutral, generic engineering (for example: a finality-adapter interface with a
+  raw-evidence envelope and a security-backing descriptor; a cross-domain
+  message envelope with content-derived identifiers; a per-direction nonce
+  high-water mark). Pattern intent may be adopted; names, identifiers and code
+  are rewritten for this project.
+- Testnet-only values (demo validator keys, locally generated trusted setup,
+  simulator endpoints) are labelled as such wherever they appear.
+
+---
+
+## 13. Adopting reference patterns without importing their identity
+
+The following ideas are adopted as engineering intent, re-derived for this
+project, and documented in `docs/DOMAIN_ADAPTER.md`:
+
+- **Adapter interface.** Raw evidence in, finality attestation out. The adapter
+  re-derives the declared height and root from the evidence payload and rejects
+  anything that does not match; there is no "assume valid" branch and every
+  rejection path returns an error.
+- **Security backing descriptor.** Every attestation states how it is backed
+  (signature set with signer count, threshold and slashing flag, or a proof
+  system identifier), so the settlement layer can apply a policy instead of
+  trusting a label.
+- **Domain profile as facts, not scores.** The registry stores verifiable
+  properties of a source domain: consensus kind, evidence version, proof lane,
+  required confirmation depth, admitted state. Reputation and scoring stay out.
+- **Cross-domain message envelope.** Content-derived message identifiers,
+  explicit source and target domains, source height, nonce, sender, recipient,
+  payload hash and message kind, with expiry.
+- **Replay protection by high-water mark.** One monotonic counter per
+  `(source_domain, target_domain, sender)`; accepting a nonce invalidates every
+  smaller one, so the trail can only move forward.
+- **Post-quantum roadmap, not post-quantum claims.** The hybrid signature
+  direction is documented as future work; there is no native host support for it
+  on Soroban today, so no code pretends otherwise.
