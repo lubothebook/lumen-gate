@@ -97,6 +97,40 @@ if [ "${ALLOW_DEVELOPMENT_ZK_FIXTURE:-0}" = "1" ]; then
   stellar contract invoke --id $REGISTRY_ID --source admin --network $NETWORK -- admit_domain --admin $ADMIN_ADDR --domain $ZK_DOMAIN_KEY
 fi
 
+# -- multi-step chained lane (opt-in) -----------------------------------------
+# Bootstrap the second proof lane. It has its own key slot and its own fixed key
+# length (896 bytes: 64 + 3x128 + 7x64, i.e. six public inputs), so it cannot
+# borrow the 768-byte key of the single-statement lane. The lane is additive: it
+# records verified chains in its own storage slot and never touches the roots
+# the settlement path anchors on, which is what makes it safe to bootstrap on a
+# registry that already has a live settlement path.
+if [ "${DEPLOY_STEP_CHAIN:-0}" = "1" ]; then
+  STEP_CHAIN_VK_FILE=${STEP_CHAIN_VK_FILE:-build/step_chain_statement_vk.hex}
+  if [ ! -f "$STEP_CHAIN_VK_FILE" ]; then
+    echo "DEPLOY_STEP_CHAIN=1 but $STEP_CHAIN_VK_FILE is missing." >&2
+    echo "Generate it first:" >&2
+    echo "  npm install --no-audit --no-fund" >&2
+    echo "  ./circuits/build.sh step_chain_statement" >&2
+    echo "  ./circuits/setup.sh step_chain_statement" >&2
+    echo "  python3 circuits/convert_to_soroban.py build/step_chain_statement_vk.json \\" >&2
+    echo "      build/step_chain_statement_proof.json build/step_chain_statement_public.json \\" >&2
+    echo "      build/step_chain_statement" >&2
+    exit 1
+  fi
+  STEP_CHAIN_VK_HEX=$(tr -d '\n' < "$STEP_CHAIN_VK_FILE" | tr -d ' ')
+  if [ "${#STEP_CHAIN_VK_HEX}" -ne 1792 ]; then
+    echo "$STEP_CHAIN_VK_FILE is not a 896-byte key (expected 1792 hex characters, got ${#STEP_CHAIN_VK_HEX})." >&2
+    exit 1
+  fi
+  echo "Setting the step-chain verification key (896 bytes, must happen before renounce_admin)..."
+  stellar contract invoke --id $REGISTRY_ID --source admin --network $NETWORK -- \
+    set_step_chain_vk --admin $ADMIN_ADDR --vk $STEP_CHAIN_VK_HEX
+  STEP_CHAIN_DOMAIN_KEY=$DOMAIN_KEY
+else
+  echo "Step-chain lane not bootstrapped (set DEPLOY_STEP_CHAIN=1 to add it)."
+  STEP_CHAIN_DOMAIN_KEY=""
+fi
+
 echo "Initializing gateway..."
 stellar contract invoke --id $GATEWAY_ID --source admin --network $NETWORK -- initialize --admin $ADMIN_ADDR --registry $REGISTRY_ID --token $TOKEN_ID
 
@@ -122,6 +156,14 @@ cat > deployments/testnet.json <<JSON
   "admin_renounce_receipt": "deployments/admin-renounce.txt",
   "gateway_admin_renounce_receipt": "deployments/gateway-admin-renounce.txt",
   "domain_key": "$DOMAIN_KEY",
+  "step_chain": {
+    "bootstrapped": $([ "${DEPLOY_STEP_CHAIN:-0}" = "1" ] && echo true || echo false),
+    "domain_key": "$STEP_CHAIN_DOMAIN_KEY",
+    "vk_bytes": 896,
+    "public_inputs": 6,
+    "entrypoint": "submit_step_chain_zk",
+    "affects_settlement_anchor": false
+  },
   "zk_domain_key": "$ZK_DOMAIN_KEY",
   "target_domain": "$TARGET_DOMAIN",
   "bls_policy": {

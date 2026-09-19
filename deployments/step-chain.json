@@ -1,0 +1,116 @@
+{
+  "lane": "multi-step chained finality",
+  "circuit": "circuits/step_chain_statement.circom",
+  "entrypoint": "submit_step_chain_zk",
+  "network": "testnet",
+  "registry_id": "CCR3NZD5ASZAC3RPHDJOVSHWZBIF46ELP3JGWFC37ZL65YZ443ULZLMM",
+  "registry_deployed_this_run": true,
+  "signer": "GCWXGQO2UTLNHXHE7MZ6O6HMUS3AUJ3K2PTE4R2AJ47OLRHGS52A4GPI",
+  "adapter_id": "3dcbf6f582455337083d5f6d36721f6d63d47af0bef870a043c02aca7850dac9",
+  "domain_key": "4c00370b422dcf0f72234af78a49d2fafa5196c3ee6b19f2b6a8e815f587137e",
+  "circuit_public_inputs": [
+    "8179189419660209547839144393165913552291067951272812337337478327512464808977",
+    "9649289782942802365714919690081710114900163977869981233340054355160821848920",
+    "949123846051318823366875031855578401382527339882167393451371390837387687963",
+    "2",
+    "3",
+    "263425106837261827811471650765498057995509407007498039180851432033046852848"
+  ],
+  "domain_tag_expected": "263425106837261827811471650765498057995509407007498039180851432033046852848",
+  "key_bytes": 896,
+  "proof_bytes": 256,
+  "payload_bytes": 112,
+  "started_at": "2026-09-19T20:02:18.872Z",
+  "finished_at": "2026-09-19T20:02:58.744Z",
+  "checks": [
+    {
+      "check": "step_chain_key_accepted_at_896_bytes",
+      "passed": true,
+      "detail": "set_step_chain_vk stored the 896-byte key (64 + 3x128 + 7x64) in its own slot",
+      "at": "2026-09-19T20:02:44.524Z",
+      "transaction": "90558af44e68654ea4efae73a9d83bfec93e55d43fddcfe126bf8e8c797289e2"
+    },
+    {
+      "check": "step_chain_key_of_the_wrong_length_refused",
+      "passed": true,
+      "detail": "an 895-byte key was refused and the stored key is unchanged, so a short key cannot be sliced into coordinates",
+      "at": "2026-09-19T20:02:45.450Z",
+      "output": "❌ error: transaction simulation failed: HostError: Error(WasmVm, InvalidAction)\n\nEvent log (newest first):\n   0: [Diagnostic Event] contract:CCR3NZD5ASZAC3RPHDJOVSHWZBIF46ELP3JGWFC37ZL65YZ443ULZLMM, topics:[error, Error(WasmVm, InvalidAction)], data:[\"VM call trapped: UnreachableCodeReached\", set_step_chain_vk]\n   1: [Diagnostic Event] topics:[fn_call, CCR3NZD5ASZAC3RPHDJOVSHWZBIF46ELP3JGWFC37ZL65"
+    },
+    {
+      "check": "honest_chain_accepted",
+      "passed": true,
+      "detail": "the network accepted the chained proof and recorded the attestation",
+      "at": "2026-09-19T20:02:52.175Z",
+      "output": "{\"adapter_version\":1,\"chain_length\":3,\"domain\":\"4c00370b422dcf0f72234af78a49d2fafa5196c3ee6b19f2b6a8e815f587137e\",\"end_root\":\"15554df22066b7e6cba1dfcf561b0bd274bffc919da426ed68232862c1eedb58\",\"event_root\":\"02192f60134be0544c47d75e5011cc80286874f2637fc93aaf4c0d46771ff81b\",\"evidence_digest\":\"7ad89efcbff200cfa6ac4abcfc25fb90eae673231c1ce6404a72dd1ee9a9d9a6\",\"evidence_version\":1,\"height\":1,\"security\":\"ZkProof\",\"start_root\":\"121541d507c908ee36116665469848060f2725c9f9d0a0dae84f1ec2f206dc11\"}\nℹ️  Simulating transaction…\nℹ️  Signing transaction: 2269641ad8895d61004d550b6cb4d09ba2cc500236dcbcb23db341c959cc3649\n🌎 Sending transaction…\n✅ Transaction submitted successfully!\n🔗 https://stellar.expert/explorer/testnet/tx/2269641ad8895d61004d550b6cb4d09ba2cc500236dcbcb23db341c959cc3649\n📅 CCR3NZD5ASZAC3RPHDJOVSHWZBIF46ELP3JGWFC37ZL65YZ443ULZLMM - Success - Event: [{\"symbol\":\"step_chain_verified\"},{\"byt",
+      "transaction": "2269641ad8895d61004d550b6cb4d09ba2cc500236dcbcb23db341c959cc3649"
+    },
+    {
+      "check": "recorded_chain_has_the_proved_length_and_height",
+      "passed": true,
+      "detail": "recorded chain_length 3 (the circuit proved 3) at height 1",
+      "at": "2026-09-19T20:02:52.506Z",
+      "output": "{\"chain_length\":3,\"domain\":\"4c00370b422dcf0f72234af78a49d2fafa5196c3ee6b19f2b6a8e815f587137e\",\"end_root\":\"15554df22066b7e6cba1dfcf561b0bd274bffc919da426ed68232862c1eedb58\",\"event_root\":\"02192f60134be0544c47d75e5011cc80286874f2637fc93aaf4c0d46771ff81b\",\"height\":1,\"settlement_anchored\":false,\"start_root\":\"121541d507c908ee36116665469848060f2725c9f9d0a0dae84f1ec2f206dc11\",\"threshold\":2}"
+    },
+    {
+      "check": "refuses_swapped_start_and_end_roots",
+      "passed": true,
+      "detail": "a chain presented backwards links to nothing, and the roots are bound to the payload -- refused with error #5 DeclaredMismatch",
+      "at": "2026-09-19T20:02:52.808Z",
+      "output": "❌ error: transaction simulation failed: HostError: Error(Contract, #5)\n\nEvent log (newest first):\n   0: [Diagnostic Event] contract:CCR3NZD5ASZAC3RPHDJOVSHWZBIF46ELP3JGWFC37ZL65YZ443ULZLMM, topics:[error, Error(Contract, #5)], data:\"escalating Ok(ScErrorType::Contract) frame-exit to Err\"\n   1: [Diagnostic Event] topics:[fn_call, CCR3NZD5ASZAC3RPHDJOVSHWZBIF46ELP3JGWFC37ZL65YZ443ULZLMM, submit_step"
+    },
+    {
+      "check": "refuses_proof_one_byte_short",
+      "passed": true,
+      "detail": "the length is checked before any decoding, so a short proof cannot be sliced into coordinates -- refused with error #8 InvalidProof",
+      "at": "2026-09-19T20:02:53.108Z",
+      "output": "❌ error: transaction simulation failed: HostError: Error(Contract, #8)\n\nEvent log (newest first):\n   0: [Diagnostic Event] contract:CCR3NZD5ASZAC3RPHDJOVSHWZBIF46ELP3JGWFC37ZL65YZ443ULZLMM, topics:[error, Error(Contract, #8)], data:\"escalating Ok(ScErrorType::Contract) frame-exit to Err\"\n   1: [Diagnostic Event] topics:[fn_call, CCR3NZD5ASZAC3RPHDJOVSHWZBIF46ELP3JGWFC37ZL65YZ443ULZLMM, submit_step"
+    },
+    {
+      "check": "refuses_threshold_lowered_to_one",
+      "passed": true,
+      "detail": "the quorum is the constant compiled into the circuit, not a number the prover picks -- refused with error #5 DeclaredMismatch",
+      "at": "2026-09-19T20:02:53.394Z",
+      "output": "❌ error: transaction simulation failed: HostError: Error(Contract, #5)\n\nEvent log (newest first):\n   0: [Diagnostic Event] contract:CCR3NZD5ASZAC3RPHDJOVSHWZBIF46ELP3JGWFC37ZL65YZ443ULZLMM, topics:[error, Error(Contract, #5)], data:\"escalating Ok(ScErrorType::Contract) frame-exit to Err\"\n   1: [Diagnostic Event] topics:[fn_call, CCR3NZD5ASZAC3RPHDJOVSHWZBIF46ELP3JGWFC37ZL65YZ443ULZLMM, submit_step"
+    },
+    {
+      "check": "refuses_evidence_replay",
+      "passed": true,
+      "detail": "the same evidence digest cannot be consumed twice -- refused with error #9 EvidenceAlreadyProcessed",
+      "at": "2026-09-19T20:02:53.696Z",
+      "output": "❌ error: transaction simulation failed: HostError: Error(Contract, #9)\n\nEvent log (newest first):\n   0: [Diagnostic Event] contract:CCR3NZD5ASZAC3RPHDJOVSHWZBIF46ELP3JGWFC37ZL65YZ443ULZLMM, topics:[error, Error(Contract, #9)], data:\"escalating Ok(ScErrorType::Contract) frame-exit to Err\"\n   1: [Diagnostic Event] topics:[fn_call, CCR3NZD5ASZAC3RPHDJOVSHWZBIF46ELP3JGWFC37ZL65YZ443ULZLMM, submit_step"
+    },
+    {
+      "check": "a_verified_chain_does_not_move_the_settlement_anchor",
+      "passed": true,
+      "detail": "the domain's last_root is still all zeroes after an accepted chain, so nothing that settlement anchors on moved",
+      "at": "2026-09-19T20:02:53.986Z",
+      "output": "{\"accepted_versions\":[1],\"adapter_id\":\"3dcbf6f582455337083d5f6d36721f6d63d47af0bef870a043c02aca7850dac9\",\"adapter_version\":1,\"last_event_root\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"last_height\":0,\"last_root\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"last_security\":\"None\",\"network\":\"source-testnet\",\"required_depth\":2,\"state\":1}"
+    },
+    {
+      "check": "a_quorum_proof_does_not_mark_the_domain_active",
+      "passed": true,
+      "detail": "the domain state is 1 (1 = admitted, 2 = active): only a verified signature proof moves it to active",
+      "at": "2026-09-19T20:02:53.986Z",
+      "output": "{\"accepted_versions\":[1],\"adapter_id\":\"3dcbf6f582455337083d5f6d36721f6d63d47af0bef870a043c02aca7850dac9\",\"adapter_version\":1,\"last_event_root\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"last_height\":0,\"last_root\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"last_security\":\"None\",\"network\":\"source-testnet\",\"required_depth\":2,\"state\":1}"
+    },
+    {
+      "check": "admin_renounced",
+      "passed": true,
+      "detail": "the admin capability was given up, so no operator key can change a verification key",
+      "at": "2026-09-19T20:02:58.154Z",
+      "output": "ℹ️  Simulating transaction…\nℹ️  Signing transaction: 0e9d5a49470d783a475dc4bbcfecaa5878bcc017f9ed0696eab63d6dee4b6409\n🌎 Sending transaction…\n✅ Transaction submitted successfully!\n🔗 https://stellar.expert/explorer/testnet/tx/0e9d5a49470d783a475dc4bbcfecaa5878bcc017f9ed0696eab63d6dee4b6409\n📅 CCR3NZD5ASZAC3RPHDJOVSHWZBIF46ELP3JGWFC37ZL65YZ443ULZLMM - Success - Event: [{\"symbol\":\"admin_renounced\"},",
+      "transaction": "0e9d5a49470d783a475dc4bbcfecaa5878bcc017f9ed0696eab63d6dee4b6409"
+    },
+    {
+      "check": "key_cannot_be_replaced_after_renounce",
+      "passed": true,
+      "detail": "the second lane's verification key is as frozen as the first one's: the call traps and the stored key is unchanged",
+      "at": "2026-09-19T20:02:58.743Z",
+      "output": "❌ error: transaction simulation failed: HostError: Error(WasmVm, InvalidAction)\n\nEvent log (newest first):\n   0: [Diagnostic Event] contract:CCR3NZD5ASZAC3RPHDJOVSHWZBIF46ELP3JGWFC37ZL65YZ443ULZLMM, topics:[error, Error(WasmVm, InvalidAction)], data:[\"VM call trapped: UnreachableCodeReached\", set_step_chain_vk]\n   1: [Diagnostic Event] topics:[fn_call, CCR3NZD5ASZAC3RPHDJOVSHWZBIF46ELP3JGWFC37ZL65"
+    }
+  ],
+  "passed": 12,
+  "total": 12,
+  "all_passed": true
+}

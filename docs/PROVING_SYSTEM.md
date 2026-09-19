@@ -23,6 +23,8 @@ What the ZK lane is: a **fixed-statement Groth16 SNARK over BN254**, compiled ah
 | On-chain artifact sizes | verification key **768 bytes**, proof **256 bytes**, public inputs **4 × 32 bytes** |
 | Statement (one sentence) | "At least `threshold` approval bits are set, the threshold equals the registered policy, and `prev_state_root`, `state_root` and `event_root` participate in one Poseidon relation." |
 
+A second, machine-shaped lane now exists beside it: [`circuits/step_chain_statement.circom`](../circuits/step_chain_statement.circom) proves an **N-step chained state transition** rather than one fixed statement. It is described in section 5b, and it is what the "first honest step toward a machine-shaped proof" in earlier revisions of this document turned into. It is still not a VM, and section 7 says exactly why.
+
 The full Groth16 rule set — what a proof binds, what it hides, and how public inputs work — is the standard one. Lumen Gate reimplements only the verifier and the byte encoding; it does not invent a proving system.
 
 ---
@@ -114,6 +116,39 @@ Soroban's own documentation notes that these host-model counts **underestimate**
 
 ---
 
+## 5b. The chained lane, and what it changes
+
+The single-statement circuit answers "did finality evidence exist for this exact event". A settlement layer that advances a state wants a different question answered: "does a sequence of quorum-bearing steps carry the state from the root I last accepted to the root being claimed". That is a transition relation, and it is what the second circuit encodes.
+
+| | |
+|---|---|
+| Circuit | `StepChainStatement(4, 3, 2)` — 6 public inputs, 4×3 + 4 + 4 private |
+| Constraints | **2259 non-linear, 2784 linear** (5029 wires, 7720 labels) |
+| Public inputs | `chain_start_root`, `chain_end_root`, `event_root`, `threshold`, `chain_length`, `domain_tag` |
+| On-chain artifacts | verification key **896 bytes**, proof **256 bytes**, payload **112 bytes**, public inputs **6 × 32 bytes** |
+| Domain tag | `lumen-gate-step-chain-v1` → `0x9517e443e84062a6…74f0`, distinct from the `lumen-gate-finality-v1` label the other lane and the BLS hash-to-curve path use |
+| Chained verifier cost (host model) | **31,664,510** cpu instructions for the whole `submit_step_chain_zk` call |
+
+**The step relation.** Step *i* takes the previous root and its own evidence, and produces the next:
+
+```
+step_digest_i = Poseidon(DIGEST_TAG, effective_count_i, event_root)
+root_i        = is_active_i * Poseidon(CHAIN_TAG, root_{i-1}, step_digest_i)
+                + (1 - is_active_i) * root_{i-1}
+```
+
+The order of steps is not a convention that a test checks after the fact; it is the chaining itself. A prover that wants to claim step 3 happened first has to produce a root that links from the published start root through that digest, and the published end root — which the registry binds to the evidence payload — is the last link. Swapping the start and end roots is refused (there is a test for exactly that), because a chain presented backwards links to nothing.
+
+**Padding is isolated twice.** A capacity-four circuit used for a three-step chain must not let the fourth step contribute. Its approvals are zeroed before they reach the digest — `effective = raw_count * is_active` — *and* the root it leaves behind is exactly the previous root. Both are equality constraints, because a witness-only zeroing is not a proof: a malicious prover would simply set the signal to something else. The test matrix covers this from both sides: writing approvals onto padded steps still verifies to the same end root (so a padded step really contributes nothing), and declaring a padded step active without recomputing the chain is refused (so the padding cannot be turned on for free).
+
+**Nothing is merely computed.** Every signal is boolean-forced, equated to an expression of other signals, or bound to a public input: `is_active * (is_active - 1) = 0`, `approvals[i][j] * (approvals[i][j] - 1) = 0`, exact sums for both counters, an `IsEqual` against the compiled threshold and the compiled tag, a `GreaterEqThan` plus a range-checked margin per step, `intermediate_roots[i] === root[i]` so the declared roots are derived rather than supplied, `chain_length` bounded by bits and required to equal the sum of `is_active`, and `end != start` enforced with the circomlib inverse-witness pattern (`IsEqual`, whose internal `IsZero` uses the standard inverse witness rather than a reinvented comparison). Every public input appears in at least one constraint. The exhaustive list is in the circuit header.
+
+**What the chain does not do.** It does not verify approval *signatures*: the per-step quorum is an approval bitmap, so the chain proves that a quorum was asserted and carried, not that it was cryptographically signed. A production chain replaces the bitmap with a signature gadget inside the circuit. It also does not bind `chain_start_root` to the previously accepted root on-chain — continuity between accepted chains is the registry's monotonic height rule, not a proof. Both limits are stated in the README and in the circuit header rather than left for a reviewer to discover.
+
+**Why the byte sizes differ, and why that matters.** Six public inputs make the verification key 896 bytes instead of 768 (`IC` grows by one G1 point per public input). The contract therefore keeps the two keys in different storage slots with different hard length limits, and refuses a proof or a key of the wrong length *before* decoding anything. A verifier that silently sliced a short byte string would be reading a shifted set of coordinates; both lanes reject that explicitly and both are tested for a proof one byte short and one byte long.
+
+---
+
 ## 6. How the tests keep this honest
 
 Three tests in `contracts/finality_registry/src/lib.rs` replay the **exact byte strings** captured from the live lane (see [`src/test_vectors.rs`](../contracts/finality_registry/src/test_vectors.rs)):
@@ -145,29 +180,33 @@ So: what Lumen Gate does instead is the boring, verifiable version — a **fixed
 
 ## 8. Reproducing the pipeline end to end
 
+The tooling lives in the repository now — these commands are the ones that produced the artifacts committed here, and they need no include directory that is not already pinned in `package.json`.
+
 ```bash
-# 1. circuit -> r1cs + witness generator (circom 2.2.3, circomlib 2.0.5)
-circom circuits/finality_statement.circom --r1cs --wasm -o build/ -l tools/include
-
-# 2. local trusted setup (pot12), then circuit-specific setup
-snarkjs powersoftau new bn128 12 pot12_0000.ptau -v
-snarkjs powersoftau contribute pot12_0000.ptau pot12_0001.ptau --name="lumen-gate" -e="entropy"
-snarkjs powersoftau prepare phase2 pot12_0001.ptau pot12_final.ptau -v
-snarkjs groth16 setup build/finality_statement.r1cs pot12_final.ptau fs_0000.zkey
-snarkjs zkey export verificationkey fs_final.zkey vk.json      # -> verified by convert_to_soroban.py
-
-# 3. prove a statement
-snarkjs wtns calculate build/finality_statement_js/finality_statement.wasm input.json witness.wtns
-snarkjs groth16 prove fs_final.zkey witness.wtns proof.json public.json
-
-# 4. serialize into the on-chain layout and submit
-python3 circuits/convert_to_soroban.py vk.json proof.json public.json out
-stellar contract invoke --id <registry> --source <admin> --network testnet -- \
-  submit_finality_evidence_zk --evidence "$EVIDENCE" --proof "$(cat out_proof.hex)" \
-  --public_inputs "$(cat out_public.hex)"
+npm install --no-audit --no-fund          # pinned circomlib 2.0.5 + snarkjs 0.7.6 + circomlibjs
 ```
 
-A `pot12` ceremony run like this is **not** production-grade: the entropy is local and the ceremony participants are fictional. It is sufficient to demonstrate a real proof verified by a real on-chain pairing check, and it is described that way everywhere.
+```bash
+# 1. circuits -> r1cs + witness generators (circom 2.2.3; three circuits)
+./circuits/build.sh                       # all three, or name one
+
+# 2. local trusted setup + honest proof  (stated as a local, non-production ceremony)
+node tools/step-chain-input.mjs --length 3 --out build/step_chain_statement_input.json
+./circuits/setup.sh step_chain_statement
+
+# 3. one negative test per constraint family -- 18 checks, each requiring its own refusal
+node tools/step-chain-tests.mjs
+
+# 4. serialize into the on-chain layout, then let cargo replay the bytes
+python3 circuits/convert_to_soroban.py build/step_chain_statement_vk.json \
+    build/step_chain_statement_proof.json build/step_chain_statement_public.json \
+    build/step_chain_statement --rust-out contracts/finality_registry/src/step_chain_vectors.rs
+cargo test -p finality_registry
+```
+
+The same shape applies to the single-statement circuit (`./circuits/setup.sh finality_statement`), whose vectors live in [`src/test_vectors.rs`](../contracts/finality_registry/src/test_vectors.rs).
+
+A locally generated powers-of-tau and a locally generated proving key are **not** production-grade: whoever ran the ceremony could in principle know the toxic waste, and the ceremony participants are fictional. They are sufficient to demonstrate a real proof verified by a real on-chain pairing check, and `circuits/setup.sh` says so in its own header.
 
 ---
 
@@ -175,9 +214,13 @@ A `pot12` ceremony run like this is **not** production-grade: the entropy is loc
 
 | claim | source |
 |---|---|
-| 628 constraints, 630 wires, 4 public inputs | `snarkjs r1cs info build/finality_statement.r1cs` |
-| 29,118,183 / 29,234,654 cpu instructions | `cargo test -p finality_registry --lib -- --nocapture`, this repository |
+| 628 constraints, 630 wires, 970 labels, 4 public inputs | `circom circuits/finality_statement.circom --r1cs`, and `docs`'s table |
+| 2259 non-linear / 2784 linear constraints, 5029 wires, 7720 labels | `./circuits/build.sh step_chain_statement` |
+| 29,118,183 / 29,234,654 cpu instructions (single-statement lane) | `cargo test -p finality_registry --lib -- --nocapture`, this repository |
+| 31,664,510 cpu instructions (chained lane, whole call) | same test suite, `test_step_chain_proof_verifies_in_host_and_is_recorded` |
 | 158,961 stroops charged | accepted testnet transaction, receipt recorded in `deployments/testnet.json` |
 | 768 / 256 / 4×32 byte artifacts | `circuits/convert_to_soroban.py`, asserted lengths in `contracts/finality_registry/src/lib.rs` |
+| 896 / 256 / 6×32 / 112-byte artifacts | same converter and contract, chained lane constants |
 | ~12M instructions for a Groth16 verify | CAP-0074 discussion, cited for context only |
 | protocol-level host function availability | Stellar Protocol 25 (CAP-0074, BN254) and Protocol 22 (CAP-0059, BLS12-381) |
+| tag derivation `sha256(`lumen-gate-step-chain-v1`)[0..31] mod r` | computed in this repository and pinned by `test_step_chain_tag_matches_the_circuit_constant` |

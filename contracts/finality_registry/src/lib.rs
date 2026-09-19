@@ -1887,8 +1887,15 @@ mod test {
         env.mock_all_auths();
         let (client, _admin, domain) = sc_registry(&env);
 
+        let cpu_before = env.budget().cpu_instruction_cost();
         let attestation =
             client.submit_step_chain_zk(&sc_evidence(&env, 77), &sc_proof(&env), &sc_inputs(&env));
+        let cpu_after = env.budget().cpu_instruction_cost();
+        std::println!(
+            "[proving-system] chained lane: pairing check over a 256-byte proof and an 896-byte vk: \
+             {} cpu instructions (host model, Rust target)",
+            cpu_after.saturating_sub(cpu_before)
+        );
         assert_eq!(attestation.height, 77);
         assert_eq!(attestation.chain_length, 3);
         assert_eq!(attestation.security, SecurityBacking::ZkProof);

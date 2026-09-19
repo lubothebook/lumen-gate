@@ -138,6 +138,9 @@ This checkout is a **Testnet engineering snapshot**, not a completed production 
 | `finality_registry` | `CCXJDQMTJUGXKNFOQPC25IYVOAVWDMLJBNQYX75MAREHV7MZMU5OSEN4` | admin **renounced on-chain**; verifier key set; one domain admitted |
 | `settlement_gateway` | `CBUKVNCPF5XRYJVAH2SRLTLUMZT6T677T5KAJADXZIQOQTCTSBITQVPA` | current build, 18,303 bytes, admin **renounced on-chain** |
 | `wSRC` (Stellar Asset Contract) | `CBPBDVLP7K436KEXOAJMPFFHEF5OXNN4KJIB2HDFDBRWOABQ6WBTURRV` | admin handed to the gateway, so mint and burn ride the gateway's own authorisation |
+| `finality_registry` (chained lane) | `CCR3NZD5ASZAC3RPHDJOVSHWZBIF46ELP3JGWFC37ZL65YZ443ULZLMM` | a second registry, deployed to carry the **N-step chained proof** lane; admin **renounced on-chain**; 12/12 live probes in [`deployments/step-chain.json`](deployments/step-chain.json) |
+
+The second registry exists because the first one's admin was renounced before the chained lane was written: a verification key that was never set cannot be set afterwards, and that is the renounce doing its job. Rather than weaken the earlier deployment to accommodate new work, the chained lane got its own registry. It is additive by construction — it records accepted chains in its own storage slot and never touches the roots the settlement path anchors on — and the live record proves that boundary rather than asserting it (see the rows below).
 
 Three earlier gateway deployments and one earlier asset contract are listed under `superseded` in [`deployments/testnet.json`](deployments/testnet.json) rather than deleted. They were replaced for concrete reasons, and the reasons are the interesting part: one could not be driven from the command line, one could not be re-pointed at a fixed gateway, and one predated a real footgun fix. Keeping them visible is cheaper than pretending the first attempt worked.
 
@@ -165,6 +168,14 @@ Three earlier gateway deployments and one earlier asset contract are listed unde
 | Replay the burn message on the source chain | rejected, HTTP 409 | — |
 | **Gasless mint to a zero-XLM account** | **success**, recipient XLM unchanged, +19.9 wSRC | `8b4e9bd59f405b8d3ecd11dcf1dee1e906ffcf16100cbcb1899cae7b42da88b4` |
 | The relayer's own reward for paying that fee | paid, +0.1 wSRC to the relayer | same transaction |
+| **Chained lane: 896-byte key set** | **success** on the second registry | `90558af44e68654ea4efae73a9d83bfec93e55d43fddcfe126bf8e8c797289e2` |
+| **Chained lane: a 3-step chain accepted** | **success**, event `step_chain_verified`, `chain_length 3` | `2269641ad8895d61004d550b6cb4d09ba2cc500236dcbcb23db341c959cc3649` |
+| Chained lane: start and end roots swapped | rejected `#5 DeclaredMismatch` | simulated, no fee burned |
+| Chained lane: quorum lowered to 1 | rejected `#5 DeclaredMismatch` | simulated, no fee burned |
+| Chained lane: proof one byte short | rejected `#8 InvalidProof` | simulated, no fee burned |
+| Chained lane: replayed evidence | rejected `#9 EvidenceAlreadyProcessed` | simulated, no fee burned |
+| Chained lane: 895-byte key | rejected, stored key unchanged | simulated, no fee burned |
+| Chained lane: `renounce_admin`, then replace the key | rejected, key unchanged | `0e9d5a49470d783a475dc4bbcfecaa5878bcc017f9ed0696eab63d6dee4b6409` |
 
 The gasless row is the strongest single receipt in this file. The recipient account `GCN65ER7…` held **15,000,000 stroops of XLM — exactly its minimum reserve, zero spendable** — before and after the mint, byte for byte. It could not have paid the **137,293 stroops** the transaction cost, because any fee would have dropped it below the reserve. The relayer `GBDJAEDH…` signed and paid, and the gateway minted it `0.1 wSRC` out of the transferred amount as the fee. The whole run was one command: `target/debug/relayer --height 156 --once` with `RELAYER_FEE=1000000`, reading its addresses from `deployments/testnet.json`.
 
@@ -174,7 +185,9 @@ The Groth16 proof was generated from a circuit compiled in this repository, agai
 
 ### Test status
 
-`cargo test --workspace` → **46 passed, 0 failed** (12 in `finality_registry`, 11 in `settlement_gateway`, 3 in `source_simulator`, 20 in `domain_adapter`). Run it yourself; the count in this file is not aspirational. Three of the registry tests replay the exact 256-byte proof and 768-byte key that a testnet transaction accepted, so a regression in the verifier or in the byte encoding fails the suite instead of only failing in production. `-- --nocapture` prints the measured CPU cost of the pairing check.
+`cargo test --workspace` → **59 passed, 0 failed** (25 in `finality_registry`, 11 in `settlement_gateway`, 3 in `source_simulator`, 20 in `domain_adapter`). Run it yourself; the count in this file is not aspirational. Three of the registry tests replay the exact 256-byte proof and 768-byte key that a testnet transaction accepted, and twelve more cover the chained lane's own key, proof and public inputs, so a regression in either verifier or in either byte encoding fails the suite instead of only failing in production. `-- --nocapture` prints the measured CPU cost of both pairing checks.
+
+The circuit suite is separate and does not need a network: `node tools/step-chain-tests.mjs` runs **18 checks** against the compiled witness generator — one per constraint family, each breaking a specific thing and requiring that specific refusal. `node tools/step-chain-live.js` runs the same lane against a real deployed registry and writes [`deployments/step-chain.json`](deployments/step-chain.json) with the transaction hashes.
 
 ### What is not claimed yet
 
@@ -191,9 +204,18 @@ The source side is intentionally local. The Stellar side is not mocked: the acce
 
 **No, and the word zkVM should not be attached to this system.** A zkVM proves the execution of a program on a virtual machine: it needs an instruction set with defined semantics, a memory model, a commitment to the guest program, and a witness that replays the execution. None of those four things exists here.
 
-What exists is narrower and fully verifiable: one **fixed-statement Groth16 proof over BN254**, compiled ahead of time from [`circuits/finality_statement.circom`](circuits/finality_statement.circom) into **628 constraints**, verified on-chain by the registry's own verifier through Stellar's native BN254 host functions. The statement is "a quorum of approval bits is set and the three roots participate in one Poseidon relation", and it is frozen at compile time: changing it means new keys and a new deployment.
+Two Groth16 circuits exist today, both compiled ahead of time and both verified on-chain through Stellar's native BN254 host functions:
 
-**What a real zkVM would take, and why this is a deliberate smaller thing.** Proving the execution of a program rather than a statement means committing to the guest program, running it against a witness, and constraining every step: a multi-column execution trace, per-step transition constraints that tie row *n* to row *n+1*, and a memory argument that commits the whole address space so the trace cannot read what it never wrote — a permutation argument or a Merkle-based commitment over memory cells. None of that exists here, and building it was not the point of this project: the settlement question is not "was this program executed correctly" but "did finality evidence exist for this exact event", which is answerable with a much smaller relation. The label stays off the system, and the intended direction — a chained state transition over consecutive headers, which is the first honest step toward a machine-shaped proof — is written down in [`docs/PROVING_SYSTEM.md`](docs/PROVING_SYSTEM.md) along with the measured cost of the circuit that exists today. The one-line version for a reviewer: **a statement proof, not a VM proof; a quorum proof, not a signature proof.**
+| circuit | constraints | proves |
+| --- | --- | --- |
+| [`circuits/finality_statement.circom`](circuits/finality_statement.circom) | **628** | one fixed statement: a quorum of approval bits is set and three roots participate in one Poseidon relation |
+| [`circuits/step_chain_statement.circom`](circuits/step_chain_statement.circom) | **2259 non-linear / 2784 linear** | a chain of up to four steps: `state_root_0 → state_root_1 → … → state_root_3`, each root derived from the previous root and that step's own evidence, and the last root equal to the published commitment |
+
+The second circuit is the machine-shaped one. It is a **genuine N-step chained state transition**: the step relation is a real transition relation, each step's evidence is hashed into the state it produces, the step order is enforced by the chaining itself rather than by convention, execution length is a public input with padding isolated twice (witness *and* constraint level), and its statement carries its own domain-separation tag, `lumen-gate-step-chain-v1`, distinct from the label the single-statement lane and the BLS hash-to-curve path use. Every public input is bound by at least one constraint, and every fixed or derived signal is locked with `===` rather than merely computed — a witness-only computation is not a proof, because a malicious prover can write anything into it. The per-constraint test matrix is [`tools/step-chain-tests.mjs`](tools/step-chain-tests.mjs): 18 checks, one per constraint family, each breaking one specific thing and requiring that specific refusal.
+
+**What a real zkVM would still take, and why this is deliberately smaller.** A general-purpose VM lane adds four things on top of what the chained circuit does: an instruction set with defined semantics, a commitment to the guest *program*, a memory model (a memory argument that commits the whole address space — a permutation argument or a Merkle commitment over memory cells — so a trace cannot read what it never wrote), and a witness that replays an execution. The step chain has a transition relation and a defined step order, which is the load-bearing part of that list; it does not have an instruction set, a memory model or program commitment, so it is a special-purpose chain, not a VM, and the label stays off the system. The one-line version for a reviewer: **an N-step chained statement proof, not a VM proof; a quorum proof, not a signature proof.**
+
+**What the chain does and does not cover.** The circuit proves the internal consistency of the chain: given the published start root, the published length and the published event root, the steps link to exactly the published end root, and each active step carries a quorum. It does **not** verify approval signatures — a production chain replaces the approval bitmap with a signature gadget, and the circuit header says so. It does not yet bind the start root to a previously finalized root on-chain; today the start root is a public input that the registry binds to the evidence payload, so continuity across accepted chains is the registry's monotonic height rule rather than a proof. Both limits are listed in [What is still genuinely missing](#what-is-still-genuinely-missing).
 
 ## Product thesis
 
@@ -266,7 +288,7 @@ The live demonstration must show:
 | Frontend | Freighter-facing demo and fault probes | `frontend` |
 | Anchor facade | SEP-1 discovery, SEP-10 authentication, a real SEP-6 surface, the audit view and the operator controls | `anchor` |
 | Domain adapter | Raw-evidence-in, attestation-out boundary, message envelope and the nonce high-water mark | `crates/domain_adapter` |
-| Circuits and fixtures | Small source-finality circuit workbench and Groth16 artifacts | `circuits` |
+| Circuits and fixtures | Two Groth16 circuits (single statement + N-step chain), their build/setup/prove tooling and their artifacts | `circuits` |
 
 ### Anchor positioning
 
@@ -441,7 +463,9 @@ The full pairing path, not an on-curve-only shortcut, is the security claim show
 
 The ZK path uses a small purpose-built circuit rather than porting a large source-chain VM — this is a **statement proof, not a zkVM** ([why, in one section](#is-this-a-zkvm), and in full in [`docs/PROVING_SYSTEM.md`](docs/PROVING_SYSTEM.md)). Soroban's native BN254 pairing check is the on-chain verifier, and it verifies real proofs: [`circuits/finality_statement.circom`](circuits/finality_statement.circom) compiled with circom 2.2.3 into 628 constraints, proved with snarkjs 0.7.6 against a Powers-of-Tau ceremony generated locally, serialised by [`circuits/convert_to_soroban.py`](circuits/convert_to_soroban.py), and accepted by the live registry on testnet (receipts above). On-chain, that verification costs about **29.1M cpu instructions** in the Soroban host model and was charged **158,961 stroops** on testnet — both measured, both re-runnable with `cargo test -p finality_registry --lib -- --nocapture`.
 
-The public signal order is fixed by the deployed verifier, which requires the last public input to equal the evidence's declared state root:
+A second circuit adds the chained lane. [`circuits/step_chain_statement.circom`](circuits/step_chain_statement.circom) compiles to **2259 non-linear and 2784 linear constraints** and proves that a chain of up to four quorum-bearing steps carries `state_root_0` to the published end root, each link derived from the previous root and that step's own evidence. Its public signal order is its own (`chain_start_root`, `chain_end_root`, `event_root`, `threshold`, `chain_length`, `domain_tag`), which makes its verification key **896 bytes** rather than 768; the contract keeps the two keys in separate slots with separate hard length limits, so neither lane can borrow the other's. On-chain, the chained lane's call measures **31.7M cpu instructions** in the same host model. Its artifacts, the commands that regenerate them, and the 18-check constraint matrix are all in the repository, and the lane has its own live record: [`deployments/step-chain.json`](deployments/step-chain.json).
+
+The single-statement public signal order is fixed by the deployed verifier, which requires the last public input to equal the evidence's declared state root:
 
 ```
 public_inputs[0] = prev_state_root
@@ -487,7 +511,9 @@ An anchor must not be described as operating source-chain validators. It only co
 The list this section used to carry was written before the deployment happened and had gone stale: it asked for the deployment, the receipts, the renounces, the gasless test and the two-way round trip, all of which are done and recorded in [`deployments/testnet.json`](deployments/testnet.json). What is actually outstanding is shorter, and none of it is a claim this file makes:
 
 - **A production validator set.** The BLS lane runs a 3-key demo set with a threshold of 2, and the keys are deterministic test values. Production needs a real distributed key generation ceremony and a set that can be slashed. Until then the honest-majority assumption is over three unbonded parties, and the adapter descriptor says so.
-- **A source-root-bound ZK circuit.** The Groth16 lane proves a quorum of approval bits and a binding across the three roots. It is not a signature proof, so no event root is persisted from that lane and settlement never anchors on it. A circuit that binds a real signature set is the next step, not a relabeling of this one.
+- **Signatures inside the circuit.** Both Groth16 lanes prove a quorum of approval *bits*; neither verifies a signature. The chained lane carries that quorum step by step and binds each step's evidence into the state it produces, and it persists nothing that settlement anchors on. Putting a real signature gadget inside the circuit is the next step, not a relabeling of this one.
+- **Continuity of the chain across accepted proofs.** A chained proof carries `chain_start_root` as a public input bound to the evidence payload. The registry enforces that the recorded trail only moves forward by height, but it does not yet prove that a new chain's start root is the previously accepted end root. Closing that gap means committing to the previous root inside the circuit.
+- **A general-purpose execution lane.** The chained circuit has a step relation and a defined order; it has no instruction set, no memory model, no program commitment and no execution trace, so it is an N-step special-purpose chain and not a VM. That distinction is stated at the top of the circuit and in [Is this a zkVM?](#is-this-a-zkvm).
 - **Market-priced fees.** The relayer fee is a fixed 0.1 wSRC per message chosen at submission time rather than derived from the live XLM fee and a rate. The mechanism is proven; the pricing is not built.
 - **Bonds, slashing and validator rotation.** Absent, and stated as absent.
 - **A hosted SEP-24 flow and SEP-12 KYC.** Not implemented; `/v1/sep12/customer` answers 501.
