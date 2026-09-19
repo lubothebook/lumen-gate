@@ -1,6 +1,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const { execFile } = require('child_process');
 
 const PORT = process.env.PORT || 8081;
 const SIM_URL = process.env.SIM_URL || 'http://localhost:8080';
@@ -29,6 +30,53 @@ function cors(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+}
+
+
+// ---------------------------------------------------------------------------
+// /deployment  - the address manifest the receipts were written against
+// /relay       - run the relayer for one source height (opt-in, see below)
+// ---------------------------------------------------------------------------
+
+const REPO_ROOT = path.join(__dirname, '..');
+const RELAYER_BIN = process.env.RELAYER_BIN || path.join(REPO_ROOT, 'target', 'debug', 'relayer');
+
+function runRelayer(height) {
+  // The relayer signs and pays from a hot key, so this endpoint spends XLM.
+  // It is therefore off unless an operator turns it on explicitly.
+  return new Promise((resolve) => {
+    const env = {
+      ...process.env,
+      SIM_URL,
+      STELLAR_NETWORK: process.env.STELLAR_NETWORK || 'testnet',
+      STELLAR_SOURCE_ACCOUNT: process.env.STELLAR_SOURCE_ACCOUNT || 'lumen-relayer',
+      STELLAR_RELAYER_ADDRESS: process.env.STELLAR_RELAYER_ADDRESS || '',
+      RELAYER_FEE: process.env.RELAYER_FEE || '1000000',
+      RELAYER_ONCE: '1',
+    };
+    if (height) env.RELAYER_HEIGHT = String(height);
+    execFile(
+      RELAYER_BIN,
+      height ? ['--height', String(height), '--once'] : ['--once'],
+      { cwd: REPO_ROOT, env, timeout: 180000, maxBuffer: 8 * 1024 * 1024 },
+      (error, stdout, stderr) => {
+        const output = `${stdout || ''}${stderr || ''}`;
+        const receipts = output
+          .split('\n')
+          .filter((line) => line.includes('transaction receipt:'))
+          .map((line) => line.split('transaction receipt:').pop().trim());
+        resolve({
+          ok: !error,
+          height: height || null,
+          receipts,
+          note: receipts.length > 0
+            ? 'each receipt hash was confirmed through Soroban RPC getTransaction before it was reported'
+            : 'no transaction was confirmed in this pass',
+          output: output.slice(-4000),
+        });
+      }
+    );
+  });
 }
 
 const server = http.createServer(async (req, res) => {
@@ -86,6 +134,34 @@ const server = http.createServer(async (req, res) => {
       return;
     }
   }
+  if (req.url === '/deployment') {
+    try {
+      const manifest = JSON.parse(
+        fs.readFileSync(path.join(REPO_ROOT, 'deployments', 'testnet.json'), 'utf8')
+      );
+      jsonResponse(res, manifest);
+    } catch (error) {
+      jsonResponse(res, { error: `deployments/testnet.json unreadable: ${error.message}` }, 500);
+    }
+    return;
+  }
+
+  if (req.url.startsWith('/relay')) {
+    if (process.env.LUMEN_ALLOW_RELAY !== '1') {
+      jsonResponse(res, {
+        error: 'relay endpoint disabled',
+        why: 'this endpoint makes the relayer sign a transaction and spend XLM, so it is opt-in',
+        enable: 'LUMEN_ALLOW_RELAY=1 with the relayer binary built at target/debug/relayer',
+      }, 403);
+      return;
+    }
+    const url = new URL(req.url, `http://${req.headers.host}`);
+    const height = url.searchParams.get('height');
+    const result = await runRelayer(height ? Number(height) : null);
+    jsonResponse(res, result, result.ok ? 200 : 500);
+    return;
+  }
+
   if (req.url === '/health') {
     jsonResponse(res, {status: (REGISTRY_ID.includes('PLACEHOLDER') || GATEWAY_ID.includes('PLACEHOLDER') || TOKEN_ID.includes('PLACEHOLDER')) ? 'configuration_required' : 'ok', port: PORT, sim_url: SIM_URL, registry: REGISTRY_ID, gateway: GATEWAY_ID, time: new Date().toISOString()});
     return;

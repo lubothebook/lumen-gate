@@ -217,7 +217,7 @@
     <div class="shell">
       <div class="console-intro">
         <div><div class="eyebrow dark">Operator console / live integration surface</div><h2 style="margin:0;font-size:clamp(29px,4vw,48px);letter-spacing:-.065em">Try the proof boundary.</h2></div>
-        <div><span class="status-chip"><span class="dot red" id="simDot"></span><span id="simUrl">/source-api</span></span><p>Connect Freighter to inspect the Stellar path. Placeholder IDs stay visible until deployment evidence replaces them.</p></div>
+        <div><span class="status-chip"><span class="dot red" id="simDot"></span><span id="simUrl">/source-api</span></span><p>These are the live testnet contracts. Every address on this page is generated from the deployment manifest that the receipts were written against, not typed in by hand.</p></div>
       </div>
       <div class="console-grid">
         <div class="console-card">
@@ -282,9 +282,16 @@ import { buildBurnAndRelayTx, server as sorobanServer } from './src/soroban.ts';
 const SIM_URL = localStorage.getItem('simUrl') || import.meta.env.VITE_SIM_URL || '/source-api';
 document.getElementById('simUrl').textContent = SIM_URL;
 
-const REGISTRY_ID = localStorage.getItem('registryId') || 'CD... (set after deploy)';
-const GATEWAY_ID = localStorage.getItem('gatewayId') || 'CD...';
-const TOKEN_ID = localStorage.getItem('tokenId') || 'CD...';
+import { deployment } from './src/deployment.js';
+
+// Live addresses come from the generated deployment module, which is written
+// from deployments/testnet.json by tools/sync-frontend-deployment.mjs. The
+// localStorage overrides exist for experiments and are reported when active.
+const REGISTRY_ID = localStorage.getItem('registryId') || deployment.registryId;
+const GATEWAY_ID = localStorage.getItem('gatewayId') || deployment.gatewayId;
+const TOKEN_ID = localStorage.getItem('tokenId') || deployment.tokenId;
+const DOMAIN_KEY = localStorage.getItem('sourceDomainKey') || deployment.sourceDomainKey;
+const FACADE = '/facade';
 
 document.getElementById('registryId').textContent = REGISTRY_ID;
 document.getElementById('gatewayId').textContent = GATEWAY_ID;
@@ -396,10 +403,33 @@ document.getElementById('checkBalanceBtn').onclick = async () => {
 };
 
 document.getElementById('finalizeBtn').onclick = async () => {
-  if (!lastProof) { log('balanceLog','Get proof first'); return; }
-  log('balanceLog', `Would call settlement_gateway.finalize_inbound with message_id ${lastProof.payload?.message_id || lastMessage?.event?.message_id}\nRegistry: ${REGISTRY_ID}\nGateway: ${GATEWAY_ID}\nThis requires Freighter signing + Soroban RPC. See scripts/deploy.sh and frontend/src/soroban.ts for full flow.`);
-  document.getElementById('explorerLink').textContent = `https://stellar.expert/explorer/testnet/contract/${GATEWAY_ID}`;
-  document.getElementById('explorerLink').href = `https://stellar.expert/explorer/testnet/contract/${GATEWAY_ID}`;
+  // The relayer is the party that signs and pays for an inbound mint, so the
+  // page does not need a wallet for this direction at all: it asks the facade
+  // to run one pass against the height that was just locked on the source
+  // chain. The facade returns the transaction hashes it confirmed through
+  // Soroban RPC, and every one of them is linked to the explorer below.
+  const height = lastProof?.declared_height || lastMessage?.event?.height || null;
+  log('balanceLog', `Asking the relayer to settle source height ${height ?? '(latest)'} ...`);
+  try {
+    const response = await fetch(`${FACADE}/relay${height ? `?height=${height}` : ''}`, { method: 'POST' });
+    const result = await response.json();
+    if (!response.ok) {
+      log('balanceLog', `Relay refused: ${JSON.stringify(result)}`);
+      return;
+    }
+    log('balanceLog', `Relayer pass complete. Confirmed transactions: ${result.receipts?.length ? result.receipts.join(', ') : 'none'}`);
+    if (result.output) log('balanceLog', result.output.split('\n').filter(l => l.includes('receipt') || l.includes('already') || l.includes('mint')).join('\n'));
+    if (result.receipts && result.receipts.length > 0) {
+      const last = result.receipts[result.receipts.length - 1];
+      const link = `https://stellar.expert/explorer/testnet/tx/${last}`;
+      document.getElementById('explorerLink').textContent = link;
+      document.getElementById('explorerLink').href = link;
+      log('balanceLog', `Explorer: ${link}`);
+    }
+    log('balanceLog', `Registry ${REGISTRY_ID}\nGateway ${GATEWAY_ID}\nwSRC SAC ${TOKEN_ID}`);
+  } catch (error) {
+    log('balanceLog', `Relay failed: ${error}`);
+  }
 };
 
 document.getElementById('burnBtn').onclick = async () => {
@@ -410,7 +440,7 @@ document.getElementById('burnBtn').onclick = async () => {
   }
   const amount = document.getElementById('burnAmount').value;
   const recipientOnSource = document.getElementById('burnRecipient').value || userPubkey;
-  const targetDomain = localStorage.getItem('sourceDomainKey') || localStorage.getItem('domainKey') || '';
+  const targetDomain = DOMAIN_KEY;
   if (!/^[0-9a-fA-F]{64}$/.test(targetDomain)) {
     log('burnLog', 'Set sourceDomainKey to the deployed source domain key before burning.');
     return;

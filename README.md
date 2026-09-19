@@ -139,7 +139,7 @@ The Groth16 proof was generated from a circuit compiled in this repository, agai
 - **Because of that, the registry does not persist an event root from the ZK lane.** Storing a root that no signature covers would let an unconstrained value become the anchor for a Merkle settlement proof, and minting reads that anchor. The settlement receipt above is anchored by the **BLS** lane, whose aggregate signature does cover the event root. This is a deliberate refusal, not an oversight, and it is the reason the two lanes are not interchangeable yet.
 - **The source side is a local deterministic simulator**, not a live external network. Its BLS signatures are real (RFC 9380 hash-to-curve, DST `lumen-gate-finality-v1`) but its validator secret keys are the fixed demo values 1, 2, 3. Production requires a DKG. See [Known simplifications](#known-simplifications).
 - **The gasless path is live for inbound mints, and only for inbound mints.** The receipt above is real, but "gasless" here means *zero spendable XLM*, not zero setup: the recipient still needs an existing Stellar account holding a trustline for the wrapped asset, because a Stellar asset cannot be held without one. The outbound direction is not gasless — a user who wants to burn and unlock signs and pays for their own burn transaction. The fee the relayer charges is a fixed amount chosen at submission time, not a market.
-- **The frontend is not wired to the live contracts.** The reverse and forward runs above were driven from the command line and from the anchor facade, not from the web app.
+- **The frontend is wired to the live contracts, and it needs two local processes to be useful.** The addresses it prints are generated from `deployments/testnet.json` into `frontend/src/deployment.js` by `tools/sync-frontend-deployment.mjs`, and `--check` fails if the two ever drift, so the page cannot show an address the receipts were not written against. It reads balances from Horizon, reads the source chain through the simulator, and the **Finalize mint** button asks the anchor facade to run one relayer pass for the height that was just locked. The caveats, stated plainly: that button spends the relayer's XLM and is therefore opt-in (`LUMEN_ALLOW_RELAY=1`), the page expects the facade and the relayer to be running on the same machine as it, and the outbound burn is signed with Freighter but still needs that user to hold XLM. It is a live operator console, not a hosted service.
 - **No bond, fee or slashing economics.** A validator that signs a wrong root loses nothing.
 
 The source side is intentionally local. The Stellar side is not mocked: the acceptance bar was real deployments, real transaction hashes, real events, and negative probes against the live contracts — and that bar is now met for both directions.
@@ -385,17 +385,41 @@ The relayer must fail loudly when the deployment manifest still contains a place
 
 ### Frontend and anchor facade
 
+Three processes, one machine. Start the source simulator, then the facade, then the app:
+
 ```bash
+# 1. source chain (the simulator that plays the source network)
+./target/debug/source_simulator --port 8080
+
+# 2. anchor facade + relayer trigger (reads the deployment manifest itself)
+LUMEN_ALLOW_RELAY=1 \
+  STELLAR_RELAYER_ADDRESS=<relayer G address> \
+  RELAYER_FEE=1000000 \
+  SIM_URL=http://127.0.0.1:8080 \
+  node anchor/server.js          # listens on 8081
+
+# 3. the app, which proxies both of the above
 cd frontend
 npm install
-npm run dev
-
-cd ../anchor
-npm install
-PORT=8081 SIM_URL=http://localhost:3001 npm start
+VITE_SIMULATOR_ORIGIN=http://127.0.0.1:8080 VITE_FACADE_ORIGIN=http://127.0.0.1:8081 npm run dev
 ```
 
-Browser code must use a relative/proxied simulator URL or a configured public URL. The user's browser is not the sandbox, so a browser request to its own `localhost` is not a valid deployed demo path.
+The browser never talks to `localhost` directly. Vite proxies `/source-api` to the simulator and `/facade` to the anchor facade, so the page works both on the development machine and behind whatever proxy serves it — the classic failure mode of a browser app that calls its own `localhost` in a hosted demo does not apply here.
+
+Facade endpoints added for that integration:
+
+| Endpoint | What it does |
+| --- | --- |
+| `GET /deployment` | serves `deployments/testnet.json`, the manifest the frontend is generated from |
+| `GET /status` | runtime view: registry, gateway, source cursor, simulator status |
+| `POST /relay?height=H` | runs `target/debug/relayer --height H --once` and returns the transaction hashes it confirmed through Soroban RPC. **Disabled unless `LUMEN_ALLOW_RELAY=1`**, because it signs and spends |
+
+Regenerate the frontend addresses after any deployment change, and let CI check it:
+
+```bash
+node tools/sync-frontend-deployment.mjs          # write frontend/src/deployment.js
+node tools/sync-frontend-deployment.mjs --check   # exit 1 if it is stale
+```
 
 ## Security and scope statement
 
