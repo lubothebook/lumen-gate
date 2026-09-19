@@ -632,9 +632,15 @@ functionality belongs in the off-chain surface, the facade and the docs.
       silent the card shows an em-dash and says that null is not zero.
       `check-console.js` still passes; `--check` keeps the module from
       drifting, so the card cannot lag the receipts unnoticed.
-- [ ] **One 'is it a zkVM?' card.** The README's honest one-liner gets its
+- [x] **One 'is it a zkVM?' card.** The README's honest one-liner gets its
       interface counterpart: four lanes, two machines, and the three bounds
       (window, ceremony, anchor) in the same breath the card makes the claim.
+      **Result:** the console's honesty panel now makes the claim and the three
+      bounds in one entry — two machines, two statements, window-as-gas
+      spelled out for both machines, the ceremony bound told with the
+      AccessDenied fact rather than a euphemism, and the anchor bound kept —
+      and the panel's stale wording ("one bounded machine") died with it.
+      `tools/check-console.js` passes on the changed page.
 
 ### 4.1 Admin and verifying-key trust gap (implemented, keep probing)
 
