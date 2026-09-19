@@ -276,6 +276,15 @@ pub enum DataKey {
     /// Last accepted gate-vm run per domain. Own slot, own record type; the
     /// settlement anchor stays where the settlement lanes put it.
     GateVm(BytesN<32>),
+    /// The 32-line sibling of the gate-vm lane: same core circuit, same tag,
+    /// one quarter the row-per-constraint density per statement... a larger
+    /// window and a larger hash budget. Its own key slot because a ceremony
+    /// is per-compilation: the two 896-byte keys have equal length and equal
+    /// tag, and are separated by nothing but the fact that each lane verifies
+    /// under the key its own setup produced.
+    GateVm32Vk,
+    /// Last accepted gate-vm32 run per domain.
+    GateVm32(BytesN<32>),
 }
 
 /// What the registry recorded for one accepted multi-step chain.
@@ -372,6 +381,38 @@ pub struct GateVmRecord {
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct GateVmAttestation {
+    pub domain: BytesN<32>,
+    pub height: u64,
+    pub program_root: BytesN<32>,
+    pub end_root: BytesN<32>,
+    pub hash_steps: u64,
+    pub security: SecurityBacking,
+    pub evidence_digest: BytesN<32>,
+    pub adapter_version: u32,
+    pub evidence_version: u32,
+}
+
+/// The 32-line sibling's record. The field set is the 8-line lane's verbatim
+/// on purpose: two compilations of one machine produce the same *kind* of
+/// statement; what differs is the window the statement was checked inside,
+/// and that difference is certified by the key, not by new fields.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GateVm32Record {
+    pub domain: BytesN<32>,
+    pub height: u64,
+    pub program_root: BytesN<32>,
+    pub start_root: BytesN<32>,
+    pub event_root: BytesN<32>,
+    pub end_root: BytesN<32>,
+    pub hash_steps: u64,
+    pub settlement_anchored: bool,
+}
+
+/// An attestation for the 32-line gate-vm sibling.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GateVm32Attestation {
     pub domain: BytesN<32>,
     pub height: u64,
     pub program_root: BytesN<32>,
@@ -1554,6 +1595,156 @@ impl FinalityRegistry {
         })
     }
 
+    // =====================================================================
+    // Gate-VM32 lane: the sibling compilation
+    // =====================================================================
+    //
+    // One core circuit, two mains, two ceremonies, two slots. Everything the
+    // 8-line lane says about bound publics, bounded payloads and recording
+    // without anchoring holds here verbatim; the two facts that differ are
+    // the key material and the ceiling, and both are stated as constants
+    // beside this section rather than implied by the lane's name.
+
+    /// Bootstraps the 32-line sibling's verification key. Admin-gated like
+    /// the others, permanently refused after `renounce_admin`.
+    pub fn set_gate_vm32_vk(env: Env, admin: Address, vk: Bytes) {
+        if Self::is_admin_renounced(&env) {
+            panic!("admin renounced");
+        }
+        admin.require_auth();
+        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        if stored_admin != admin {
+            panic!("not admin");
+        }
+        if vk.len() != GATE_VM32_VK_LEN {
+            panic!("expected 896-byte gate-vm32 verification key");
+        }
+        env.storage().instance().set(&DataKey::GateVm32Vk, &vk);
+    }
+
+    pub fn get_gate_vm32_vk(env: Env) -> Bytes {
+        env.storage()
+            .instance()
+            .get(&DataKey::GateVm32Vk)
+            .unwrap_or(Bytes::new(&env))
+    }
+
+    pub fn get_gate_vm32_record(env: Env, domain: BytesN<32>) -> Option<GateVm32Record> {
+        env.storage().persistent().get(&DataKey::GateVm32(domain))
+    }
+
+    /// Verifies a 32-window run proof and records it.
+    pub fn submit_gate_vm32_zk(
+        env: Env,
+        evidence: RawEvidence,
+        proof: Bytes,
+        public_inputs: Vec<BytesN<32>>,
+    ) -> Result<GateVm32Attestation, RegistryError> {
+        let domain_key = compute_domain_key(&env, &evidence.adapter_id, &evidence.network);
+        let record: DomainRecord = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Domain(domain_key.clone()))
+            .ok_or(RegistryError::DomainNotFound)?;
+        if record.state == 0 || record.state >= 3 {
+            return Err(RegistryError::NotAdmitted);
+        }
+        if !record.accepted_versions.contains(evidence.evidence_version) {
+            return Err(RegistryError::VersionNotAccepted);
+        }
+
+        let digest = compute_evidence_digest(&env, &evidence);
+        if env
+            .storage()
+            .persistent()
+            .has(&DataKey::Evidence(digest.clone()))
+        {
+            return Err(RegistryError::EvidenceAlreadyProcessed);
+        }
+
+        let decoded = parse_gate_vm32_payload(&env, &evidence.payload)?;
+        if decoded.height != evidence.declared_height || decoded.end_root != evidence.declared_root
+        {
+            return Err(RegistryError::DeclaredMismatch);
+        }
+
+        if proof.len() != groth16::PROOF_SIZE {
+            return Err(RegistryError::InvalidProof);
+        }
+        if public_inputs.len() != GATE_VM32_PUBLIC_INPUTS {
+            return Err(RegistryError::InvalidProof);
+        }
+        let vk: Bytes = env
+            .storage()
+            .instance()
+            .get(&DataKey::GateVm32Vk)
+            .unwrap_or(Bytes::new(&env));
+        if vk.len() != GATE_VM32_VK_LEN {
+            return Err(RegistryError::InvalidProof);
+        }
+
+        require_root_input(&public_inputs, 0, &decoded.program_root)?;
+        require_root_input(&public_inputs, 1, &decoded.start_root)?;
+        require_root_input(&public_inputs, 2, &decoded.event_root)?;
+        require_root_input(&public_inputs, 3, &decoded.end_root)?;
+        require_scalar_input(&public_inputs, 4, decoded.hash_steps)?;
+        if public_inputs.get(5).unwrap() != gate_vm_tag(&env) {
+            return Err(RegistryError::DeclaredMismatch);
+        }
+
+        if let Some(previous) = env
+            .storage()
+            .persistent()
+            .get::<DataKey, GateVm32Record>(&DataKey::GateVm32(domain_key.clone()))
+        {
+            if decoded.height <= previous.height {
+                return Err(RegistryError::EvidenceAlreadyProcessed);
+            }
+        }
+
+        if !groth16::verify(&env, &vk, &proof, &public_inputs) {
+            return Err(RegistryError::InvalidProof);
+        }
+
+        let accepted = GateVm32Record {
+            domain: domain_key.clone(),
+            height: decoded.height,
+            program_root: decoded.program_root.clone(),
+            start_root: decoded.start_root.clone(),
+            event_root: decoded.event_root.clone(),
+            end_root: decoded.end_root.clone(),
+            hash_steps: decoded.hash_steps,
+            settlement_anchored: false,
+        };
+        env.storage()
+            .persistent()
+            .set(&DataKey::GateVm32(domain_key.clone()), &accepted);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Evidence(digest.clone()), &true);
+
+        env.events().publish(
+            (Symbol::new(&env, "gate_vm32_verified"), domain_key.clone()),
+            (
+                decoded.height,
+                decoded.hash_steps,
+                decoded.program_root.clone(),
+            ),
+        );
+
+        Ok(GateVm32Attestation {
+            domain: domain_key,
+            height: decoded.height,
+            program_root: decoded.program_root,
+            end_root: decoded.end_root,
+            hash_steps: decoded.hash_steps,
+            security: SecurityBacking::ZkProof,
+            evidence_digest: digest,
+            adapter_version: record.adapter_version,
+            evidence_version: evidence.evidence_version,
+        })
+    }
+
     pub fn list_domains(env: Env) -> Vec<BytesN<32>> {
         env.storage()
             .instance()
@@ -1617,6 +1808,11 @@ mod execution_trace_vectors;
 
 #[cfg(test)]
 mod gate_vm_vectors;
+#[cfg(test)]
+/// The 32-line sibling's committed vectors: its own ceremony's key, the same
+/// demo execution, and the invariance the split was built on -- end root
+/// equal to the 8-line lane's, program commitment different by construction.
+mod gate_vm32_vectors;
 
 // ---------------------------------------------------------------------------
 // Multi-step chained lane: payload parsing and public-input binding
@@ -1918,6 +2114,19 @@ pub const GATE_VM_VK_LEN: u32 = 896;
 /// security property (the circuit could not produce one either).
 pub const GATE_VM_MAX_HASH_STEPS: u64 = 7;
 
+// The 32-line sibling: same payload layout, same public-input count, same key
+// length (the ceremony differs, the serialization does not), and a hash-step
+// ceiling that is the window size minus one -- 32 rows can count 31 hash
+// instructions before the halt must have arrived. The domain tag is shared
+// with the 8-line lane because the *circuit* shares it: both compilations
+// publish the same separation constant, and the registry does not pretend to
+// tell the lanes apart by a number they agree on. What separates them is the
+// key each proof must verify under, and the ceiling each payload may claim.
+pub const GATE_VM32_PAYLOAD_LEN: u32 = 144;
+pub const GATE_VM32_PUBLIC_INPUTS: u32 = 6;
+pub const GATE_VM32_VK_LEN: u32 = 896;
+pub const GATE_VM32_MAX_HASH_STEPS: u64 = 31;
+
 /// The domain-separation tag compiled into the gate-vm circuit, as a 32-byte
 /// big-endian field element: sha256("lumen-gate-vm-v1")[0..31], zero-padded --
 /// the same derivation `STEP_CHAIN_TAG_BYTES` and `EXECUTION_TAG_BYTES` document
@@ -1965,6 +2174,31 @@ fn parse_gate_vm_payload(env: &Env, payload: &Bytes) -> Result<DecodedGateVm, Re
     }
     let hash_steps = read_u64_le(payload, 136);
     if hash_steps > GATE_VM_MAX_HASH_STEPS {
+        return Err(RegistryError::InvalidPayload);
+    }
+    Ok(DecodedGateVm {
+        height,
+        program_root: read_root(env, payload, 8),
+        start_root: read_root(env, payload, 40),
+        event_root: read_root(env, payload, 72),
+        end_root: read_root(env, payload, 104),
+        hash_steps,
+    })
+}
+
+/// The 32-line lane parses the same layout with the sibling ceiling. The
+/// reuse of the shape is the point: a reviewer comparing the two lanes should
+/// find exactly one difference, and it should be the number.
+fn parse_gate_vm32_payload(env: &Env, payload: &Bytes) -> Result<DecodedGateVm, RegistryError> {
+    if payload.len() != GATE_VM32_PAYLOAD_LEN {
+        return Err(RegistryError::BadPayloadLength);
+    }
+    let height = read_u64_le(payload, 0);
+    if height == 0 {
+        return Err(RegistryError::InvalidPayload);
+    }
+    let hash_steps = read_u64_le(payload, 136);
+    if hash_steps > GATE_VM32_MAX_HASH_STEPS {
         return Err(RegistryError::InvalidPayload);
     }
     Ok(DecodedGateVm {
@@ -3492,6 +3726,250 @@ mod test {
         client.admit_domain(&admin, &domain);
         client.set_gate_vm_vk(&admin, &gv_vk(env));
         (client, admin, domain)
+    }
+
+    // -- the 32-line sibling -------------------------------------------------
+    //
+    // Same helper shapes as the 8-line lane, deliberately near-verbatim: a
+    // reviewer should diff the two test sections and find the ceilings, the
+    // keys, and the sibling-specific invariance claims as the only deltas.
+
+    use crate::gate_vm32_vectors as g3x;
+
+    fn g32_hex(env: &Env, text: &str) -> Bytes {
+        Bytes::from_slice(env, &decode_hex_var(text))
+    }
+
+    fn g32_inputs(env: &Env) -> Vec<BytesN<32>> {
+        let mut out = Vec::new(env);
+        for i in 0..g3x::PUBLIC_INPUTS_HEX.len() {
+            out.push_back(BytesN::from_array(
+                env,
+                &decode_hex::<32>(g3x::PUBLIC_INPUTS_HEX[i]),
+            ));
+        }
+        out
+    }
+
+    fn g32_payload(env: &Env, height: u64, hash_steps_override: Option<u64>) -> Bytes {
+        let inputs = g32_inputs(env);
+        let mut payload = Bytes::new(env);
+        payload.append(&Bytes::from_array(env, &height.to_le_bytes()));
+        for index in [GV_PROGRAM_ROOT, GV_START, GV_EVENT, GV_END] {
+            payload.append(&Bytes::from_array(
+                env,
+                &inputs.get(index as u32).unwrap().to_array(),
+            ));
+        }
+        let steps =
+            hash_steps_override.unwrap_or_else(|| public_u64(&inputs.get(GV_HASH_STEPS as u32).unwrap()));
+        payload.append(&Bytes::from_array(env, &steps.to_le_bytes()));
+        payload
+    }
+
+    fn g32_evidence(env: &Env, height: u64) -> RawEvidence {
+        let (adapter, network) = sc_domain(env);
+        let inputs = g32_inputs(env);
+        RawEvidence {
+            adapter_id: adapter,
+            evidence_version: 1,
+            network,
+            payload: g32_payload(env, height, None),
+            declared_height: height,
+            declared_root: BytesN::from_array(env, &inputs.get(GV_END as u32).unwrap().to_array()),
+            submitter: Address::generate(env),
+        }
+    }
+
+    fn g32_registry(env: &Env) -> (FinalityRegistryClient<'_>, Address, BytesN<32>) {
+        let contract_id = env.register(FinalityRegistry, ());
+        let client = FinalityRegistryClient::new(env, &contract_id);
+        let admin = Address::generate(env);
+        client.initialize(&admin);
+        let (adapter, network) = sc_domain(env);
+        let domain = client.register_domain(
+            &admin,
+            &adapter,
+            &network,
+            &10,
+            &1,
+            &Vec::from_array(env, [1u32]),
+        );
+        client.admit_domain(&admin, &domain);
+        client.set_gate_vm32_vk(&admin, &g32_hex(env, g3x::VK_HEX));
+        (client, admin, domain)
+    }
+
+    #[test]
+    fn test_gate_vm32_vectors_are_the_layout_the_sibling_expects() {
+        assert_eq!(g3x::VK_HEX.len(), (GATE_VM32_VK_LEN as usize) * 2);
+        assert_eq!(g3x::PROOF_HEX.len(), 256 * 2);
+        assert_eq!(g3x::PUBLIC_INPUTS_HEX.len(), GATE_VM32_PUBLIC_INPUTS as usize);
+        assert_eq!(
+            g3x::PUBLIC_INPUT_ORDER,
+            [
+                "program_root",
+                "start_root",
+                "event_root",
+                "end_root",
+                "hash_steps",
+                "domain_tag"
+            ],
+            "the sibling shares the 8-line lane's declaration order exactly"
+        );
+        let env = Env::default();
+        let rebuilt = g32_payload(&env, g3x::HEIGHT, None);
+        let committed = Bytes::from_slice(&env, &decode_hex_var(g3x::PAYLOAD_HEX));
+        assert_eq!(rebuilt, committed, "the reconstructed payload must equal the committed bytes");
+        assert_eq!(committed.len(), GATE_VM32_PAYLOAD_LEN);
+    }
+
+    #[test]
+    fn test_gate_vm32_honest_run_is_accepted_and_recorded() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, _admin, domain) = g32_registry(&env);
+
+        let attestation = client.submit_gate_vm32_zk(
+            &g32_evidence(&env, g3x::HEIGHT),
+            &g32_hex(&env, g3x::PROOF_HEX),
+            &g32_inputs(&env),
+        );
+        assert_eq!(attestation.height, g3x::HEIGHT);
+        assert_eq!(attestation.hash_steps, 4);
+        assert_eq!(attestation.security, SecurityBacking::ZkProof);
+        let recorded = client
+            .get_gate_vm32_record(&domain)
+            .expect("an accepted sibling run must be recorded");
+        assert_eq!(recorded.hash_steps, 4);
+        assert!(!recorded.settlement_anchored);
+    }
+
+    #[test]
+    fn test_gate_vm32_shares_the_end_root_and_the_tag_but_not_the_key() {
+        // The split's whole claim, in the contract's own terms: the two
+        // compilations of one core prove the same execution to the same
+        // separation constant, commit their padding apart, and are told
+        // apart by key material no payload can influence.
+        let both = (
+            decode_hex::<32>(gvx::PUBLIC_INPUTS_HEX[GV_END]),
+            decode_hex::<32>(g3x::PUBLIC_INPUTS_HEX[GV_END]),
+        );
+        assert_eq!(both.0, both.1, "the end root must be padding-invariant");
+        assert_ne!(
+            decode_hex::<32>(gvx::PUBLIC_INPUTS_HEX[GV_PROGRAM_ROOT]),
+            decode_hex::<32>(g3x::PUBLIC_INPUTS_HEX[GV_PROGRAM_ROOT]),
+            "the committed fold must move with the padding"
+        );
+        assert_eq!(
+            decode_hex::<32>(gvx::PUBLIC_INPUTS_HEX[GV_TAG]),
+            decode_hex::<32>(g3x::PUBLIC_INPUTS_HEX[GV_TAG]),
+            "one machine, one tag"
+        );
+        assert_ne!(
+            gvx::VK_HEX, g3x::VK_HEX,
+            "the two 896-byte siblings must be different ceremonies"
+        );
+        assert_eq!(gvx::VK_HEX.len(), g3x::VK_HEX.len());
+    }
+
+    #[test]
+    fn test_gate_vm32_ceiling_is_its_window_and_a_33rd_step_refuses() {
+        // The payload ceiling is the only parse difference between the
+        // siblings: steps up to 31 parse here (7 in the 8-line lane), and 32
+        // is a format error before any pairing — the lane that can afford the
+        // longer chain is the only one that may claim it.
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, _admin, _domain) = g32_registry(&env);
+
+        let mut payload = g32_payload(&env, g3x::HEIGHT, Some(32));
+        let _ = &mut payload;
+        let (adapter, network) = sc_domain(&env);
+        let mut inputs = g32_inputs(&env);
+        let _ = &mut inputs;
+        let res = client.try_submit_gate_vm32_zk(
+            &RawEvidence {
+                adapter_id: adapter,
+                evidence_version: 1,
+                network,
+                payload: g32_payload(&env, g3x::HEIGHT, Some(32)),
+                declared_height: g3x::HEIGHT,
+                declared_root: BytesN::from_array(&env, &inputs.get(GV_END as u32).unwrap().to_array()),
+                submitter: Address::generate(&env),
+            },
+            &g32_hex(&env, g3x::PROOF_HEX),
+            &g32_inputs(&env),
+        );
+        assert_eq!(res.unwrap_err().unwrap(), RegistryError::InvalidPayload);
+    }
+
+    #[test]
+    fn test_gate_vm32_refuses_the_siblings_key_even_at_the_right_length() {
+        // The new confusion case only the two-sibling world can pose: install
+        // the 8-line key in the 32-line slot — legal length, same tag, and a
+        // proof that says nothing wrong — and require the pairing equation to
+        // be the thing that refuses it. A registry that trusted length or tag
+        // would accept this; the math does not.
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(FinalityRegistry, ());
+        let client = FinalityRegistryClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        client.initialize(&admin);
+        let (adapter, network) = sc_domain(&env);
+        let domain = client.register_domain(&admin, &adapter, &network, &10, &1, &Vec::from_array(&env, [1u32]));
+        client.admit_domain(&admin, &domain);
+        client.set_gate_vm32_vk(&admin, &g32_hex(&env, gvx::VK_HEX)); // the WRONG 896
+
+        let res = client.try_submit_gate_vm32_zk(
+            &g32_evidence(&env, g3x::HEIGHT),
+            &g32_hex(&env, g3x::PROOF_HEX),
+            &g32_inputs(&env),
+        );
+        assert_eq!(res.unwrap_err().unwrap(), RegistryError::InvalidProof);
+        let _ = domain;
+    }
+
+    #[test]
+    fn test_gate_vm32_refuses_a_replayed_digest_and_a_mutated_proof() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, _admin, _domain) = g32_registry(&env);
+
+        let mut proof = decode_hex_var(g3x::PROOF_HEX);
+        proof[9] ^= 0x01;
+        let res = client.try_submit_gate_vm32_zk(
+            &g32_evidence(&env, g3x::HEIGHT),
+            &Bytes::from_slice(&env, &proof),
+            &g32_inputs(&env),
+        );
+        assert_eq!(res.unwrap_err().unwrap(), RegistryError::InvalidProof);
+
+        client.submit_gate_vm32_zk(
+            &g32_evidence(&env, g3x::HEIGHT),
+            &g32_hex(&env, g3x::PROOF_HEX),
+            &g32_inputs(&env),
+        );
+        let replay = client.try_submit_gate_vm32_zk(
+            &g32_evidence(&env, g3x::HEIGHT),
+            &g32_hex(&env, g3x::PROOF_HEX),
+            &g32_inputs(&env),
+        );
+        assert_eq!(
+            replay.unwrap_err().unwrap(),
+            RegistryError::EvidenceAlreadyProcessed
+        );
+    }
+
+    #[test]
+    fn test_gate_vm32_vk_setting_is_refused_after_renounce() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, admin, _domain) = g32_registry(&env);
+        client.renounce_admin(&admin);
+        let res = client.try_set_gate_vm32_vk(&admin, &g32_hex(&env, g3x::VK_HEX));
+        assert!(res.is_err(), "the sibling slot must freeze with all the others");
     }
 
     #[test]
