@@ -43,6 +43,7 @@ const state = {
   status: null,
   lock: null,
   operatorToken: store.get('lumen.operatorToken'),
+  latticeScale: store.get('lumen.latticeScale'),
   wallet: null,
 };
 
@@ -135,9 +136,46 @@ async function api(path, { method = 'GET', body, auth = false } = {}) {
 // element sits below every surface in the document, so the black band and the
 // cards hide it on their own; the only reason this listens for the pointer at
 // all is to keep the work off the layout thread.
+// The tile is 60x60 and it is meant to be read as pixels, not as a picture that
+// happens to be pixel-sized: one asset pixel per *screen* pixel. On a 2x display
+// that is a 30px cell in CSS terms, which is exactly what an image viewer at
+// 100% zoom would show. Nothing is ever enlarged.
+const TILE_PX = 60;
+const FRAME_PX = 4;
+
+const LATTICE_MODES = { pixel: null, '60': 60, '30': 30 };
+
+function sizeLattice() {
+  const dpr = window.devicePixelRatio || 1;
+  const mode = state.latticeScale && LATTICE_MODES[state.latticeScale] !== undefined ? state.latticeScale : 'pixel';
+  const fixed = LATTICE_MODES[mode];
+  const cell = fixed === null ? TILE_PX / dpr : fixed;
+  const root = document.documentElement;
+  root.style.setProperty('--cell', `${cell}px`);
+  root.style.setProperty('--ring', `${FRAME_PX / dpr}px`);
+  root.dataset.lattice = mode;
+  for (const [id, value] of [['scalePixel', 'pixel'], ['scale60', '60'], ['scale30', '30']]) {
+    const button = $(id);
+    if (button) button.setAttribute('aria-pressed', String(value === mode));
+  }
+  const readout = $('latticeReadout');
+  if (readout) {
+    const shown = Number(cell.toFixed(2));
+    readout.textContent = mode === 'pixel'
+      ? `lattice: ${TILE_PX}\u00d7${TILE_PX} asset, 1 asset px = 1 screen px \u00b7 ${shown}px cell at dpr ${dpr} \u00b7 hover frame ${FRAME_PX} screen px`
+      : `lattice: ${TILE_PX}\u00d7${TILE_PX} asset drawn at ${shown}px per cell \u00b7 hover frame ${FRAME_PX} screen px`;
+  }
+}
+
+function setLatticeScale(mode) {
+  state.latticeScale = mode;
+  store.set('lumen.latticeScale', mode);
+  sizeLattice();
+}
+
 function watchGrid() {
   const frame = $('gridFrame');
-  const cell = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--cell')) || 60;
+  sizeLattice();
   let queued = null;
   let ticking = false;
 
@@ -150,8 +188,13 @@ function watchGrid() {
       frame.classList.remove('on');
       return;
     }
-    const left = Math.floor(x / cell) * cell;
-    const top = Math.floor((window.scrollY + y) / cell) * cell - window.scrollY;
+    // snap to the same lattice the background is painted on, then land on a
+    // whole device pixel so the 4px ring stays crisp
+    const dpr = window.devicePixelRatio || 1;
+    const quantise = (value) => Math.round(value * dpr) / dpr;
+    const cell = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--cell')) || 60;
+    const left = quantise(Math.floor(x / cell) * cell);
+    const top = quantise(Math.floor((window.scrollY + y) / cell) * cell - window.scrollY);
     frame.style.transform = `translate3d(${left}px, ${top}px, 0)`;
     frame.classList.add('on');
   };
@@ -699,9 +742,27 @@ function paintWriteState() {
 }
 
 function operatorDialog() {
+  const dialog = $('operatorDialog');
   $('opToken').value = state.operatorToken;
-  $('opState').textContent = state.operatorToken ? 'A token is set for this tab.' : 'No token set: writes will be refused.';
-  $('operatorDialog').showModal();
+  $('opState').textContent = state.operatorToken
+    ? 'A token is set for this tab. Saving replaces it.'
+    : 'No token set: writes will be refused.';
+  dialog.showModal();
+  // Put the caret in the field the dialog exists for, so a keyboard user does
+  // not have to tab through the toolbar to reach it.
+  $('opToken').focus();
+  $('opToken').select();
+  // Wherever the dialog is dismissed from, focus returns to the button that
+  // opened it: a dialog that closes into nowhere loses the reader's place.
+  dialog.addEventListener('close', restoreOperatorFocus, { once: true });
+}
+
+function restoreOperatorFocus() {
+  if ($('operatorBtn') && !$('operatorBtn').hidden) {
+    $('operatorBtn').focus();
+  } else if ($('operatorHintBtn')) {
+    $('operatorHintBtn').focus();
+  }
 }
 
 function showTab(which) {
@@ -718,6 +779,10 @@ function wire() {
   $('copyCmdBtn').addEventListener('click', () => copyCommand());
   $('clearLogBtn').addEventListener('click', () => showLogPlaceholder());
   $('operatorHintBtn').addEventListener('click', operatorDialog);
+  $('scalePixel').addEventListener('click', () => setLatticeScale('pixel'));
+  $('scale60').addEventListener('click', () => setLatticeScale('60'));
+  $('scale30').addEventListener('click', () => setLatticeScale('30'));
+  window.addEventListener('resize', sizeLattice);
   wireAmounts();
   $('demoRecipientBtn').addEventListener('click', () => {
     const demo = state.status?.accounts?.gasless_recipient || state.status?.accounts?.end_user;
@@ -758,8 +823,12 @@ function wire() {
     $('opToken').value = '';
     paintWriteState();
     log('Token cleared: this tab is read-only again.');
+    // Clearing is a completed action, so the dialog closes and the reader lands
+    // back on the control they came from instead of on an empty form.
+    $('operatorDialog').close();
     loadStatus();
   });
+  $('opClose').addEventListener('click', () => $('operatorDialog').close());
 }
 
 wire();

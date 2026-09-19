@@ -214,8 +214,27 @@ async function checkRateLimit() {
   }
 }
 
+// The rate-limit check below deliberately spends the facade's whole window --
+// that is what testing a limiter means. A second probe inside the same window
+// would then read 429 on its own opening requests and report a healthy facade
+// as broken, so the probe waits out a window that a previous burst closed. The
+// wait is bounded, and it is announced rather than hidden.
+async function awaitRateLimitWindow() {
+  try {
+    const response = await fetch(`${FACADE_URL}/v1/info`);
+    if (response.status !== 429) return;
+    const retryAfter = Number(response.headers.get('retry-after') || 60);
+    const wait = Math.min(Math.max(retryAfter, 1) + 1, 90);
+    if (!AS_JSON) console.log(`  [wait] the rate-limit window is still closed from a previous burst; waiting ${wait}s before probing`);
+    await new Promise((resolve) => setTimeout(resolve, wait * 1000));
+  } catch {
+    // An unreachable facade is reported by the checks themselves, with detail.
+  }
+}
+
 async function main() {
   if (!AS_JSON) console.log(`SEP conformance probe against ${FACADE_URL}\n`);
+  await awaitRateLimitWindow();
   await checkDiscovery();
   await checkEnvelopeAndRouting();
   const session = await checkSep10();

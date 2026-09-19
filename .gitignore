@@ -16,3 +16,6 @@
 __pycache__/
 *.pyc
 /node_modules/
+
+# SEP-6 transaction records written at runtime by the facade
+deployments/sep6-transactions.json

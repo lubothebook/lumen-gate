@@ -169,6 +169,31 @@
       "id": "facade-could-not-tell-a-missing-relayer-from-an-idle-one",
       "found": "when the relayer binary was not on disk, the facade's relay endpoint returned ok:false with 'no transaction was confirmed in this pass'. That reads exactly like a healthy relayer that found nothing to do, so an operator debugging a dead deployment would look at the chain instead of at the missing binary",
       "fix": "the spawn result is inspected and reported: a missing binary, a killed process and an empty pass now produce three different messages, and the console prints the reason instead of a generic refusal"
+    },
+    {
+      "id": "audit-probe-reused-a-recorded-height",
+      "found": "round 8 of the self-audit loop reported a failure that was not a contract failure. The source simulator is deterministic and restarts at height 1, while the registry keeps its records, so after a restart the loop proposed evidence for a height the chain already held. The guard refused it with #9, which is the correct answer, but the round then presented a correctly refused replay as 'a valid proof was rejected'. Any rebuild of the demo source chain reaches this state, and the loop had no way to tell the two apart.",
+      "fix": "the loop now reads get_last_finalized for the source domain before it locks a probe block and waits for the simulator to pass that height, so a refusal can only mean the contract refused something the chain had never seen. Round 9 is 7/7 with the guard intact: the replay probe still gets #9, and the honest probe now lands on a genuinely new height."
+    },
+    {
+      "id": "the-artwork-was-redrawn-in-the-repo",
+      "found": "the page was not painting the submitted cube. frontend/public/grid-tile.png had been replaced by a brightened variant with a heavier, larger square and thicker strokes (the artwork's own greys run 6-25; the file in the repo ran up to 51 with a visibly bigger outline). So the background every reader saw was a redrawn grid, and the submitted pixels were nowhere on the page. This is what 'the cubes are bigger than my pixels' was.",
+      "fix": "frontend/public/grid-tile.png is now the submitted file byte for byte (sha256 recorded in interface_state.lattice), the page embeds it directly and paints it unfiltered - the scrims that had also been dimming it are gone - and tools/check-console.js compares the embedded copy against the file, so the artwork cannot be silently redrawn again. A 60x60 window of the rendered page carries exactly the artwork's own grey values."
+    },
+    {
+      "id": "audit-read-the-gateway-id-as-a-string",
+      "found": "the self-audit's gateway check reported 'no gateway id: set GATEWAY_ID or record contracts.settlement_gateway in the manifest' while the gateway id was sitting in the manifest. The helper read contracts.settlement_gateway as a bare string and called .trim() on it, but the manifest records each contract as an object ({contract_id, status, wasm_bytes, ...}). The type error was swallowed by the helper's own catch, so a passing capability (the gateway's admin really is renounced) was reported as unproven. A config reader that fails silently is the same defect as a check that passes on empty output.",
+      "fix": "gatewayIdFromManifest() accepts both shapes - a bare id or an object carrying contract_id - and the round after the fix is where the check passed on its own evidence (a second renounce trapping in the host), not on the absence of an error."
+    },
+    {
+      "id": "second-probe-inside-a-closed-rate-window",
+      "found": "the SEP conformance probe ends by bursting the facade's rate limit on purpose, which closes the window for every client at that address. A second round started inside the same minute therefore read HTTP 429 on its own opening requests and reported a healthy facade as broken (3/14 checks). Nothing was wrong with the facade: the probe was reading its own previous burst.",
+      "fix": "the probe waits out a window that a previous burst closed before it starts, using the Retry-After the facade sends and capping the wait at 90 seconds. The burst is still a burst, and the next round starts from an open window instead of inheriting a closed one."
+    },
+    {
+      "id": "operator-dialog-cleared-into-nothing",
+      "found": "the operator dialog's Clear button cleared the token and left the dialog open on an empty field, with the reader's focus unmanaged. Closing it with the mouse or Escape dropped focus to the browser's default instead of the button that opened it, so a keyboard user lost their place in the console.",
+      "fix": "Clear now closes the dialog and focus returns to the control that opened it; Save does the same, and the dialog restores focus on any close path (Clear, Close, Escape) through one handler. Opening the dialog puts the caret in the token field and selects it, so the field the dialog exists for is one keystroke away."
     }
   ],
   "negative_probes": {
@@ -350,7 +375,8 @@
     "language": "the page background is the source chain: one square per block, using the project's own tile. It runs the full height of the document and is interrupted once, by the wallet console, which is the only part of the page that can move value",
     "console_position": "deliberately placed below the overview and the settlement explanation, so a reader arrives at the wallet knowing what it is about to do",
     "wordmark": "the header and favicon use the project's own assets, embedded as data URIs so the page renders with no network at all",
-    "capability_gating": "the lock button is disabled when no source adapter is configured, the settle button when no operator is configured, and the reason is printed under the control rather than shown as a failure after the click"
+    "capability_gating": "the lock button is disabled when no source adapter is configured, the settle button when no operator is configured, and the reason is printed under the control rather than shown as a failure after the click",
+    "lattice": "the page background is the submitted artwork, painted unfiltered: frontend/public/grid-tile.png, 60x60, sha256 54e261769ac062fdc5c06084c80671cd52f26f4e2b7dac7284402399c7d2019f, embedded in the page as a data URI. One asset pixel per screen pixel (cell = 60 / devicePixelRatio, so a 2x display gets a 30px cell that still lands on 60 physical pixels), image-rendering: pixelated, and a hover frame of 4 screen pixels snapped to the same lattice. A footer switch offers 1:1 px, 60px and 30px for readers who want the grid denser or coarser than their display implies."
   },
   "console_wallet_round_trip_history": [
     {

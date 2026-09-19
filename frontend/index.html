@@ -23,8 +23,9 @@
     --ok: #71e9ab;
     --warn: #f2c25a;
     --bad: #ff8f7f;
-    --cell: 60px;
-    --grid-tile: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADwAAAA8CAIAAAC1nk4lAAAFhUlEQVR4nNWaYU/yPBSG+8wHXdiW4dxSt0wWDWKMCYnx//8GEhK/EKNGF3SZDJbi0tC4PB+OFhhjVCivr/cHI+uhXOva09Mb/tzc3KDfJuWnATbRX/5fmqbj8ZhSOplMfhBoWbquq6pqGIZlWXDlE5oxZpqmaZrwMs/z8Xj88PDwM5gI6bruOE6j0VCU2VxgjNVqNcShCSGWZaVpOp1ONU1TVdWyLLizKIrCMPzPcJvN5tHREbDmeZ5l2fv7+97enmVZWZbBsH5CU0oRQuPx+O3tDa6Ypuk4jmEYGGOMcZIkux74drttGAawxnFMCBmNRtCEMbYsi1K6AE0IQQjV63XeRZqmaZrCG2zbhoHf0ai7rut5HkIoy7LX11fOynVwcACQGOMZNCw+VVWXe4yiKIqiw8NDz/Pgjnu9nkTiTqdTq9UopWEYwjAtS9M0hBBvnWWPPM+hrVSj0Wg0GmGMPc+7vr7udrvb4+q6fn5+jgSWjaqqjDH+crY2h8Ohoii2bVe8OYqibrf78fFxc3MDT2pj2bZ9cXExnU673W41sW3biqIkSVICDVdhKVSr1+sRQnzf35gbYxwEQZqmt7e3a4MbjQZCaP7GZtCTyYQxxhN4tfr9fhzHvu/z1C6uw8ND3/fjOL67uxOJN01zfm6gwjY+GAwQQr7vi/T19PREKT07OxOm/dTZ2Rkh5OnpSSQYYACMawH67e0tz3PHcQQ/Hh5up9MRjIdgxli/3xeMtyyLMcZ3D1CxYBoMBoqiCA42Qujx8XFvb6/ZbIoEN5vNWq0WRZFg5xBfGGa0DB1FEWNMfIWNRiNKqeDDcRwnyzJx6KOjo+VhRqWlKewdV1dXgl3DSLTb7eqwy8tLhNDz87Ngt+12W1GU0o2svJ4Ow3B/f19wkqRpSghZmyvr9XqapoJ1r+/7mqYtTwxQOXQURe/v747jCGY0eOKtVmtVADTFcSzSm23bGOPhcPjy8lIasPLk0u/3p9Npq9Wq3iNBaZryEqxUpmlSSleVFoXIIAgopRU5seq4dXt7yxgLgkBknsCGWnqHsKzn9+FVcl231WpRSqt3yjVnxF6vlySJ4zhr1xk8ytI0AncC1W+FTk9Pj4+PCSFr9/a/1c0IoYeHB4yx7/vX19fPz8/LCYiLUjpfkXOpqlp99ORljGC9vh4afZXUnU4nCALP8waDQSl6lmWqquq6vsxXKB64XNe1LAsqz/v7e8HcIgQN6vV6MCRBEJycnAyHwyRJ5j8Gzmyaps1fhCEszA3TNA3DcBxHUZQ8z8MwFN9xvgeNEArDMAxD3/edL1FKsyyDv3meo8UzG3+Z57mu65qm1ev1er0OR6Q8zweDwaq8Jg16Ht00Tc/zOAFXYZeB1kL+IYTEcbx8FhTUJtAgfvLVdd0wjEajUfuS67owfhhjGGnGGGNsPB4TQrY3gzaH5ppMJpPJhD/lTqfjeR6crhFCjDG5B2G0Cy+vgCidGP1SA1I+dKEWd11X+kdImNMg8DYbjYZhGDyRwVZqGEaSJBL92K2gV3mbfFFGUYQxNgyD50EpfuyG0NXe5nzkLvzYb0OLeJvz8bvwY78BLe5tzl/chR8rCr2BtwnahR+7Hnpjb5NLuh+7Jk9v421ySfdjq6C39Da5pPuxK6G39za5pPuxK6G39zbnJdePLYeW4m3OS64fWwIty9ssSKIfWwIty9ssSKIfW4SW6G0uS5YfW4SW6G2WSoofuwAt19sslRQ/dgFarre5Stv7sTNo6d5mhbb0Y2fQ0r3Nam3jx86qPOne5lpt7MculKZyvU0RfdePXYDehbcpLnE/dgF6F97mt/QtP/YP/C4vy7JlE39Lb3NjcT+2cL34w6tdeJsbq8KPhYCFhQgNpd+b/K/0Kw3Ifxu1cxXj9/AyAAAAAElFTkSuQmCC");
+    --cell: 60px;   /* one asset pixel per screen pixel; set from the device in app.js */
+    --ring: 4px;    /* the hover frame, same pixel language as the tile */
+    --grid-tile: url("data:image/png;base64,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");
     --r-xl: 20px;
     --r-lg: 16px;
     --r: 12px;
@@ -90,8 +91,8 @@
   .grid-frame {
     position: fixed; left: 0; top: 0; z-index: -1; pointer-events: none;
     width: var(--cell); height: var(--cell);
-    box-shadow: inset 0 0 0 4px rgba(255, 255, 255, 0.32);
-    background: rgba(255, 255, 255, 0.022);
+    box-shadow: inset 0 0 0 var(--ring) rgba(255, 255, 255, 0.55);
+    background: rgba(255, 255, 255, 0.03);
     opacity: 0; transition: opacity 0.16s ease;
     will-change: transform;
   }
@@ -113,30 +114,31 @@
   .boundary-in .strong { color: var(--muted); }
   @media (max-width: 720px) { .boundary-in .wide-only { display: none; } }
 
-  /* The hero sits on a scrim: the lattice stays legible as texture without
-     competing with the headline that has to be read first. */
+  /* No scrim: the lattice is the submitted artwork, and every filter that made
+     the page look calmer also changed the artist's pixels. Contrast is the
+     text's job instead. */
   .hero { position: relative; }
-  .hero::before {
-    content: ''; position: absolute; inset: -96px 0 0 0; pointer-events: none; z-index: 0;
-    background:
-      radial-gradient(120% 80% at 12% 0%, rgba(5,6,4,0.94) 0%, rgba(5,6,4,0.74) 42%, rgba(5,6,4,0.22) 82%, rgba(5,6,4,0) 100%),
-      linear-gradient(180deg, rgba(5,6,4,0.88) 0%, rgba(5,6,4,0.62) 46%, rgba(5,6,4,0.34) 100%);
-  }
   .hero > .shell { position: relative; z-index: 1; }
 
-  /* Reading sections that sit on the lattice get the same treatment, lighter:
-     the grid is still the page, but prose is read against a calmer column. The
-     band is the only place where the grid is gone completely. */
+  /* Reading sections sit on the lattice with no filter of their own. The band
+     remains the only place where the grid is gone completely. */
   main > section:not(.hero):not(.band-wrap) { position: relative; }
-  main > section:not(.hero):not(.band-wrap)::before {
-    content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 0;
-    background: linear-gradient(180deg,
-      rgba(5,6,4,0.58) 0%, rgba(5,6,4,0.46) 34%, rgba(5,6,4,0.52) 70%, rgba(5,6,4,0.62) 100%);
-  }
   main > section:not(.hero):not(.band-wrap) > .shell { position: relative; z-index: 1; }
 
   /* Card header with a trailing action: the hint and its remedy stay together. */
   .card-meta { display: inline-flex; align-items: center; gap: 12px; }
+
+  /* A quiet switch for the one thing the page cannot guess: how big the grid
+     should be on this display. The default is the literal one - one asset pixel
+     per screen pixel - and the other two are there so nobody has to argue with
+     a texture. */
+  .lattice-scale { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 0.6875rem; }
+  .scale-btn {
+    appearance: none; background: none; border: 1px solid var(--line-2); border-radius: 999px;
+    color: var(--muted); font: inherit; font-family: var(--mono); letter-spacing: 0.08em;
+    padding: 3px 9px; cursor: pointer;
+  }
+  .scale-btn[aria-pressed="true"] { border-color: var(--line-3); color: var(--ink); background: rgba(255,255,255,0.06); }
   .field .hint[data-state="warn"] { color: var(--warn); }
   .log .log-empty { color: var(--faint); }
   @media (hover: none), (pointer: coarse) { .grid-frame { display: none; } }
@@ -777,6 +779,13 @@
 <footer>
   <div class="shell foot-row">
     <span>Lumen Gate &middot; Stellar testnet engineering snapshot &middot; <span id="footerChain">horizon-testnet.stellar.org</span></span>
+    <span class="lattice-scale" role="group" aria-label="Lattice scale">
+      <span class="faint">lattice</span>
+      <button class="scale-btn" id="scalePixel" type="button" aria-pressed="true">1:1 px</button>
+      <button class="scale-btn" id="scale60" type="button" aria-pressed="false">60px</button>
+      <button class="scale-btn" id="scale30" type="button" aria-pressed="false">30px</button>
+    </span>
+    <span id="latticeReadout">lattice: one 60&times;60 asset pixel per screen pixel</span>
     <span>Built for the Rise In x Stellar Pro Hackathon, Genesis track.</span>
   </div>
 </footer>
@@ -795,7 +804,7 @@
     <div class="btn-row">
       <button class="btn primary" id="opSave" type="button">Save for this tab</button>
       <button class="btn" id="opClear" type="button">Clear</button>
-      <button class="btn" type="button" onclick="this.closest('dialog').close()">Close</button>
+      <button class="btn" id="opClose" type="button">Close</button>
     </div>
   </form>
 </dialog>

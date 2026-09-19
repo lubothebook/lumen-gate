@@ -55,7 +55,13 @@ function gatewayIdFromManifest() {
       fs.readFileSync(path.join(__dirname, "..", "deployments", "testnet.json"), "utf8")
     );
     const contracts = manifest.contracts || {};
-    return (contracts.settlement_gateway || contracts.gateway || "").trim();
+    // The manifest records each contract as an object ({contract_id, status, ...}),
+    // not as a bare string. Reading it as a string made this helper throw, the
+    // catch swallow it, and the check report "no gateway id" while the gateway id
+    // was sitting right there in the file. Accept both shapes.
+    const entry = contracts.settlement_gateway || contracts.gateway || "";
+    const id = typeof entry === "string" ? entry : (entry && (entry.contract_id || entry.id)) || "";
+    return String(id).trim();
   } catch {
     return "";
   }
@@ -106,6 +112,20 @@ function manifestPath(objectPath) {
 function horizonUrl() {
   return HORIZON_URL || manifestPath("horizon_url") || "https://horizon-testnet.stellar.org";
 }
+
+// The source domain key (sha256(adapter_id || network)) lives in the deployment
+// manifest. Without it the loop cannot ask what the chain already holds.
+const SOURCE_DOMAIN_KEY = (() => {
+  if (process.env.SOURCE_DOMAIN_KEY) return process.env.SOURCE_DOMAIN_KEY;
+  try {
+    const manifest = JSON.parse(
+      fs.readFileSync(path.join(__dirname, "..", "deployments", "testnet.json"), "utf8")
+    );
+    return (manifest.domain && manifest.domain.domain_key) || "";
+  } catch {
+    return "";
+  }
+})();
 
 // Contract error codes, mirrored from contracts/finality_registry/src/lib.rs.
 const ERR = {
@@ -229,6 +249,33 @@ async function submit(evidence) {
   ]);
 }
 
+/**
+ * The highest height the live registry already holds for this source domain.
+ * The simulator is deterministic and restarts from height 1, while the chain
+ * keeps its records, so a fresh simulator can propose evidence for a height
+ * that was anchored rounds ago. That is not a valid proof and the guard is
+ * right to refuse it - the loop has to ask for a genuinely new height instead
+ * of reporting a correct refusal as a broken contract.
+ */
+async function lastRecordedHeight() {
+  if (!SOURCE_DOMAIN_KEY) return null;
+  const out = await readOnly(["get_last_finalized", "--domain", SOURCE_DOMAIN_KEY]);
+  const match = `${out.stdout}${out.stderr}`.match(/"last_height"\s*:\s*(\d+)/);
+  return match ? Number(match[1]) : null;
+}
+
+async function waitForFreshHeight() {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const tip = await getJson(`${SIM_URL}/blocks/latest`);
+    const recorded = await lastRecordedHeight();
+    if (recorded === null || Number(tip.height) > recorded) {
+      return { tip: Number(tip.height), recorded };
+    }
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+  }
+  throw new Error("the source chain never passed the height the registry already holds");
+}
+
 async function readOnly(fnName, extraArgs = []) {
   return sh("stellar", [
     "contract", "invoke",
@@ -259,6 +306,7 @@ async function runRound() {
   // Reusing old evidence would prove nothing: the replay guard is supposed to
   // reject it.
   let proof;
+  let fresh = { tip: null, recorded: null };
   try {
     // The recipient and the sender must be valid Stellar strkeys: the gateway
     // carries both in Address-typed arguments, so a placeholder like
@@ -266,6 +314,8 @@ async function runRound() {
     // minted. The simulator refuses it now, and this probe uses the deployer
     // account so the audit exercises the same shape a real settlement uses.
     const probeAccount = AUDIT_ACCOUNT;
+    // Let the source chain pass whatever the registry already holds first.
+    fresh = await waitForFreshHeight();
     const lock = await postJson(`${SIM_URL}/lock`, {
       amount: 1000 + round,
       recipient: probeAccount,
@@ -276,7 +326,13 @@ async function runRound() {
     record("source_chain_reachable", false, String(e.message || e));
     return finish(startedAt, checks);
   }
-  record("source_chain_reachable", true, `simulator produced height ${proof.declared_height}`);
+  record(
+    "source_chain_reachable",
+    true,
+    `simulator produced height ${proof.declared_height}${
+      fresh.recorded === null ? "" : `, registry held ${fresh.recorded}`
+    }`
+  );
 
   const submitterAddr = resolveSubmitter();
   if (!submitterAddr) {
