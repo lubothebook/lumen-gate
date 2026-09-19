@@ -2,7 +2,11 @@
 
 **Anchor-attached settlement layer — neutral finality-proof infrastructure for anchors that don't want to run their own bridges.**
 
-> Built for Rise In x Stellar Pro Hackathon — Genesis Track, 36h, Grand Pera, Istanbul, 19-20 Sep 2026. Hardened version.
+> Built for Rise In x Stellar Pro Hackathon — Genesis Track, 36h, Grand Pera, Istanbul, 19-20 Sep 2026. Hardened version with Raven verification.
+
+> **Raven verified**: This project uses [Stellar Raven](https://raven.stellar.org) — the official MCP server for AI agents (one endpoint `https://raven.stellar.org/mcp`, one sign-in, no API keys). Raven bundles official docs, live ecosystem data (920+ projects, 2,300+ repos), community intel, and 20 playbooks behind `search` + `execute`. We used Raven to verify BLS12-381 hosts (Protocol 22), BN254 `bn254_multi_pairing_check` (Protocol 25 X-Ray CAP-0074/0075), SAC `set_admin` anchor pattern, and `stellar.toml` settlement layer. See `docs/RAVEN_INTEGRATION.md` and `scripts/raven_helper.js`.
+
+> Raven: https://raven.stellar.org | Docs: https://raven.stellar.org/docs | Playground: https://raven.stellar.org/playground | MCP: `https://raven.stellar.org/mcp`
 
 ---
 
