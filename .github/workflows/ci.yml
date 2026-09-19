@@ -57,7 +57,17 @@ jobs:
             exit 1
           }
       - name: cargo fmt
-        run: cargo fmt --all -- --check
+        run: |
+          set -o pipefail
+          cargo fmt --all -- --check 2>&1 | tee /tmp/fmt.log || {
+            {
+              echo "cargo fmt reported diffs; first lines:"
+              head -n 30 /tmp/fmt.log
+            } | python3 -c 'import sys
+          for line in sys.stdin:
+              print("::error::" + line.rstrip().replace("%", "%25"))'
+            exit 1
+          }
 
   contracts:
     name: contracts build to wasm
