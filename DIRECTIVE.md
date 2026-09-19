@@ -662,7 +662,7 @@ functionality belongs in the off-chain surface, the facade and the docs.
 ### 4.0b The relayer question and the one-signer proposal (operator's round, answered)
 
 Six answers were given and are being executed on: permissionless submission
-is demonstrated to the fullest scope ("gerekli olan her şey" — the stranger's
+is demonstrated to the fullest scope (the operator's word was 'everything necessary' — the stranger's
 live acceptance on the five-slot showcase, docs/BRIDGE_TRUST_MODEL.md §1;
 the user-side `finalize_inbound` leg is wallet-direct in the code today),
 gasless stays as a named fee-service and nothing more, the outbound
