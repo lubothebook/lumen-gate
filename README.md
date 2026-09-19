@@ -39,11 +39,59 @@ Lumen Gate is not an issuer, not a reserve manager, not a source-chain validator
 
 > **The pitch to judges:** this is infrastructure an anchor can actually integrate, a cryptography surface Soroban can actually enforce, and a demo where the negative path is part of the product—not a slide hidden after the happy path.
 
+## How approval works, from the ground up
+
+In a normal bridge, "approval" means a person decides. A group of validators each hold a private key, they sign a message saying "yes, this happened," and a relayer collects enough of those signatures and submits them. The destination chain trusts that those signatures came from honest people who checked things correctly. If those people are wrong, asleep, or compromised, the bridge is wrong too.
+
+Lumen Gate replaces that decision with a mathematical check that Stellar itself can run.
+
+**The BLS path.** Each validator signature is a point on an elliptic curve. Multiple signatures over the same message can be combined into one aggregate signature, a single mathematical object. Soroban has a built-in operation called a pairing check: given the aggregate signature, the message, and the combined public key, it confirms in one step whether that exact signature could only have come from validators who control the matching private keys, for that exact message. Change one byte of the message and the check fails. There is no step where a person looks at the signature and decides whether it looks right; the equation either balances or it doesn't.
+
+Concretely, the Registry computes `H = hash_to_curve(height || state_root || event_root)` and asks the host to confirm `e(sig, G2_gen) · e(-H, pubkey) == 1`. That is the entire trust decision. You can watch it happen in the accepted transaction linked above.
+
+**The ZK path.** Instead of signatures, the source chain can hand over a Groth16 proof: a short piece of math that says "a specific computation was carried out correctly," without showing the computation itself. Soroban verifies this the same way, with a native pairing check. The proof is a fixed size no matter how large the underlying computation was, and checking it takes the same small, constant amount of work every time.
+
+**Why this counts as "no human approval."** Both checks run inside the Soroban contract itself, using cryptographic operations built directly into the Stellar protocol, not a script on someone's laptop or a company server. The contract's only decision is whether the pairing equation holds. To make sure nobody can quietly change what "valid" means later, the verifying key and the BLS policy are set once through an admin-gated bootstrap, and `renounce_admin` exists to give that ability up permanently. After that point, there is no key left that could override what the math already decided.
+
+**Where a human still sits, honestly.** Admin-gated bootstrap is a real trust point during setup: whoever holds the admin key decides the initial verifying key and the initial BLS policy. That is why renounce is part of the product and not a footnote, and why the deployed registry has not yet renounced — the on-chain transaction is pending, and this file will not claim it until it is done.
+
 ## Honest status
 
-This checkout is a **Testnet engineering snapshot**, not a completed production bridge. `deployments/testnet.json` still contains placeholders. The browser and relayer paths are written for live Soroban RPC and Freighter submission, but no deployment, contract IDs, receipt set or fresh-unfunded-account gasless result is claimed until those artifacts are collected and linked. The checked-in Groth16 material is explicitly quarantined as development-only. See [`circuits/DEVELOPMENT_FIXTURE.md`](circuits/DEVELOPMENT_FIXTURE.md).
+This checkout is a **Testnet engineering snapshot**, not a completed production bridge. Everything claimed below was executed against Stellar Testnet (protocol 28) and can be checked on-chain; everything not executed is listed under [What is not claimed yet](#what-is-not-claimed-yet).
 
-The source side is intentionally local. The Stellar side is not intended to be mocked: the acceptance bar is a real registry/gateway/SAC deployment, real transaction hashes, real events, a reverse `/burn-unlock` receipt and negative probes against the deployed contracts.
+### Live on Testnet
+
+| Contract | Address | Deploy tx |
+| --- | --- | --- |
+| `finality_registry` | `CCXJDQMTJUGXKNFOQPC25IYVOAVWDMLJBNQYX75MAREHV7MZMU5OSEN4` | `df468a305e35f2deb6b81d52164a91380592dcf58c4b5edc2d3ca06645901e2a` |
+| `settlement_gateway` | `CAXQVMSRRMZSM36P4XE53BJFUIYHOGIDWVDGA6A5LK5HTRL4KWQUBX5B` | `2116fc69293466f40a72c7886a5097c5cbcc62c5911331ffc404cbf56e9c9d67` |
+
+### Receipts
+
+| Step | Result | Transaction |
+| --- | --- | --- |
+| Registry initialise | success | `6fa09843673fe15624967f9b05f2cd186061e68d85f3b119d7037a00657e2f0b` |
+| `register_domain` (`source-testnet`) | success | `ad80fe5a7f058aab7521d6aa5f1141be17d54feba578ea7ad7ce546007d7339f` |
+| `set_bls_policy` (3 signers, 2 required) | success | `e37cc48ceb175b36d2d6c8d13fa8b22c6e8efa1cd7f9179484c17de7eda8d5f0` |
+| `admit_domain` | success | `a7d9cce11a863e962bfa11f0873b5e2997ca9ee3fb3bcf2ca764ebac54519090` |
+| **BLS finality accepted** | **success** | **`b181956b9a9c3fc4f18faeea3938bdf2ea19b96edc9bd4414ddeb243e02008a4`** |
+| Replay the same evidence | rejected `#9 EvidenceAlreadyProcessed` | simulated, no fee burned |
+| Tamper one byte of the BLS signature | rejected `#7 InvalidSignature` | simulated, no fee burned |
+
+The accepted transaction is ledger **4,762,103**, fee **168,960 stroops**, and it emitted `finality_verified` carrying the domain key, height and state root. The aggregate BLS12-381 signature was verified inside Soroban using the native pairing host functions — no off-chain check, no oracle, no signature-size shortcut.
+
+### Test status
+
+`cargo test --workspace --lib` → **18 passed, 0 failed** (9 in `finality_registry`, 9 in `settlement_gateway`). Run it yourself; the count in this file is not aspirational.
+
+### What is not claimed yet
+
+- **The Groth16/BN254 lane has no live receipt.** The checked-in material is a development fixture and is deliberately quarantined — see [`circuits/DEVELOPMENT_FIXTURE.md`](circuits/DEVELOPMENT_FIXTURE.md). It is never submitted unless `ALLOW_DEVELOPMENT_ZK_FIXTURE=1` is set for a development demonstration. A source-root-bound circuit is the next milestone.
+- **The source side is a local deterministic simulator**, not a live external network. Its BLS signatures are real (RFC 9380 hash-to-curve, DST `lumen-gate-finality-v1`) but its validator secret keys are the fixed demo values 1, 2, 3. Production requires a DKG. See [Known simplifications](#known-simplifications).
+- **The reverse path and the gasless path have no live receipt yet.** They are implemented and unit-tested; they are not yet demonstrated end to end against the deployed contracts.
+- **No admin renounce has been executed on the deployed registry yet.** `renounce_admin` exists and is tested; the on-chain transaction is still pending.
+
+The source side is intentionally local. The Stellar side is not mocked: the acceptance bar was a real registry deployment, real transaction hashes, real events and negative probes against the live contract — and that bar is now met for the BLS lane.
 
 ## Product thesis
 
