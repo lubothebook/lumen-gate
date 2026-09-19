@@ -1,0 +1,8 @@
+[workspace]
+members = [
+  "contracts/finality_registry",
+  "contracts/settlement_gateway",
+  "crates/source_simulator",
+  "crates/relayer",
+]
+resolver = "2"

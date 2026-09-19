@@ -1,0 +1,10 @@
+{
+  "name": "migrate-to-stellar-anchor",
+  "version": "0.1.0",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "PORT=8081 SIM_URL=http://localhost:3001 node server.js"
+  },
+  "dependencies": {}
+}

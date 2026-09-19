@@ -1,0 +1,29 @@
+VERSION="2.0.0"
+NETWORK_PASSPHRASE="Test SDF Network ; September 2015"
+
+[DOCUMENTATION]
+ORG_NAME="Migrate to Stellar Anchor"
+ORG_URL="https://github.com/migrate-to-stellar"
+ORG_DESCRIPTION="Anchor-attached settlement layer — neutral finality-proof infrastructure for anchors that don't want to run their own bridges. Issues wSRC backed by cryptographic finality proofs verified on Soroban."
+
+[[CURRENCIES]]
+code="wSRC"
+issuer="GCEXAMPLEISSUERxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+display_decimals=7
+desc="Wrapped Source Chain asset, minted only after BLS12-381 or Groth16 BN254 finality proof verified on Soroban. SAC admin is settlement_gateway contract."
+anchor_asset_type="crypto"
+is_asset_anchored=true
+status="test"
+
+[[CURRENCIES]]
+code="USDC"
+issuer="GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5"
+display_decimals=7
+anchor_asset_type="crypto"
+
+[VALIDATORS]
+# Anchor does not run source chain validators, it relies on finality proofs
+
+[PRINCIPALS]
+name="Migrate to Stellar Team"
+email="team@migrate-to-stellar.example"

@@ -1,0 +1,23 @@
+{
+  "network": "testnet",
+  "rpc_url": "https://soroban-testnet.stellar.org",
+  "note": "Placeholder - replace with real contract IDs after stellar CLI deploy",
+  "contracts": {
+    "finality_registry": "CD-REGISTRY-PLACEHOLDER-REPLACE-ME",
+    "settlement_gateway": "CD-GATEWAY-PLACEHOLDER-REPLACE-ME",
+    "token_sac": "CD-TOKEN-PLACEHOLDER-REPLACE-ME"
+  },
+  "issuer": "GC-ISSUER-PLACEHOLDER",
+  "admin": "GC-ADMIN-PLACEHOLDER",
+  "domains": {
+    "source-testnet": {
+      "adapter_id": "hash(source-chain-bls-v1)",
+      "network": "source-testnet",
+      "domain_key": "sha256(adapter_id || network)"
+    }
+  },
+  "vk": {
+    "source": "circuits/range_proof_vk.hex (768 bytes, real Groth16 BN254 VK)",
+    "note": "Apache-2.0 from stellar-zkstream"
+  }
+}

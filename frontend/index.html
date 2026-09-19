@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Migrate to Stellar - Anchor Settlement Demo</title>
+<style>
+  body { font-family: Inter, system-ui, sans-serif; background:#0a0a0a; color:#eaeaea; margin:0; padding:0; }
+  header { padding:24px; border-bottom:1px solid #222; display:flex; justify-content:space-between; align-items:center; }
+  h1 { margin:0; font-size:20px; letter-spacing:-0.5px; }
+  .badge { background:#1a1a1a; border:1px solid #333; padding:4px 10px; border-radius:999px; font-size:12px; }
+  main { max-width:1100px; margin:0 auto; padding:24px; display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  .card { background:#111; border:1px solid #222; border-radius:12px; padding:16px; }
+  .card h2 { margin:0 0 12px; font-size:14px; text-transform:uppercase; letter-spacing:1px; color:#888; }
+  button { background:#fff; color:#000; border:none; padding:10px 14px; border-radius:8px; font-weight:600; cursor:pointer; }
+  button:disabled { opacity:0.5; cursor:not-allowed; }
+  button.secondary { background:#222; color:#fff; border:1px solid #333; }
+  input { background:#0a0a0a; border:1px solid #333; color:#fff; padding:8px 10px; border-radius:8px; width:100%; box-sizing:border-box; }
+  .log { background:#0a0a0a; border:1px solid #222; border-radius:8px; padding:10px; font-family:monospace; font-size:12px; height:200px; overflow:auto; white-space:pre-wrap; }
+  .grid-1 { grid-column: span 2; }
+  .status { display:flex; gap:8px; flex-wrap:wrap; }
+  .dot { width:8px; height:8px; border-radius:50%; display:inline-block; }
+  .dot.green { background:#22c55e; }
+  .dot.yellow { background:#eab308; }
+  .dot.red { background:#ef4444; }
+  a { color:#60a5fa; }
+  @media(max-width:800px){ main{grid-template-columns:1fr;} .grid-1{grid-column:span 1;} }
+</style>
+</head>
+<body>
+<header>
+  <h1>Migrate to Stellar — Anchor Settlement Demo</h1>
+  <div class="badge">Genesis Track • Testnet • BLS + Groth16 BN254</div>
+</header>
+<main>
+  <div class="card">
+    <h2>1. Wallet & Network</h2>
+    <div id="walletStatus" class="log">Not connected</div>
+    <div style="display:flex; gap:8px; margin-top:10px;">
+      <button id="connectBtn">Connect Freighter</button>
+      <button id="faucetBtn" class="secondary">Fund via Friendbot</button>
+    </div>
+    <div style="margin-top:12px;">
+      <div>Registry: <span id="registryId">-</span></div>
+      <div>Gateway: <span id="gatewayId">-</span></div>
+      <div>wSRC SAC: <span id="tokenId">-</span></div>
+      <div>Source Simulator: <span id="simUrl">http://localhost:3001</span> <span id="simDot" class="dot red"></span></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>2. Source Chain Simulator</h2>
+    <div id="simInfo" class="log">Loading...</div>
+    <div style="display:flex; gap:8px; margin-top:10px;">
+      <button id="refreshSimBtn" class="secondary">Refresh</button>
+      <button id="produceBlockBtn" class="secondary">Produce Block (POST /lock)</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>3. Lock on Source → Proof → Mint on Stellar</h2>
+    <label>Amount (wSRC)</label>
+    <input id="lockAmount" value="100" type="number" />
+    <label style="margin-top:8px; display:block;">Recipient on Stellar (G...)</label>
+    <input id="lockRecipient" placeholder="G..." />
+    <div style="display:flex; gap:8px; margin-top:10px;">
+      <button id="lockBtn">Lock on Source</button>
+      <button id="lockBLSBtn" class="secondary">Get BLS Proof</button>
+      <button id="lockZKBtn" class="secondary">Get ZK Proof</button>
+    </div>
+    <div id="lockLog" class="log" style="margin-top:10px;"></div>
+  </div>
+
+  <div class="card">
+    <h2>4. Stellar Balance & Settlement</h2>
+    <div id="balanceLog" class="log">Connect wallet first</div>
+    <div style="display:flex; gap:8px; margin-top:10px;">
+      <button id="checkBalanceBtn" class="secondary">Check wSRC Balance</button>
+      <button id="finalizeBtn">Finalize Mint (Gateway)</button>
+    </div>
+    <div style="margin-top:10px;">
+      <label>Explorer:</label>
+      <div><a id="explorerLink" href="#" target="_blank">-</a></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>5. Burn → Unlock (Reverse)</h2>
+    <input id="burnAmount" value="50" type="number" />
+    <button id="burnBtn" style="margin-top:8px;">Burn on Stellar → Unlock on Source</button>
+    <div id="burnLog" class="log" style="margin-top:10px;"></div>
+  </div>
+
+  <div class="card">
+    <h2>6. Negative Tests (Fault Probes)</h2>
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+      <button id="badSigBtn" class="secondary">Submit Bad Sig (zeroed)</button>
+      <button id="badRootBtn" class="secondary">Submit Bad Root (mismatch)</button>
+      <button id="badVersionBtn" class="secondary">Submit Bad Version</button>
+      <button id="replayBtn" class="secondary">Replay Same Nonce</button>
+    </div>
+    <div id="probeLog" class="log" style="margin-top:10px;"></div>
+  </div>
+
+  <div class="card grid-1">
+    <h2>7. Domain Profile (Anchor View) — No Score, Only Facts</h2>
+    <div id="profileLog" class="log">Load domain profile from registry...</div>
+    <button id="profileBtn" class="secondary" style="margin-top:8px;">Get Profile</button>
+  </div>
+
+  <div class="card grid-1">
+    <h2>How it works (for jury)</h2>
+    <p style="font-size:13px; line-height:1.5; color:#aaa;">
+      Anchor creates issuer, deploys SAC for wSRC, calls set_admin(gateway). Gateway only mints after finality_registry verifies BLS12-381 or Groth16 BN254 proof via native host functions. 
+      Source chain is simulated (3-of-5 test keys, G1/G2 generator as valid points, real Groth16 range proof from stellar-zkstream). Stellar side is real testnet.
+      Lock → proof → mint, burn → unlock, plus 4 fault probes. High-water-mark nonce prevents replay with one row per sender.
+    </p>
+    <p style="font-size:12px; color:#666;">
+      Contracts: finality_registry (BLS + ZK), settlement_gateway (lock/mint/burn + HWM). Off-chain: source_simulator (Axum), relayer (Rust), frontend (this). Anchor: stellar.toml + /info.
+      See README.md for full run instructions and intentionally simplified parts.
+    </p>
+  </div>
+</main>
+
+<script type="module">
+import * as StellarSdk from '@stellar/stellar-sdk';
+
+const SIM_URL = localStorage.getItem('simUrl') || 'http://localhost:3001';
+document.getElementById('simUrl').textContent = SIM_URL;
+
+const REGISTRY_ID = localStorage.getItem('registryId') || 'CD... (set after deploy)';
+const GATEWAY_ID = localStorage.getItem('gatewayId') || 'CD...';
+const TOKEN_ID = localStorage.getItem('tokenId') || 'CD...';
+
+document.getElementById('registryId').textContent = REGISTRY_ID;
+document.getElementById('gatewayId').textContent = GATEWAY_ID;
+document.getElementById('tokenId').textContent = TOKEN_ID;
+
+let userPubkey = null;
+let lastProof = null;
+let lastMessage = null;
+
+function log(elId, msg) {
+  const el = document.getElementById(elId);
+  const time = new Date().toISOString().slice(11,19);
+  el.textContent += `\n[${time}] ${msg}`;
+  el.scrollTop = el.scrollHeight;
+}
+
+async function fetchSim(path) {
+  try {
+    const res = await fetch(`${SIM_URL}${path}`);
+    const data = await res.json();
+    document.getElementById('simDot').className = 'dot green';
+    return data;
+  } catch (e) {
+    document.getElementById('simDot').className = 'dot red';
+    log('simInfo', `Failed to fetch ${path}: ${e}`);
+    throw e;
+  }
+}
+
+async function refreshSim() {
+  try {
+    const info = await fetchSim('/info');
+    const latest = await fetchSim('/blocks/latest');
+    document.getElementById('simInfo').textContent = JSON.stringify({info, latest}, null, 2);
+  } catch {}
+}
+refreshSim();
+document.getElementById('refreshSimBtn').onclick = refreshSim;
+
+document.getElementById('connectBtn').onclick = async () => {
+  if (!window.freighterApi) {
+    log('walletStatus', 'Freighter not found. Install Freighter extension.');
+    return;
+  }
+  try {
+    const pub = await window.freighterApi.getPublicKey();
+    userPubkey = pub;
+    document.getElementById('walletStatus').textContent = `Connected: ${pub}\nNetwork: Testnet`;
+    document.getElementById('lockRecipient').value = pub;
+    log('walletStatus', `Connected ${pub}`);
+  } catch (e) {
+    log('walletStatus', `Connect failed: ${e}`);
+  }
+};
+
+document.getElementById('faucetBtn').onclick = async () => {
+  if (!userPubkey) { log('walletStatus','Connect first'); return; }
+  try {
+    const res = await fetch(`https://friendbot.stellar.org?addr=${encodeURIComponent(userPubkey)}`);
+    const text = await res.text();
+    log('walletStatus', `Friendbot: ${text.slice(0,200)}`);
+  } catch (e) { log('walletStatus', `Faucet error: ${e}`); }
+};
+
+document.getElementById('lockBtn').onclick = async () => {
+  const amount = parseInt(document.getElementById('lockAmount').value);
+  const recipient = document.getElementById('lockRecipient').value || userPubkey;
+  if (!recipient) { log('lockLog','Need recipient'); return; }
+  try {
+    const res = await fetch(`${SIM_URL}/lock`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({amount, recipient, sender: 'demo-user'})
+    });
+    const data = await res.json();
+    lastMessage = data;
+    log('lockLog', `Lock event created: ${JSON.stringify(data, null, 2)}`);
+    await refreshSim();
+  } catch (e) { log('lockLog', `Lock failed: ${e}`); }
+};
+
+document.getElementById('lockBLSBtn').onclick = async () => {
+  try {
+    const latest = await fetchSim('/blocks/latest');
+    const proof = await fetchSim(`/proof?height=${latest.height}&kind=bls`);
+    lastProof = proof;
+    log('lockLog', `BLS Proof for height ${latest.height}:\n${JSON.stringify(proof, null, 2).slice(0,1000)}`);
+  } catch (e) { log('lockLog', `BLS proof fetch failed: ${e}`); }
+};
+
+document.getElementById('lockZKBtn').onclick = async () => {
+  try {
+    const latest = await fetchSim('/blocks/latest');
+    const proof = await fetchSim(`/proof?height=${latest.height}&kind=zk`);
+    lastProof = proof;
+    log('lockLog', `ZK Proof for height ${latest.height}:\nVK len ${proof.vk_hex?.length}, proof len ${proof.proof_hex?.length}\nPublic inputs: ${JSON.stringify(proof.public_inputs)}`);
+  } catch (e) { log('lockLog', `ZK proof fetch failed: ${e}`); }
+};
+
+document.getElementById('checkBalanceBtn').onclick = async () => {
+  if (!userPubkey) { log('balanceLog','Connect wallet'); return; }
+  try {
+    const server = new StellarSdk.Horizon.Server('https://horizon-testnet.stellar.org');
+    const acc = await server.loadAccount(userPubkey);
+    const balances = acc.balances.map(b => `${b.asset_code||'XLM'}:${b.balance}`).join(', ');
+    document.getElementById('balanceLog').textContent = `Balances: ${balances}\nAccount: ${userPubkey}`;
+    log('balanceLog', `Fetched balances: ${balances}`);
+  } catch (e) { log('balanceLog', `Balance error: ${e}`); }
+};
+
+document.getElementById('finalizeBtn').onclick = async () => {
+  if (!lastProof) { log('balanceLog','Get proof first'); return; }
+  log('balanceLog', `Would call settlement_gateway.finalize_inbound with message_id ${lastProof.payload?.message_id || lastMessage?.event?.message_id}\nRegistry: ${REGISTRY_ID}\nGateway: ${GATEWAY_ID}\nThis requires Freighter signing + Soroban RPC. See scripts/deploy.sh and frontend/src/soroban.ts for full flow.`);
+  document.getElementById('explorerLink').textContent = `https://stellar.expert/explorer/testnet/contract/${GATEWAY_ID}`;
+  document.getElementById('explorerLink').href = `https://stellar.expert/explorer/testnet/contract/${GATEWAY_ID}`;
+};
+
+document.getElementById('burnBtn').onclick = async () => {
+  const amount = document.getElementById('burnAmount').value;
+  log('burnLog', `Burn ${amount} wSRC on Stellar -> would create Burn message and unlock on source. See gateway.burn_and_relay`);
+};
+
+document.getElementById('badSigBtn').onclick = async () => {
+  try {
+    const latest = await fetchSim('/blocks/latest');
+    const bad = await fetchSim(`/proof?height=${latest.height}&kind=bls&tamper=sig`);
+    log('probeLog', `Bad sig proof (zeroed): should be rejected with InvalidSignature\n${JSON.stringify(bad).slice(0,500)}`);
+  } catch (e) { log('probeLog', `Error: ${e}`); }
+};
+document.getElementById('badRootBtn').onclick = async () => {
+  try {
+    const latest = await fetchSim('/blocks/latest');
+    const bad = await fetchSim(`/proof?height=${latest.height}&kind=bls&tamper=root`);
+    log('probeLog', `Bad root (declared mismatch): should be rejected with DeclaredMismatch\n${JSON.stringify(bad).slice(0,500)}`);
+  } catch (e) { log('probeLog', `Error: ${e}`); }
+};
+document.getElementById('badVersionBtn').onclick = async () => {
+  try {
+    const latest = await fetchSim('/blocks/latest');
+    const bad = await fetchSim(`/proof?height=${latest.height}&kind=bls&tamper=version`);
+    log('probeLog', `Bad version (99): should be rejected with VersionNotAccepted\n${JSON.stringify(bad).slice(0,500)}`);
+  } catch (e) { log('probeLog', `Error: ${e}`); }
+};
+document.getElementById('replayBtn').onclick = async () => {
+  log('probeLog', `Replay: submit same nonce twice -> gateway should return AlreadyProcessed (HWM). This is tested in settlement_gateway unit test.`);
+};
+
+document.getElementById('profileBtn').onclick = async () => {
+  document.getElementById('profileLog').textContent = JSON.stringify({
+    domain: "source-testnet",
+    adapter_id: "hash(source-chain-bls-v1)",
+    network: "source-testnet",
+    consensus_kind: "BFT-like (3-of-5)",
+    finality_kind: "EconomicFinality",
+    trust_model: "HonestMajority { set_size: 5 }",
+    required_depth: 2,
+    security_backing: "SignatureSet { signers: 3, required: 2, slashable: false } or ZkProof { system: groth16-bn254 }",
+    state: "Active",
+    last_height: "from /blocks/latest",
+    bond: "none (hackathon)",
+    history: ["Registered", "Admitted (selftest passed)", "Active"],
+    note: "No score, only facts with units. Anchor uses this to decide risk."
+  }, null, 2);
+};
+</script>
+</body>
+</html>
