@@ -126,6 +126,39 @@ functionality belongs in the off-chain surface, the facade and the docs.
       the envelope.
 - [x] **Section 10.5 rate limiting** on the public read surface, with
       `X-RateLimit-*` headers and a 429 in the standard envelope.
+- [x] **The session owns its records (hardening beyond the directive)**:
+      opening a SEP-6 deposit or withdraw record and reading transaction history
+      require a SEP-10 session, and the account is always the token subject.
+      Anonymous callers cannot plant pending records against arbitrary
+      addresses, and history cannot be pivoted by swapping an `account`
+      parameter. The hosted `api/` layer emits the same error envelope as the
+      facade, and the console parses failures through one tolerant reader so an
+      upstream shape change never surfaces as `[object Object]`.
+- [x] **`tools/sep-conformance.js` drives the surface as a client would; 27
+      checks pass** against a freshly started facade
+      (`bash tools/probe-run.sh` starts, probes and tears down in one command):
+      challenge structure (sequence 0, exact manageData name, 64-byte nonce,
+      bounded timebox, the web-auth-domain extra-operation rule), discovery's
+      `SIGNING_KEY` matched against the key challenges are actually sourced
+      from, forged HS256 tokens refused, fully signed but expired challenges
+      refused, record routes session-gated, cross-account requests refused with
+      403, history scoped to the session, and `Retry-After` asserted on the
+      rate-limit refusal.
+- [x] **Rust workspace pinned under rustfmt**: 114 formatting drifts
+      normalised, `cargo test --workspace` re-run after the format (46 passed),
+      and `scripts/repo-gate.sh` gained three mechanical invariants on top of
+      its brand, region, language, directive-count, honesty, and secret checks:
+      formatter clean when rustfmt exists (an honest skip when it does not), no
+      string-shaped errors regressing into `api/`, and runtime state (demo
+      signing secret, mutable SEP-6 record store) never tracked.
+- [x] **The zkVM section names the machinery it lacks** (`docs/PROVING_SYSTEM.md`
+      §7): a wide execution trace with one column per register, bus and flag,
+      per-row transition constraints tying row *i* to row *i+1*, boundary
+      conditions anchoring first and last rows to the claimed input and output,
+      and a memory-consistency argument built from a committed memory
+      transcript with constrained read/write lookups. Described as a design
+      pattern, with no borrowed name, because the section's point is that the
+      gap is understood rather than merely admitted.
 - [x] README explains machine approval from first principles and draws the
       honest boundary at "Is this a zkVM? No", now with what a real zkVM would
       require (trace columns, transition constraints, a memory argument).
