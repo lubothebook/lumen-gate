@@ -541,6 +541,23 @@ functionality belongs in the off-chain surface, the facade and the docs.
 
 ## 4. Hardening backlog (priority order this round)
 
+- [x] **Session close (this round).** Merged showcase registry live and
+      frozen (`CBND4C3E…`, receipts in `deployments/merged-registry.json`,
+      audit check 14 watching it: 20 rounds of history, latest 14/14);
+      gate-vm core split with 32-line sibling proven through ceremony and
+      verified Groth16 (`wchk` + snarkjs OK, five artifacts committed under
+      `deployments/vectors/gate_vm32/`, end-root invariance across both
+      compilations pinned); phase-1 import wired with filename-keyed pins and
+      the bucket-outage discovery documented as the reason `local` remains the
+      honest default; signature-gadget cost measured (8,086 constraints for a
+      full EdDSA verifier — budget closed as objection, pairing library is
+      the standing gap); console gained the fetch-nothing receipts card and
+      the three-bounds honesty entry. Next up, in order: (1) registry slot +
+      ceilings for the 32-line lane on a fresh registry — vectors are ready,
+      contract needs the setter; (2) merged-registry becomes the audit loop's
+      primary target once the fifth slot exists; (3) guest-compiler and
+      memory-bus items remain undelivered and remain written down as such.
+
 ### 4.0 Decisions taken this session (the operator answered; execute in order)
 
 - [x] **Merged live registry.** One fresh registry carrying all lane slots

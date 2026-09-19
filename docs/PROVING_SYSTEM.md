@@ -345,6 +345,20 @@ node_modules/.bin/snarkjs wchk build/gate_vm32.r1cs build/gate_vm32.wtns
 #   the 8-line run (0x12e1225b...) while the program root moved (0x1330a484...)
 #   — output invariant under padding, commitment not, both at once
 ./circuits/setup.sh gate_vm32 build/gate_vm32_input.json   # power derives to 2^16
+python3 circuits/convert_to_soroban.py build/gate_vm32_vk.json \
+    build/gate_vm32_proof.json build/gate_vm32_public.json build/gate_vm32 \
+    --public-names program_root,start_root,event_root,end_root,hash_steps,domain_tag \
+    --expect-inputs 6
+#   -> 896-byte key, 256-byte proof, and the *same end root* the 8-line proof
+#   publishes — the padding invariance survives from witness checking all the
+#   way into a verified Groth16 proof (snarkjs prints OK). The 32-line key is
+#   its own ceremony's output: same length as the 8-line key, different bytes,
+#   which is the two-896 slot design taking its first real exercise. The five
+#   artifacts are committed under deployments/vectors/gate_vm32/; a registry
+#   slot for this lane is deliberately NOT yet installed — installing one
+#   means a new registry (the frozen ones cannot take a fifth setter without
+#   redeployment), and the merged showcase takes the slot when it can be
+#   probed against the ceilings below.
 python3 circuits/convert_to_soroban.py build/gate_vm_vk.json \
     build/gate_vm_proof.json build/gate_vm_public.json build/gate_vm \
     --public-names program_root,start_root,event_root,end_root,hash_steps,domain_tag \
