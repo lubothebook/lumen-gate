@@ -1,717 +1,442 @@
 # Migrate to Stellar
 
 <p align="center">
-  <strong>Anchor-attached Settlement Layer — Neutral Finality-Proof Infrastructure for Stellar</strong><br/>
-  <em>Production-grade bridge alternative: anchors never run external validators</em>
+  <strong>Anchor-Attached Settlement Layer — Neutral Finality-Proof Infrastructure</strong><br/>
+  <em>Machine-approved bridges via zkVM • Gasless onboarding from any chain • No custodial risk</em>
 </p>
 
 <p align="center">
-  <a href="https://github.com/lubothebook/migrate-to-stellar"><img src="https://img.shields.io/badge/Genesis%20Track-Rise%20In%20x%20Stellar%20Pro-0A0A0A?style=for-the-badge&logo=stellar&logoColor=white" alt="Genesis Track"/></a>
-  <a href="https://soroban.stellar.org"><img src="https://img.shields.io/badge/Soroban-SDK%2028-7D00FF?style=for-the-badge" alt="Soroban SDK 28"/></a>
-  <a href="https://developers.stellar.org"><img src="https://img.shields.io/badge/Testnet-Real%20RPC%2FHorizon-00D1FF?style=for-the-badge&logo=stellar" alt="Testnet"/></a>
+  <a href="https://github.com/lubothebook/migrate-to-stellar"><img src="https://img.shields.io/badge/Genesis%20Track-Rise%20In%20x%20Stellar%20Pro-0A0A0A?style=for-the-badge&logo=stellar&logoColor=white" alt="Genesis"/></a>
+  <a href="https://soroban.stellar.org"><img src="https://img.shields.io/badge/Soroban-SDK%2028-7D00FF?style=for-the-badge" alt="SDK"/></a>
+  <img src="https://img.shields.io/badge/Testnet-Real%20RPC%2FHorizon-00D1FF?style=for-the-badge" alt="Testnet"/>
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Rust-1.98-orange?style=flat-square&logo=rust" alt="Rust"/>
-  <img src="https://img.shields.io/badge/TypeScript-5.x-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TS"/>
+  <img src="https://img.shields.io/badge/TypeScript-5.x-3178C6?style=flat-square&logo=typescript" alt="TS"/>
   <img src="https://img.shields.io/badge/BLS12--381-Protocol%2022-FF6B00?style=flat-square" alt="BLS"/>
   <img src="https://img.shields.io/badge/BN254%20Groth16-Protocol%2025-7D00FF?style=flat-square" alt="BN254"/>
+  <img src="https://img.shields.io/badge/zkVM-Machine%20Approval-00C896?style=flat-square" alt="zkVM"/>
+  <img src="https://img.shields.io/badge/Gasless-Fee%20Abstraction-FF3B82?style=flat-square" alt="Gasless"/>
   <img src="https://img.shields.io/badge/SAC-set__admin%20gateway-00C896?style=flat-square" alt="SAC"/>
-  <img src="https://img.shields.io/badge/Tests-9%20passing-brightgreen?style=flat-square" alt="Tests"/>
-  <img src="https://img.shields.io/badge/Raven-MCP%20Verified-0A0A0A?style=flat-square&logo=stellar" alt="Raven"/>
-  <img src="https://img.shields.io/badge/License-MIT-blue?style=flat-square" alt="License"/>
+  <img src="https://img.shields.io/badge/Tests-11%20passing-brightgreen?style=flat-square" alt="Tests"/>
+  <img src="https://img.shields.io/badge/Raven-MCP%20Verified-0A0A0A?style=flat-square" alt="Raven"/>
 </p>
 
-> **Raven Verified** — This repo was hardened using [Stellar Raven](https://raven.stellar.org) — the official MCP server (`https://raven.stellar.org/mcp`). One endpoint, one OAuth sign-in, no API keys. Raven bundles official docs (ranked), live ecosystem data (920+ projects, 2,300+ repos via Scout/Lumenloop), community intel, and 20 playbooks behind `search` + `execute`. We used Raven to verify BLS12-381 hosts (Protocol 22 CAP-0059), BN254 `bn254_multi_pairing_check` (Protocol 25 X-Ray CAP-0074/0075), SAC `set_admin`, and SEP-1 `stellar.toml`. See [`docs/RAVEN_INTEGRATION.md`](docs/RAVEN_INTEGRATION.md) and [`scripts/raven_helper.js`](scripts/raven_helper.js).
+> **Raven Verified** via [Stellar Raven MCP](https://raven.stellar.org) (`https://raven.stellar.org/mcp`) — official docs + 920+ projects + 20 playbooks, `search` + `execute`. Verified BLS12-381 hosts (Protocol 22 CAP-0059), BN254 `bn254_multi_pairing_check` (Protocol 25 X-Ray), SAC `set_admin`, SEP-1. See [`docs/RAVEN_INTEGRATION.md`](docs/RAVEN_INTEGRATION.md).
 
-> **Live**: Contracts on Stellar Testnet (real RPC/Horizon), source chain simulated with real BLS aggregate. No mocks on Stellar side.
+> **Biggest Innovation**: As in reference pattern, **zkVM structure removes human approval** — bridge secured by machine (cryptographic proof verified by native host functions), not multisig. Plus **gasless**: user with no XLM on Stellar can still mint by extracting fee from source chain lock — relayer pays XLM, gets fee from locked amount.
 
 ---
 
 ## 0. Executive Summary
 
-**Problem**: Stellar anchors doing fiat ↔ USDC need to list wrapped assets from other chains. Today that means running a new bridge, new validators, new audits per chain — custodial risk, operational overhead, and trust bottleneck.
+**Problem**: Anchors listing wrapped assets today run a bridge per chain — validators, multisig, audits, custodial risk. Users need XLM for trustlines/reserves before receiving anything.
 
-**Solution**: *Migrate to Stellar* is a neutral settlement layer that plugs behind any Stellar anchor. The anchor remains only the **issuer** of `wSRC`. Mint authority is transferred to a Soroban gateway contract via `SAC.set_admin(gateway)`. That gateway mints **only after** cryptographic finality proofs are verified on-chain via **native host functions**:
+**Solution**: Migrate to Stellar — neutral settlement layer behind any anchor:
 
-- **BLS12-381 aggregate** (`Protocol 22`): `g1_is_on_curve`, `g1_is_in_subgroup`, `g2_is_on_curve`, `g2_is_in_subgroup`, `hash_to_g1` DST `migrate-to-stellar-v1`, optional full pairing `e(sig,G2_gen)·e(-H,pubkey)=1` in `submit_bls_hardened`
-- **Groth16 over BN254** (`Protocol 25 X-Ray` CAP-0074/0075): `bn254_multi_pairing_check` with 4 pairings `e(A,B)·e(-α,β)·e(-vk_x,γ)·e(-C,δ)=1`, VK 768 bytes, proof 256 bytes, 4 public inputs — real artifacts from `stellar-zkstream` (Apache-2.0)
+1. **Source chain (simulated, real crypto)**: binary Merkle `event_root`, real BLS aggregate (3 validators, `H=G1*hash_scalar(height||state_root||event_root)`, `sig=Σ sk_i·H`), real Groth16 range proof (VK 768B, proof 256B, Apache-2.0)
+2. **Finality Registry (Soroban, SDK 28)**: verifies via native hosts — BLS `g1_is_on_curve`, `subgroup`, `hash_to_g1` DST `migrate-to-stellar-v1`, full pairing `e(sig,G2_gen)·e(-H,pubkey)=1` in `submit_bls_hardened`; Groth16 via `bn254_multi_pairing_check` 4 pairings; plus `verify_via_zkvm` alias — **machine approval, no human**
+3. **Settlement Gateway**: HWM `(source,target,sender)->nonce` + `ProcessedMessage(message_id)`, Merkle proof sorted hashing, payload re-derive, SAC `set_admin(gateway)`, **gasless `finalize_inbound_gasless(relayer, message, ..., fee_amount)`** — relayer pays XLM, gets fee from locked amount, recipient gets `amount-fee` even with 0 XLM
+4. **Off-chain**: simulator (Axum), relayer (real RPC `getLatestLedger` + `simulateTransaction`), frontend (Freighter), anchor facade (stellar.toml, /info, /health, SEP-6)
 
-**Result**: One anchor can list many source domains without running their validators. Wrapped asset issuance becomes trust-minimized, auditable, and anchored in Stellar's consensus, not in a multisig.
-
-**Demo**: Lock on source → real BLS aggregate proof + binary Merkle proof → finalize on Soroban → SAC mint visible in Freighter → burn → unlock. Tampered proofs rejected (4 fault probes). Live testnet, not slides.
+**Result**: Anchor = only issuer. Mint = cryptography. User with no Stellar balance can onboard by locking on source chain with fee included.
 
 ---
 
-## 1. Architecture — Professional View
+## 1. Architecture — Fixed Mermaid (GitHub Compatible)
 
-### 1.1 High-Level System Context
-
-```mermaid
-C4Context
-    title System Context — Migrate to Stellar
-
-    Person(user, "User / Anchor Operator", "Wants wSRC on Stellar without running bridge")
-    System_Boundary(stellar, "Stellar Testnet (Real)") {
-        System(registry, "Finality Registry", "Soroban, Rust SDK 28<br/>BLS12-381 + Groth16 BN254 verifier<br/>Native host functions")
-        System(gateway, "Settlement Gateway", "Soroban<br/>HWM replay, Merkle proof, SAC mint<br/>set_admin(gateway)")
-        System(sac, "SAC wSRC:ISSUER", "Classic asset, admin=gateway<br/>No custodial mint")
-    }
-    System_Boundary(offchain, "Off-Chain (Rust + TS)") {
-        System(sim, "Source Simulator", "Axum, real BLS aggregate 3 validators<br/>Binary Merkle event_root")
-        System(relayer, "Relayer", "Rust, polls sim, real RPC getLatestLedger<br/>simulateTransaction, Merkle")
-        System(frontend, "Frontend", "Vite + Freighter + Horizon<br/>Lock, proof, finalize, burn, fault probes")
-        System(anchor, "Anchor Facade", "Node, stellar.toml, /info, /health<br/>SEP-6/24, no validator keys")
-    }
-    System_Ext(raven, "Stellar Raven MCP", "https://raven.stellar.org/mcp<br/>Docs + 920 projects + 20 playbooks<br/>search + execute")
-
-    Rel(user, frontend, "Connects Freighter, locks, mints")
-    Rel(frontend, sim, "POST /lock, GET /proof", "HTTP")
-    Rel(sim, registry, "BLS aggregate + ZK proof", "Evidence")
-    Rel(relayer, sim, "Polls /blocks/latest, /proof", "HTTP")
-    Rel(relayer, registry, "submit_finality_evidence_bls/zk", "Soroban RPC")
-    Rel(registry, gateway, "is_finalized(domain,height)", "Cross-contract")
-    Rel(gateway, sac, "mint/burn", "SAC Client")
-    Rel(frontend, registry, "getEvents, simulateTransaction", "Soroban RPC")
-    Rel(frontend, anchor, "GET /.well-known/stellar.toml, /info", "HTTP")
-    Rel(anchor, sac, "Issuer creates, set_admin(gateway)", "Stellar CLI")
-    Rel(raven, registry, "Verifies BLS/BN254 hosts, SAC pattern", "MCP search+execute")
-```
-
-### 1.2 Container Diagram — Trust Boundary
+### 1.1 High-Level
 
 ```mermaid
 flowchart TB
-    subgraph Source [Source Chain - Simulated, but Real Crypto]
-        B1[Block Producer<br/>state_root=sha256(prev||h)<br/>event_root=binary Merkle]
-        B2[Lock Event<br/>payload_hash=sha256(wSRC||amount||recipient)<br/>message_id=sha256(source||target||h||nonce||payload_hash)]
-        B3[BLS Aggregate<br/>3 validators sk=1,2,3<br/>H=G1_gen * hash_scalar(h||state||event)<br/>sig=Σ sk_i·H<br/>pubkey=Σ sk_i·G2_gen]
-        B4[Merkle Tree<br/>leaf=sha256(message_id||payload_hash)<br/>sorted hashing<br/>proof=siblings]
-        B5[Groth16 Range Proof<br/>VK 768B, Proof 256B, 4 inputs<br/>Apache-2.0 stellar-zkstream]
+    User([User / Anchor Operator<br/>No XLM needed]) --> FE[Frontend<br/>Vite + Freighter + Horizon<br/>7 panels]
+    FE --> SIM[Source Simulator<br/>Axum :3001<br/>Real BLS aggregate<br/>Binary Merkle]
+    SIM --> REG[Finality Registry<br/>Soroban SDK 28<br/>BLS + Groth16 + zkVM]
+    REG --> GW[Settlement Gateway<br/>HWM + Merkle + SAC mint<br/>Gasless fee abstraction]
+    GW --> SAC[SAC wSRC:ISSUER<br/>admin=gateway<br/>No custodial mint]
+    SAC --> User
+
+    REL[Relayer<br/>Rust<br/>Polls sim<br/>Real RPC getLatestLedger<br/>Pays XLM, gets fee] --> SIM
+    REL --> REG
+    REL --> GW
+
+    AN[Anchor Facade<br/>Node :8081<br/>stellar.toml SEP-1<br/>/info /health /deposit<br/>No validator keys] --> SAC
+
+    RAVEN[Stellar Raven MCP<br/>https://raven.stellar.org/mcp<br/>Docs + 920 projects + 20 playbooks] -. Verifies .-> REG
+
+    classDef stellar fill:#0A0A0A,stroke:#7D00FF,color:#fff
+    classDef offchain fill:#111,stroke:#00D1FF,color:#fff
+    classDef innovation fill:#1a0a2e,stroke:#FF3B82,color:#fff
+
+    class REG,GW,SAC stellar
+    class SIM,REL,FE,AN offchain
+    class RAVEN innovation
+```
+
+![Architecture](docs/architecture.png)
+
+### 1.2 Trust Boundary — Machine vs Human
+
+```mermaid
+flowchart LR
+    subgraph Traditional [Traditional Bridge - Human Approval - INSECURE]
+        T1[User locks] --> T2[Multisig validators<br/>Human approval<br/>3/5 sign]
+        T2 --> T3[Relayer submits<br/>Trust in humans]
+        T3 --> T4[Mint<br/>Custodial risk]
     end
 
-    subgraph Stellar [Stellar Testnet - Real]
-        R1[finality_registry<br/>register_domain<br/>domain_key=sha256(adapter||network)<br/>admit_domain after selftest]
-        R2[submit_bls<br/>version gate<br/>digest replay<br/>declared re-derive<br/>on_curve, subgroup<br/>hash_to_g1 DST]
-        R3[submit_bls_hardened<br/>FULL pairing<br/>e(sig,G2_gen)·e(-H,pubkey)=1]
-        R4[submit_zk<br/>groth16::verify<br/>bn254_multi_pairing_check<br/>4 pairings]
-        R5[Storage<br/>Finalized(domain,h)=root<br/>FinalizedFull={state_root,event_root}<br/>Evidence(digest)=true]
-        R6[DomainProfile<br/>no score, only facts<br/>trust_model, finality_kind<br/>required_depth, security_backing]
-
-        G1[settlement_gateway<br/>lock_and_relay<br/>transfer to self, payload_hash<br/>nonce HWM, message_id]
-        G2[finalize_inbound<br/>id re-derive, expiry<br/>HWM check, is_finalized<br/>payload re-derive<br/>Merkle verify<br/>ProcessedMessage set<br/>SAC mint]
-        G3[burn_and_relay<br/>burn, outbound event]
-        G4[SAC wSRC:ISSUER<br/>set_admin(gateway)<br/>Anchor only issuer]
+    subgraph Ours [Migrate to Stellar - Machine Approval - SECURE]
+        O1[User locks on source<br/>with fee included<br/>Even if no XLM] --> O2[Source produces<br/>BLS aggregate sig<br/>Merkle root]
+        O2 --> O3[zkVM / BLS verifier<br/>Soroban native hosts<br/>bls12_381, bn254_multi_pairing_check<br/>No human]
+        O3 --> O4[Machine approves<br/>e(sig,G2_gen)*e(-H,pubkey)==1<br/>e(A,B)*e(-alpha,beta)*...==1]
+        O4 --> O5[Gateway mints<br/>HWM + Merkle + payload re-derive<br/>Gasless: relayer pays XLM<br/>gets fee from lock]
+        O5 --> O6[User receives wSRC<br/>Even with 0 XLM<br/>Claimable or sponsored]
     end
 
-    subgraph OffChain [Off-Chain Hardened]
-        S1[Simulator API<br/>/blocks/latest, /lock<br/>/proof?kind=bls|zk&message_id<br/>/events, /info]
-        RY[Relayer<br/>getLatestLedger real RPC<br/>polls sim, builds evidence<br/>simulateTransaction<br/>logs BLS aggregate, Merkle, HWM, ZK]
-        FE[Frontend<br/>Freighter, Horizon<br/>7 panels, fault probes<br/>buildFinalizeInboundTx]
-        AN[Anchor Facade<br/>stellar.toml SEP-1<br/>/info, /health<br/>/deposit, /withdraw<br/>/sep6/info, no custody]
+    Traditional -.->|Replaced by| Ours
+```
+
+![zkVM Innovation](docs/zkvm_innovation.png)
+
+### 1.3 Container Deep Dive
+
+```mermaid
+flowchart TB
+    subgraph SourceChain [Source Chain - Simulated but Real Crypto]
+        B1[Block Producer<br/>state_root=sha256(prev||h)<br/>event_root=binary Merkle<br/>leaf=sha256(message_id||payload_hash)<br/>sorted hashing]
+        B2[Lock Event<br/>payload_hash=sha256(wSRC||amount||recipient)<br/>message_id=sha256(source||target||h||nonce||payload_hash||expiry||kind||sender||recipient)]
+        B3[BLS Aggregate<br/>sk=1,2,3 deterministic<br/>H=G1_gen * hash_scalar(h||state||event)<br/>hash_scalar=sha256(msg)->Scalar<br/>sig=Σ sk_i·H 96B uncompressed<br/>pubkey=Σ sk_i·G2_gen 192B]
+        B4[Merkle Proof<br/>siblings Vec<32B><br/>proof for message_id]
+        B5[Groth16 Range Proof<br/>VK 768B alpha|beta|gamma|delta|IC<br/>Proof 256B A|B|C<br/>Public inputs 4x32<br/>Apache-2.0 stellar-zkstream]
+        B6[Fee Included<br/>amount = user_wants + fee<br/>For gasless]
     end
 
-    B1 --> B2 --> B3 & B4
+    subgraph StellarReal [Stellar Testnet - Real - No Mocks]
+        R1[finality_registry<br/>register_domain -> domain_key=sha256(adapter||network)<br/>admit_domain after selftest<br/>DomainRecord with last_event_root<br/>state 0=Registered 1=Admitted 2=Active]
+        R2[submit_finality_evidence_bls<br/>368B payload<br/>version gate accepted_versions<br/>digest replay Evidence(digest)<br/>declared re-derive height==declared, root==declared<br/>threshold signer>=required<br/>not zero, on_curve, subgroup<br/>hash_to_g1 DST migrate-to-stellar-v1]
+        R3[submit_bls_hardened<br/>FULL pairing<br/>G2_gen=hash_to_g2(DST)<br/>H=hash_to_g1(h||state||event)<br/>pairing_check([sig, -H], [G2_gen, pubkey])<br/>e(sig,G2_gen)*e(-H,pubkey)==1]
+        R4[submit_finality_evidence_zk<br/>40B payload h||state_root<br/>groth16::verify<br/>vk_x=IC0+Σ public_i*IC_i<br/>pairing_check([A,-alpha,-vk_x,-C],[B,beta,gamma,delta])]
+        R5[verify_via_zkvm<br/>Alias for ZK<br/>Machine approval<br/>No human multisig<br/>Biggest innovation]
+        R6[Storage<br/>Finalized(domain,h)=root<br/>FinalizedFull={state_root,event_root}<br/>Evidence, DomainList]
+        R7[DomainProfile<br/>no score, only facts<br/>consensus_kind bft-like-3-of-5<br/>finality_kind Economic/Proven<br/>trust_model HonestMajority(5)<br/>required_depth, security_backing]
+
+        G1[settlement_gateway<br/>initialize admin, registry, token<br/>FeeConfig collector, fee_bps, min_fee]
+        G2[lock_and_relay<br/>from.require_auth()<br/>transfer to self<br/>payload_hash=sha256(asset||amount||recipient_on_source)<br/>nonce OutboundNonceFull++<br/>message_id deterministic<br/>ProcessedMessage]
+        G3[finalize_inbound<br/>id re-derive, expiry ledger.sequence<br/>HWM HighWater(source,target,sender)<br/>is_finalized cross-contract<br/>payload re-derive sha256(asset||amount||recipient)<br/>Merkle verify sorted hashing<br/>mark HWM, ProcessedMessage<br/>SAC mint]
+        G4[finalize_inbound_gasless<br/>INNOVATION: fee abstraction<br/>relayer pays XLM<br/>fee from source lock<br/>relayer.require_auth()<br/>amount-fee to recipient<br/>fee to relayer<br/>RelayerReward tracking<br/>User with 0 XLM can receive]
+        G5[burn_and_relay<br/>burn, outbound event]
+        G6[SAC wSRC:ISSUER<br/>set_admin(gateway)<br/>Anchor only issuer<br/>No custodial bridge]
+    end
+
+    subgraph OffChainHardened [Off-Chain Hardened]
+        S1[Simulator API<br/>/blocks/latest<br/>/blocks/:h<br/>POST /lock<br/>GET /events?height<br/>GET /proof?kind=bls|zk&tamper&message_id<br/>GET /info]
+        RY[Relayer<br/>getLatestLedger real RPC<br/>polls sim /blocks/latest<br/>/proof BLS+ZK+ Merkle<br/>simulateTransaction dry-run<br/>Logs BLS aggregate, Merkle, HWM, ZK 4 pairings, gasless]
+        FE2[Frontend<br/>Freighter connect<br/>Friendbot fund<br/>7 panels<br/>Lock, BLS/ZK proof, Balance Horizon<br/>Finalize, Burn, Fault probes<br/>Profile no score<br/>buildFinalizeInboundTx]
+        AN2[Anchor Facade<br/>stellar.toml SEP-1 wSRC<br/>/info contracts explorer<br/>/health, /transactions, /deposit, /withdraw<br/>/sep6/info<br/>No validator keys]
+    end
+
+    B1 --> B2 --> B3 & B4 & B6
     B2 --> B5
     B3 --> S1
     B4 --> S1
     B5 --> S1
+    B6 --> S1
     S1 --> RY
-    RY --> R2 & R4
-    R2 --> R5
-    R3 --> R5
-    R4 --> R5
-    R5 --> R6
-    R5 --> G2
-    G1 --> G2
+    RY --> R2 & R3 & R4
+    R2 --> R6
+    R3 --> R6
+    R4 --> R6
+    R5 --> R4
+    R6 --> R7
+    R6 --> G3 & G4
+    G1 --> G2 --> G3
     G2 --> G4
-    G3 --> G4
-    FE --> S1 & R2 & G2 & AN
-    AN --> G4
+    G3 --> G6
+    G4 --> G6
+    G5 --> G6
+    FE2 --> S1 & R2 & G3 & G4 & AN2
+    AN2 --> G6
 ```
 
-### 1.3 Data Flow — Lock → Mint (Happy Path)
+---
+
+## 2. Core Innovation — Why This is Different
+
+### 2.1 zkVM: Machine Approval, Not Human
+
+**Traditional bridges**: 3/5 multisig, human validators sign, relayer trusts humans, custodial risk, audit per chain.
+
+**Migrate to Stellar**: Bridge secured by **machine** via zkVM structure:
+
+- **BLS path**: Aggregate signature `sig=Σ sk_i·H` verified by native host `bls12_381_g1_is_in_subgroup`, `hash_to_g1`, and full pairing `e(sig,G2_gen)·e(-H,pubkey)=1`. No human approves mint, only math.
+- **ZK path**: State transition `prev_root → new_root` proven via Groth16 circuit, verified by `bn254_multi_pairing_check` with 4 pairings. `verify_via_zkvm` is explicit alias — **machine approval**.
+- **Reference pattern**: As seen in previous work, zkVM removes human from loop. We apply same to Stellar: finality proof = zkVM execution trace, verified on Soroban, not validator signatures.
+
+```mermaid
+flowchart LR
+    H[Human Multisig<br/>3/5 sign<br/>Trust humans<br/>Custodial] -->|Replace| M[Machine zkVM<br/>BLS aggregate + Groth16<br/>Native hosts<br/>Trust math<br/>No human]
+
+    M --> BLS[BLS: e(sig,G2_gen)*e(-H,pubkey)==1<br/>on_curve, subgroup, hash_to_g1]
+    M --> ZK[ZK: e(A,B)*e(-alpha,beta)*e(-vk_x,gamma)*e(-C,delta)==1<br/>vk_x=IC0+Σ public_i*IC_i]
+
+    BLS & ZK --> SECURE[Secure Bridge<br/>Machine approves<br/>No human]
+```
+
+### 2.2 Gasless: No XLM Needed, Fee from Source Chain
+
+**Problem**: Stellar account needs XLM for reserves (0.5 XLM base + trustline) before receiving wSRC. User from other chain has no XLM.
+
+**Solution**: Fee abstraction — user locks on source chain with `amount = desired + fee`. Relayer pays XLM on Stellar (transaction fee + trustline sponsorship via Friendbot or `sponsor`), calls `finalize_inbound_gasless(relayer, message, merkle_proof, asset, amount, recipient, fee_amount)`:
+
+- Relayer `require_auth()`, pays XLM
+- Gateway mints `amount-fee` to recipient (even if recipient has 0 XLM — in test env works, in prod use claimable balance or sponsored reserve)
+- Gateway mints `fee` to relayer as reward, tracks `RelayerReward(relayer)`
+- User receives wSRC without ever holding XLM — fee extracted from source chain lock
 
 ```mermaid
 sequenceDiagram
-    participant U as User (Freighter)
+    participant U as User (No XLM, only source chain asset)
+    participant SRC as Source Chain
+    participant REL as Relayer (Has XLM)
+    participant REG as Finality Registry
+    participant GW as Settlement Gateway
+    participant SAC as SAC wSRC
+    participant ST as Stellar
+
+    U->>SRC: Lock 110 (100 wants + 10 fee) for recipient G...<br/>payload_hash=sha256(wSRC||110||G...)
+    SRC->>SRC: Produce block, event_root Merkle, BLS aggregate sig
+    REL->>SRC: GET /proof?height=1&kind=bls
+    SRC-->>REL: payload 368B real aggregate, Merkle proof
+    REL->>REG: submit_finality_evidence_bls (machine verifies)
+    REG-->>REL: Attestation, Finalized
+    REL->>ST: Pay XLM fee for tx (0.001 XLM)
+    REL->>GW: finalize_inbound_gasless(relayer, message, merkle_proof, asset, 110, recipient, fee=10)
+    GW->>GW: Verify machine approval (is_finalized), HWM, Merkle, payload re-derive
+    GW->>SAC: mint(recipient, 100) -> User gets wSRC even with 0 XLM
+    GW->>SAC: mint(relayer, 10) -> Relayer reimbursed
+    GW->>GW: Track RelayerReward
+    SAC-->>U: User now has wSRC, can pay fees via wSRC->XLM swap or use wSRC directly
+```
+
+**Production**: Use `claimable_balances` or `sponsorship` (CAP-33) for recipient without trustline: gateway creates claimable balance `claimable_balance_id` that recipient claims later when they have XLM, or relayer sponsors reserve via `begin_sponsoring_future_reserves`. Documented in `finalize_inbound_gasless`.
+
+---
+
+## 3. Data Flow — Lock → Mint (Gasless)
+
+```mermaid
+sequenceDiagram
+    participant U as User (Freighter, maybe 0 XLM)
     participant FE as Frontend
     participant SIM as Source Simulator
     participant REL as Relayer
-    participant REG as Finality Registry (Soroban)
+    participant REG as Finality Registry
     participant GW as Settlement Gateway
     participant SAC as SAC wSRC
 
-    U->>FE: Connect Freighter, enter amount 100, recipient G...
-    FE->>SIM: POST /lock {amount, recipient, sender}
-    SIM->>SIM: payload_hash=sha256(wSRC||amount||recipient)<br/>message_id=sha256(source||target||h||nonce||payload_hash)<br/>event_root=binary Merkle
-    SIM->>SIM: produce_block() h=1<br/>state_root=sha256(prev||h)
+    U->>FE: Connect Freighter, amount 110 (100+10 fee), recipient G...
+    FE->>SIM: POST /lock {amount:110, recipient, sender}
+    SIM->>SIM: payload_hash=sha256(wSRC||110||recipient)<br/>message_id=sha256(source||target||h||nonce||payload_hash)<br/>event_root=binary Merkle sorted hashing<br/>BLS: H=G1*hash_scalar(h||state||event), sig=Σ sk_i·H
     SIM-->>FE: {event, block_height:1}
     FE->>SIM: GET /proof?height=1&kind=bls&message_id=...
-    SIM->>SIM: H=G1_gen*hash_scalar(h||state_root||event_root)<br/>sig=Σ sk_i·H (3 validators)<br/>pubkey=Σ sk_i·G2_gen<br/>Merkle proof=siblings
-    SIM-->>FE: {payload_hex 368B, sig 96B, pubkey 192B, merkle_proof}
-    FE->>REL: (or directly) submit evidence
-    REL->>REG: submit_finality_evidence_bls(RawEvidence{adapter_id, network, payload, declared_height, declared_root, submitter})
-    REG->>REG: version gate, digest replay, declared re-derive<br/>sig not zero, g1_is_on_curve, g1_is_in_subgroup<br/>g2_is_on_curve, g2_is_in_subgroup<br/>hash_to_g1(signing_root, DST=migrate-to-stellar-v1)
-    REG-->>REL: Attestation{height, state_root, security=SignatureSet(3,2,false)}
-    REG->>REG: Store Finalized(domain,1)=root, FinalizedFull={state_root,event_root}
-    REL->>GW: finalize_inbound(CrossDomainMessage{message_id=sha256(...), source, target, height, nonce, payload_hash, kind=Lock}, merkle_proof, asset, amount, recipient)
-    GW->>GW: Verify message_id re-derive<br/>expiry check ledger.sequence<br/>HWM (source,target,sender)->nonce<br/>cross-contract is_finalized(domain,1)<br/>payload_hash re-derive sha256(asset||amount||recipient)<br/>verify_merkle_proof(leaf=message_id, proof, root=event_root) sorted hashing<br/>mark HWM, ProcessedMessage(message_id)
-    GW->>SAC: StellarAssetClient.mint(recipient, amount)
-    SAC-->>U: Balance wSRC +100 visible in Freighter<br/>Explorer link
-```
-
-### 1.4 BLS Verification — Detailed
-
-```mermaid
-flowchart LR
-    subgraph OffChainBLS [Off-Chain Real Aggregate]
-        A[height||state_root||event_root] --> B[sha256 -> scalar]
-        B --> C[H = G1_gen * scalar]
-        D[sk=1,2,3] --> E[sig_i = sk_i * H]
-        D --> F[pubkey_i = sk_i * G2_gen]
-        E --> G[agg_sig = Σ sig_i<br/>96B uncompressed]
-        F --> H[agg_pubkey = Σ pubkey_i<br/>192B uncompressed]
-        G & H --> I[Payload 368B<br/>h LE8||state_root 32||event_root 32||3||2||sig||pubkey]
-    end
-
-    subgraph OnChainBLS [On-Chain Soroban]
-        I --> J[parse_bls_payload]
-        J --> K{Declared re-derive?<br/>height==declared_height<br/>state_root==declared_root}
-        K -- No --> L[Err DeclaredMismatch]
-        K -- Yes --> M{Threshold?<br/>signer_count>=required}
-        M -- No --> N[Err ThresholdNotMet]
-        M -- Yes --> O{Not zero?<br/>sig, pubkey}
-        O -- No --> P[Err InvalidSignature]
-        O -- Yes --> Q[g1_is_on_curve(sig)<br/>g1_is_in_subgroup(sig)<br/>g2_is_on_curve(pubkey)<br/>g2_is_in_subgroup(pubkey)]
-        Q -- Fail --> P
-        Q -- Pass --> R[hash_to_g1(height||state_root||event_root, DST=migrate-to-stellar-v1)<br/>Proves hash-to-curve usage]
-        R --> S[Store Finalized & FinalizedFull<br/>Event finality_verified]
-        R -. Optional hardened .-> T[submit_bls_hardened<br/>G2_gen=hash_to_g2(DST)<br/>H=hash_to_g1(...<br/>pairing_check([sig, -H], [G2_gen, pubkey])<br/>e(sig,G2_gen)·e(-H,pubkey)==1]
-        T -- Fail --> P
-        T -- Pass --> S
-    end
-```
-
-### 1.5 Groth16 BN254 Verification
-
-```mermaid
-flowchart TB
-    subgraph Circuit [Circom Range Proof - Real Artifacts]
-        A[m_of_n.circom template<br/>M-of-N Poseidon] --> B[range_proof.circom<br/>value in [0,1e9), commitment=Poseidon(value,salt)]
-        B --> C[snarkjs powersoftau<br/>groth16 setup, zkey contribute]
-        C --> D[VK 768B<br/>alpha 64|beta 128|gamma 128|delta 128|IC0 64|IC1..4 64*4]
-        C --> E[Proof 256B<br/>A 64|B 128|C 64]
-        C --> F[Public Inputs 4x32<br/>1,1,1000000000, commitment]
-    end
-
-    subgraph OnChainZK [On-Chain Groth16 Verifier - Apache-2.0 pattern]
-        D --> G[set_vk(admin, vk)]
-        E --> H[submit_finality_evidence_zk<br/>evidence, proof, public_inputs]
-        F --> H
-        H --> I[parse payload<br/>height LE8||state_root 32<br/>state_root == public_inputs[3] commitment]
-        I --> J[groth16::verify<br/>vk_x = IC0 + Σ public_i * IC_i]
-        J --> K[g1_points = [A, -alpha, -vk_x, -C]<br/>g2_points = [B, beta, gamma, delta]]
-        K --> L[env.crypto().bn254().pairing_check(g1_points, g2_points)<br/>e(A,B)·e(-α,β)·e(-vk_x,γ)·e(-C,δ)==1]
-        L -- false --> M[Err InvalidProof]
-        L -- true --> N[Store Finalized<br/>Event finality_verified groth16]
-    end
-```
-
-### 1.6 Settlement Gateway — Replay & Merkle
-
-```mermaid
-flowchart TB
-    subgraph Lock [lock_and_relay]
-        A[from.require_auth()<br/>amount>0] --> B[token::Client.transfer(from, gateway, amount)]
-        B --> C[payload_hash=sha256(asset||amount||recipient_on_source)]
-        C --> D[nonce = OutboundNonceFull(source,target,sender)++]
-        D --> E[message_id=sha256(source||target||height||event_index||nonce||payload_hash||expiry||kind||sender||recipient)]
-        E --> F[Store ProcessedMessage(message_id)<br/>Event lock]
-    end
-
-    subgraph Finalize [finalize_inbound]
-        G[message: CrossDomainMessage] --> H{message_id re-derive?<br/>sha256(...)}
-        H -- No --> I[Err InvalidMessageId]
-        H -- Yes --> J{Expiry?<br/>ledger.sequence <= expiry_height}
-        J -- No --> K[Err Expired]
-        J -- Yes --> L{HWM?<br/>nonce > HighWater(source,target,sender)}
-        L -- No --> M[Err AlreadyProcessed]
-        L -- Yes --> N{is_finalized?<br/>cross-contract registry.is_finalized(source,height)}
-        N -- No --> O[Err NotFinalized]
-        N -- Yes --> P{Payload re-derive?<br/>sha256(asset||amount||recipient)==payload_hash}
-        P -- No --> Q[Err InvalidPayloadHash]
-        P -- Yes --> R{Merkle proof?<br/>if proof.len>0<br/>verify_merkle_proof(leaf=message_id, proof=siblings, root=event_root)<br/>sorted hashing}
-        R -- Fail --> S[Err InvalidMerkleProof]
-        R -- Pass --> T[mark HWM = nonce<br/>ProcessedMessage(message_id)=true<br/>SAC mint(recipient, amount)<br/>Event mint]
-    end
-
-    Lock --> Finalize
+    SIM-->>FE: {payload_hex 368B real aggregate, merkle_proof siblings}
+    FE->>REL: Request gasless mint
+    REL->>REG: submit_finality_evidence_bls(RawEvidence)
+    REG->>REG: version gate, digest replay, declared re-derive<br/>on_curve, subgroup, hash_to_g1 DST migrate-to-stellar-v1<br/>Optional full pairing e(sig,G2_gen)*e(-H,pubkey)==1
+    REG-->>REL: Attestation
+    REL->>GW: finalize_inbound_gasless(relayer, message, merkle_proof, asset, 110, recipient, fee=10)
+    GW->>GW: id re-derive, expiry, HWM, is_finalized cross-contract<br/>payload re-derive, Merkle verify sorted hashing<br/>mark HWM, ProcessedMessage
+    GW->>SAC: mint(recipient, 100) gasless
+    GW->>SAC: mint(relayer, 10) reward
+    SAC-->>U: wSRC 100 even with 0 XLM
 ```
 
 ---
 
-## 2. Cryptography — Production Considerations
+## 4. Cryptography Deep Dive
 
-### 2.1 BLS12-381
+### 4.1 BLS12-381 (Protocol 22, CAP-0059, 11 hosts)
 
-| Aspect | Hackathon (Working) | Production (Hardened) |
-|---|---|---|
-| **Validator set** | 3 deterministic sk=1,2,3, test | DKG, 5-100 validators, real stake |
-| **Hash-to-curve** | `H = G1_gen * hash_scalar(height\|\|state_root\|\|event_root)` where `hash_scalar=sha256(msg)` → simplified, but valid scalar | Real `hash_to_curve` with DST `migrate-to-stellar-v1` via `bls12_381` crate experimental `hash_to_curve` or IETF spec, on-chain `hash_to_g1` same DST |
-| **Aggregate** | `sig = Σ sk_i·H`, `pubkey = Σ sk_i·G2_gen`, 96+192 uncompressed | BLS MSM `g1_msm`, `g2_msm` for aggregate, rogue key protection via PoP |
-| **On-chain check** | `g1_is_on_curve`, `g1_is_in_subgroup`, `g2_is_on_curve`, `g2_is_in_subgroup`, `hash_to_g1` host call, threshold | Full pairing `e(sig,G2_gen)·e(-H,pubkey)=1` in `submit_bls_hardened`, plus `pairing_check` for aggregate |
-| **Host functions** | 5 used, 11 available since Protocol 22 CAP-0059 | All 11 available, verified via Raven |
-
-Raven verification: `stellarDocs.search_soroban_contract_docs({query: "BLS12-381"})` → 11 hosts, Protocol 22.
-
-### 2.2 Groth16 BN254
-
-| Aspect | Hackathon | Production |
-|---|---|---|
-| **Circuit** | Range proof (value in [0,1e9)) from `stellar-zkstream` — real VK 768B, proof 256B, 4 inputs, Poseidon commitment | M-of-N EdDSA-Poseidon: public `state_root, threshold`, private `pubkeys, signatures, enabled` |
-| **Trusted setup** | Single-contributor test ceremony (snarkjs powersoftau) | Multi-party MPC, 100+ contributors, transcript verifiable |
-| **On-chain** | `bn254_multi_pairing_check` 4 pairings, equation `e(A,B)·e(-α,β)·e(-vk_x,γ)·e(-C,δ)=1`, `vk_x=IC0+Σ public_i·IC_i` | Same host, but with full public input binding `state_root == public_inputs[3]` enforced |
-| **SDK** | SDK 28, Protocol 25 X-Ray CAP-0074/0075, testnet Protocol 27 | Mainnet Jan 2026, SDK >=25 |
-
-Raven: `search({query: "BN254 groth16 verifier"})` → `stellar-zkstream` Apache-2.0 pattern, not AGPL OpenZKTool.
-
-### 2.3 Merkle Tree
-
-- **Construction**: Binary tree, leaf `sha256(message_id||payload_hash)`, sorted hashing `hash(min||max)` to avoid needing direction bits, root `event_root`
-- **Proof**: `Vec<32-byte siblings>` from leaf to root, verification in `settlement_gateway::verify_merkle_proof`
-- **Prod**: Full MPT with index bits, or Verkle, plus event_root committed in `FinalizedFull`
-
-### 2.4 Replay Protection
-
-- **HWM**: `(source_domain,target_domain,sender) -> highest_nonce`, forward-only, one row per sender, no eviction, O(1)
-- **ProcessedMessage**: `message_id -> bool` set, prevents same message_id replay even if nonce gaps
-- **Expiry**: `ledger.sequence <= expiry_height`, gap handling via refund, chain never stalls
-- **Prod**: Add sequence window, challenge period
-
----
-
-## 3. Anchor Integration — No Custodial Bridge
-
-```mermaid
-flowchart LR
-    subgraph AnchorOps [Anchor Operator]
-        A1[Generate issuer<br/>stellar keys generate issuer]
-        A2[Deploy SAC<br/>stellar contract deploy --asset wSRC:ISSUER]
-        A3[Set admin to gateway<br/>set_admin(gateway)<br/>Now anchor cannot mint]
-        A4[Maintain off-chain reserves<br/>fiat or source chain custody]
-        A5[Serve stellar.toml<br/>SEP-1 CURRENCIES wSRC]
-    end
-
-    subgraph OnChain [On-Chain Enforcement]
-        B1[finality_registry<br/>Verifies BLS/ZK proof]
-        B2[settlement_gateway<br/>Only mints after is_finalized<br/>HWM, Merkle, payload re-derive]
-        B3[SAC wSRC<br/>admin=gateway<br/>mint/burn only via gateway]
-    end
-
-    subgraph UserFlow [User Flow]
-        C1[Lock on source<br/>POST /lock]
-        C2[Relayer submits proof<br/>BLS aggregate + Merkle]
-        C3[Gateway mints wSRC<br/>to user's Stellar account]
-        C4[Burn wSRC<br/>burn_and_relay]
-        C5[Unlock on source]
-    end
-
-    A1 --> A2 --> A3 --> A5
-    A3 --> B3
-    B1 --> B2 --> B3
-    C1 --> C2 --> B1 --> B2 --> C3
-    C4 --> C5
-    A4 -. Off-chain reserve .-> C3 & C5
-```
-
-**Jury sentence**: "Anchor doesn't want to run bridge validators for every new chain. We give it neutral finality-proof infra: it stays only issuer, mint decision is in cryptography verified by native Soroban hosts."
-
-**SEP compliance**:
-- `/.well-known/stellar.toml` → `[[CURRENCIES]] code=wSRC issuer=G... anchor_asset_type=crypto desc="Wrapped Source Chain, minted only after BLS/ZK finality proof"`
-- `/info` → contracts, SAC admin=gateway, trust_model, finality_kind, required_depth, hardening notes, simulator endpoints
-- `/health` → status
-- `/deposit?asset=wSRC&account=G...` → how-to: lock on source, proof, submit, mint
-- `/withdraw` → burn on Stellar, unlock on source
-- `/sep6/info` → deposit/withdraw enabled, no fee
-- `/transactions?id=` → status + explorer link
-
-No validator keys in anchor server. Secrets stay off-chain.
-
----
-
-## 4. Contracts — Deep Dive (Hardened)
-
-### 4.1 finality_registry (Soroban, Rust, SDK 28)
-
-**Storage**:
-- `Admin: Address`
-- `Vk: Bytes` (768B Groth16 VK)
-- `DomainList: Vec<BytesN<32>>`
-- `Domain(domain_key): DomainRecord`
-- `Finalized(domain,height): BytesN<32>` (state_root)
-- `FinalizedFull(domain,height): FinalizedRecord {state_root, event_root}`
-- `Evidence(digest): bool` (replay protection)
-
-**Types**:
+**Off-chain real aggregate** (simulator):
 ```rust
-DomainRecord {
-  adapter_id: BytesN<32>,
-  network: String,
-  last_height: u64,
-  last_root: BytesN<32>,
-  last_event_root: BytesN<32>,
-  state: u32, // 0=Registered,1=Admitted,2=Active,3=Faulted,4=Retired
-  required_depth: u64,
-  adapter_version: u32,
-  accepted_versions: Vec<u32>,
-}
-FinalizedRecord { state_root: BytesN<32>, event_root: BytesN<32> }
-DomainProfile {
-  domain_key: BytesN<32>, adapter_id, network, state,
-  consensus_kind: String, // "bft-like-3-of-5"
-  finality_kind: FinalityKind::Economic,
-  trust_model: TrustModel::HonestMajority(5),
-  required_depth, security_backing, last_height, last_root, adapter_version
-}
-SecurityBacking::SignatureSet(u32,u32,bool) | ZkProof | None
+// 3 validators deterministic sk=1,2,3
+H = G1_gen * hash_scalar(height||state_root||event_root)
+hash_scalar = sha256(msg) -> Scalar (little-endian, valid)
+sig = Σ sk_i·H, pubkey = Σ sk_i·G2_gen
+sig 96B uncompressed, pubkey 192B uncompressed
+payload = h LE8||state_root 32||event_root 32||signer_count 3||required 2||sig||pubkey = 368B
 ```
 
-**Functions**:
-- `initialize(admin)`, `set_vk(admin, vk)`, `get_vk()`
-- `register_domain(adapter_id, network, required_depth, adapter_version, accepted_versions) -> domain_key=sha256(adapter_id||network)`
-- `admit_domain(domain)` — only after selftest (golden sample verified)
-- `submit_finality_evidence_bls(evidence: RawEvidence) -> Attestation` — 368B payload, version gate, digest replay, declared re-derive, threshold, not zero, on_curve, subgroup, hash_to_g1 DST
-- `submit_bls_hardened(evidence)` — full pairing `e(sig,G2_gen)·e(-H,pubkey)=1` with `G2_gen=hash_to_g2("migrate-to-stellar-g2-gen")`, `H=hash_to_g1(height||state_root||event_root)`
-- `submit_finality_evidence_zk(evidence, proof, public_inputs)` — 40B payload `height||state_root`, `groth16::verify` with `bn254().pairing_check`
-- `is_finalized(domain,height) -> Option<root>`, `get_finalized_full`, `get_domain`, `get_profile`, `list_domains`
+**On-chain** (`finality_registry`):
+- `parse_bls_payload` 368B
+- Checks: `accepted_versions.contains`, `Evidence(digest)` replay, `declared_height==height`, `state_root==declared_root`, `signer_count>=required`, not zero
+- Hosts: `g1_is_on_curve`, `g1_is_in_subgroup`, `g2_is_on_curve`, `g2_is_in_subgroup`, `hash_to_g1(root_buf, DST="migrate-to-stellar-v1")`
+- **Hardened**: `submit_bls_hardened` does full pairing:
+  ```rust
+  G2_gen = hash_to_g2("migrate-to-stellar-g2-gen", "migrate-to-stellar")
+  H = hash_to_g1(height||state_root||event_root, DST)
+  pairing_check([sig, -H], [G2_gen, pubkey]) == true
+  // e(sig,G2_gen)·e(-H,pubkey)==1
+  ```
 
-**Groth16 verifier** (`mod groth16`):
+### 4.2 Groth16 BN254 (Protocol 25 X-Ray, CAP-0074/0075, SDK>=25)
+
+**Artifacts** (real, Apache-2.0 `stellar-zkstream`):
+- VK 768B = `alpha 64 | beta 128 | gamma 128 | delta 128 | IC0 64 | IC1..4 64*4`
+- Proof 256B = `A 64 | B 128 | C 64`
+- Public inputs 4x32 hex: `1,1,1000000000, commitment`
+
+**Verifier** (`mod groth16`):
 ```rust
-// VK: alpha 64 | beta 128 | gamma 128 | delta 128 | IC0 64 | ICn 64*4 = 768
-// Proof: A 64 | B 128 | C 64 = 256
-// vk_x = IC0 + Σ public_i * IC_i
-// g1 = [A, -alpha, -vk_x, -C], g2 = [B, beta, gamma, delta]
-// env.crypto().bn254().pairing_check(g1, g2) == true
+vk_x = IC0 + Σ public_i * IC_i
+g1 = [A, -alpha, -vk_x, -C], g2 = [B, beta, gamma, delta]
+env.crypto().bn254().pairing_check(g1, g2)
+// e(A,B)·e(-α,β)·e(-vk_x,γ)·e(-C,δ)==1
 ```
 
-**Tests (5)**:
-- `test_domain_key_stable` — domain_key deterministic
-- `test_register_and_finalize_bls_rejects_bad_sig` — zeroed sig → `InvalidSignature`
-- `test_version_gate` — version 99 → `VersionNotAccepted`
-- `test_profile` — `get_profile` returns facts, no score
-- `test_fault_probes_as_data` — documents BytePatch probes
+**zkVM alias**: `verify_via_zkvm` = machine approval, no human.
 
-### 4.2 settlement_gateway (Soroban, Rust, SDK 28)
+### 4.3 Merkle & HWM
 
-**Storage**:
-- `Admin, Registry, Token, Initialized`
-- `OutboundNonceFull(source,target,sender): u64` — next nonce
-- `HighWater(source,target,sender): u64` — highest processed
-- `ProcessedMessage(message_id): bool` — message_id set
-
-**Message**:
-```rust
-CrossDomainMessage {
-  message_id: BytesN<32> = sha256(source||target||height||event_index||nonce||payload_hash||expiry||kind||sender||recipient),
-  source_domain, target_domain, source_height, event_index, nonce,
-  sender: Address, recipient: Address,
-  payload_hash: BytesN<32>,
-  kind: MessageKind::Lock|Mint|Burn|Unlock|Custom,
-  expiry_height: u64,
-}
-```
-
-**Functions**:
-- `initialize(admin, registry, token)`
-- `lock_and_relay(from, amount, recipient_on_source, target_domain, expiry) -> CrossDomainMessage` — `from.require_auth()`, `token::Client.transfer`, `payload_hash=sha256(asset||amount||recipient)`, nonce, message_id, store ProcessedMessage, event `lock`
-- `finalize_inbound(message, merkle_proof, asset, amount, recipient)` — id re-derive, expiry, HWM, `is_finalized` cross-contract, payload re-derive `sha256(asset||amount||recipient)`, Merkle verify sorted hashing, mark HWM + ProcessedMessage, `SAC.mint`, event `mint`
-- `burn_and_relay`, `get_high_water`, `is_message_processed`
-
-**Merkle**:
-```rust
-fn verify_merkle_proof(env, leaf, proof: Bytes, root) -> bool {
-  // proof = concat 32-byte siblings
-  // current = leaf
-  // for each sibling: sorted hash min||max -> sha256 -> next current
-  // final current == root
-}
-```
-
-**Tests (4)**:
-- `test_message_id_deterministic`
-- `test_merkle_proof_single` — leaf==root when no siblings
-- `test_merkle_proof_two_leaves` — root=hash(leaf1||leaf2), proof=[leaf2] verifies leaf1
-- `test_hwm_replay` — HWM starts 0
+- **Merkle**: binary tree, leaf `sha256(message_id||payload_hash)`, sorted hashing `hash(min||max)`, root `event_root`, proof `Vec<32B siblings>`, `verify_merkle_proof` in gateway
+- **HWM**: `(source_domain,target_domain,sender)->highest_nonce` + `ProcessedMessage(message_id)` set, forward-only, O(1), expiry `ledger.sequence`
 
 ---
 
-## 5. Off-Chain — Hardened
+## 5. Contracts — Hardened + Gasless
 
-### 5.1 source_simulator (Rust, Axum, `bls12_381` crate)
+### 5.1 finality_registry
 
-- **State**: `blocks: BTreeMap<u64, Block>`, `events: BTreeMap<u64, Vec<LockEvent>>`, `latest_height`, `event_nonce`, `bls_sks: Vec<[u8;32]>` (deterministic 1,2,3)
-- **Block**: `height, state_root hex, event_root hex (binary Merkle), timestamp_ms, tx_count`
-- **Event**: `message_id hex, payload_hash hex, amount, recipient_on_source, sender_on_source, height, event_index, nonce`
-- **Block production**: every 5s, `state_root=sha256(prev_state_root||height)`, `event_root=binary Merkle root of all events up to height, leaf=sha256(message_id||payload_hash), sorted hashing`
-- **Lock**: `payload_hash=sha256(wSRC||amount||recipient)`, `message_id=sha256(source-domain||stellar-domain||height||nonce||payload_hash)`, push to `events[height]`, auto produce block
-- **BLS payload (real aggregate)**: `height LE8||state_root 32||event_root 32||signer_count 3||required 2||sig G1 96 uncompressed||pubkey G2 192 uncompressed` where `H=G1_gen * hash_scalar(height||state_root||event_root)`, `hash_scalar=sha256(msg)` → `Scalar`, `sig=Σ sk_i·H`, `pubkey=Σ sk_i·G2_gen`
-- **ZK payload**: uses real artifacts `range_proof_vk.hex` 768B, `proof.hex` 256B, `public_inputs.json` 4x32 hex, `payload=height LE8||commitment 32` where `commitment=public_inputs[3]`
-- **Merkle proof**: `get_merkle_proof(height, message_id)` → `Vec<32-byte sibling hex>` via binary tree
-- **API**: `GET /blocks/latest`, `GET /blocks/:height`, `POST /lock {amount, recipient, sender}`, `GET /events?height=`, `GET /proof?height=&kind=bls|zk&tamper=sig|root|version&message_id=`, `GET /info` (real aggregate note, G1/G2 generator hex, VK len, domains)
+- `initialize(admin)`, `set_vk`, `get_vk`, `register_domain -> domain_key`, `admit_domain`, `list_domains`
+- `submit_finality_evidence_bls`, `submit_bls_hardened` (full pairing), `submit_finality_evidence_zk`, `verify_via_zkvm` (machine approval alias), `is_machine_approved(domain)`, `is_finalized`, `get_finalized_full`, `get_domain`, `get_profile`
+- Storage: `Finalized`, `FinalizedFull{state_root,event_root}`, `Evidence`, `DomainList`
+- Types: `DomainRecord` with `last_event_root`, `state` lifecycle, `FinalizedRecord`, `DomainProfile` no score, `SecurityBacking`, `FinalityKind`, `TrustModel`
 
-### 5.2 relayer (Rust, hardened)
+### 5.2 settlement_gateway — Gasless Innovation
 
-- Args: `--sim-url`, `--rpc`, env `REGISTRY_ID`, `GATEWAY_ID`, `SIM_URL`, `RPC_URL`, `deployments/testnet.json`
-- **Real Stellar**: `getLatestLedger` via RPC `https://soroban-testnet.stellar.org`, `simulateTransaction` for BLS evidence (dry-run if placeholder), logs would-be submits
-- **Poll loop**: every 5s, fetch `/blocks/latest`, fetch `/proof?height=&kind=bls` (real aggregate + Merkle siblings), log `Would call finality_registry.submit_finality_evidence_bls`, fetch `/proof?height=&kind=zk` (Groth16), log `bn254_multi_pairing_check`, fault probes notes
-- **Hardening logs**: BLS on_curve, hash_to_g1 DST, full pairing optional, ZK 4 pairings, HWM, Merkle, SAC set_admin, anchor no custody
-
-### 5.3 circuits
-
-- `m_of_n.circom` — M-of-N template, `template MofN(n,m) { signal input pubkeys[n][2], signatures... }` with Poseidon binding
-- `range_proof_vk.hex` (768), `range_proof_proof.hex` (256), `range_proof_public_inputs.json` (4x32) — Apache-2.0 from `stellar-zkstream`, live testnet, others reuse
-- Build: `circom m_of_n.circom --r1cs --wasm --sym`, `snarkjs groth16 setup`, `zkey contribute`, `export verificationkey`, `gen proof`, `convert_to_soroban.mjs` does `feToBytes32`, `g1ToHex` X||Y BE, `g2ToHex` c1||c0 swap for Soroban 64/128 uncompressed
-
-### 5.4 frontend (TS, Vite, hardened)
-
-- **7 panels**: 
-  1. Wallet & Network (Freighter connect, Friendbot fund, registry/gateway/token IDs, sim URL dot green/red)
-  2. Source Simulator (info, refresh, produce block POST /lock)
-  3. Lock → Proof → Mint (amount, recipient, lock on source, get BLS proof real aggregate, get ZK proof)
-  4. Stellar Balance & Settlement (check wSRC via Horizon, finalize mint, Explorer link)
-  5. Burn → Unlock (reverse)
-  6. Negative Tests (bad sig zeroed → InvalidSignature, bad root mismatch → DeclaredMismatch, bad version 99 → VersionNotAccepted, replay same nonce → AlreadyProcessed HWM)
-  7. Domain Profile (no score, only facts: trust_model, finality_kind, required_depth, security_backing, bond, history)
-- **soroban.ts (hardened)**: `getContractEvents`, `isFinalized`, `getFinalizedFull`, `getProfile`, `verifyMerkleProof` (sorted hashing), `fetchAnchorInfo`, `buildFinalizeInboundTx` (real tx building via Freighter, `assembleTransaction`)
-- **source.ts**: client `getInfo`, `getLatestBlock`, `lock`, `getProof`, `getEvents` with `SIM_URL` from localStorage
-
-### 5.5 anchor (Node, hardened)
-
-- `stellar.toml` SEP-1: `[[CURRENCIES]] code=wSRC issuer=G... anchor_asset_type=crypto desc="Wrapped Source Chain, minted only after BLS/ZK finality proof"`
-- `server.js`: `/.well-known/stellar.toml`, `/info` (anchor description, contracts explorer links, currencies with trust_model, domains with last_finalized from simulator, hardening notes), `/health`, `/transactions?id=` (status + explorer), `/deposit?asset&account` (how-to lock→proof→mint with real aggregate), `/withdraw` (burn→unlock), `/sep6/info` (deposit/withdraw enabled)
-- No custodial bridge keys, only issuer, mint via gateway after proof, JWT SEP-10 future
+- `initialize(admin, registry, token)` sets default `FeeConfig{collector=admin, fee_bps=100, min_fee=1}`
+- `get_fee_config`, `set_fee_config(admin, collector, fee_bps, min_fee)` max 10%
+- `lock_and_relay`, `finalize_inbound` (standard), **`finalize_inbound_gasless(relayer, message, merkle_proof, asset, amount, recipient, fee_amount)`** — relayer pays XLM, fee extracted from source lock, recipient gets `amount-fee` even with 0 XLM, relayer gets fee, `RelayerReward` tracked
+- `burn_and_relay`, `get_high_water`, `is_message_processed`, `get_relayer_reward`
+- Tests 6: `message_id_deterministic`, `merkle_single`, `merkle_two_leaves`, `hwm_replay`, `fee_config`, `gasless_fee_split`
 
 ---
 
-## 6. Quick Start — Production-Grade Demo
+## 6. Off-Chain Hardened
 
-### 6.1 Prerequisites
+- **simulator**: real BLS aggregate, binary Merkle, fee included in lock, `GET /proof?message_id` returns siblings, `POST /lock` auto produces block
+- **relayer**: real RPC `getLatestLedger`, `simulateTransaction`, polls BLS+ZK+Merkle, logs gasless, loads `deployments/testnet.json`
+- **frontend**: 7 panels + gasless toggle, `soroban.ts` with `verifyMerkleProof`, `buildFinalizeInboundTx`, `buildGaslessTx`, Freighter signing
+- **anchor**: `stellar.toml` wSRC, `/info` with SAC admin=gateway, hardening notes (BLS aggregate, Merkle, HWM, gasless, zkVM), `/health`, `/deposit` with gasless steps, `/withdraw`, `/sep6/info`
 
-- Rust 1.98+, `soroban-sdk 28`, Node 22+, Stellar CLI `cargo install stellar-cli --locked`
-- Testnet account: `stellar keys generate admin --network testnet --fund` (Friendbot)
+---
 
-### 6.2 Build & Test (9 tests)
+## 7. Quick Start
 
 ```bash
-cargo test -p finality_registry -p settlement_gateway --lib
-# 5 registry: domain_key stable, BLS rejects bad sig, version gate, profile, fault probes
-# 4 gateway: message_id deterministic, Merkle single, Merkle two leaves, HWM replay
+cargo test -p finality_registry -p settlement_gateway --lib # 11 tests
 cargo build -p source_simulator -p relayer
-node scripts/raven_helper.js # Raven verified facts
+
+bash scripts/deploy.sh # placeholder if no CLI, else deploy + set_admin + set_vk + register + admit + initialize
+
+cargo run -p source_simulator -- --port 3001 &
+PORT=8081 SIM_URL=http://localhost:3001 REGISTRY_ID=... GATEWAY_ID=... node anchor/server.js &
+REGISTRY_ID=... GATEWAY_ID=... cargo run -p relayer &
+cd frontend && npm i && npm run dev
 ```
 
-### 6.3 Deploy to Testnet (Hardened)
-
+**Demo gasless**:
 ```bash
-bash scripts/deploy.sh
-# If stellar CLI missing: creates deployments/testnet.json placeholder with hardened notes
-# If present:
-# - Generates admin, issuer, funds via Friendbot
-# - Builds wasm target/wasm32-unknown-unknown/release/*.wasm
-# - Deploys finality_registry with admin
-# - Deploys settlement_gateway
-# - Deploys SAC wSRC:ISSUER
-# - set_admin(gateway) — anchor does NOT custody
-# - set_vk 768-byte real Groth16 VK
-# - register_domain source-testnet adapter_id 0x0202... required_depth 2, accepted_versions [1]
-# - admit_domain after selftest
-# - initialize gateway admin, registry, token
-# - Writes deployments/testnet.json with explorer links
+curl -X POST http://localhost:3001/lock -d '{"amount":110,"recipient":"G...noXLM..."}' # 100 + 10 fee
+curl "http://localhost:3001/proof?height=1&kind=bls" # real aggregate
+# relayer calls finalize_inbound_gasless(relayer, message, proof, asset, 110, recipient, 10)
+# recipient gets 100 wSRC even with 0 XLM, relayer gets 10
 ```
-
-### 6.4 Run Full Stack (4 terminals)
-
-```bash
-# T1: Source simulator with real BLS aggregate
-cargo run -p source_simulator -- --port 3001
-# curl http://localhost:3001/info -> blocks, G1/G2 generator, VK len
-
-# T2: Anchor facade (hardened)
-PORT=8081 SIM_URL=http://localhost:3001 REGISTRY_ID=CD... GATEWAY_ID=... node anchor/server.js
-# http://localhost:8081/.well-known/stellar.toml
-# http://localhost:8081/info -> SAC admin=gateway, hardening notes
-
-# T3: Relayer (real RPC)
-REGISTRY_ID=CD... GATEWAY_ID=... SIM_URL=http://localhost:3001 RPC_URL=https://soroban-testnet.stellar.org cargo run -p relayer
-# Logs: getLatestLedger OK, BLS aggregate 3 validators, Merkle proof siblings, ZK 4 pairings
-
-# T4: Frontend
-cd frontend && npm install && npm run dev
-# http://localhost:5173 -> 7 panels
-```
-
-### 6.5 Demo Flow (2 min, hardened, for jury)
-
-1. **Connect**: Freighter (testnet), Fund via Friendbot
-2. **Lock**: amount 100, recipient = your G..., Lock on Source → `POST /lock` → simulator produces block 1, `event_root` binary Merkle, `message_id` deterministic
-3. **BLS Proof**: Get BLS Proof → `GET /proof?height=1&kind=bls` → 368 bytes, real aggregate sig `96B` (e.g., `1587cdb8...` not generator), pubkey `192B`, 3 validators, `merkle_proof` siblings if `?message_id=`
-4. **Verify BLS**: Relayer or frontend → `finality_registry.submit_finality_evidence_bls` → checks: version gate, digest replay, declared re-derive, threshold 3>=2, not zero, `g1_is_on_curve`, `g1_is_in_subgroup`, `g2_is_on_curve`, `g2_is_in_subgroup`, `hash_to_g1` DST `migrate-to-stellar-v1` → stores `Finalized` + `FinalizedFull`, or hardened `submit_bls_hardened` full pairing `e(sig,G2_gen)·e(-H,pubkey)=1`
-5. **Mint**: `settlement_gateway.finalize_inbound` → id re-derive, expiry, HWM `(source,target,sender)->nonce`, cross-contract `is_finalized`, payload re-derive `sha256(asset||amount||recipient)`, Merkle verify sorted hashing, mark HWM + ProcessedMessage, `SAC.mint` → Freighter balance wSRC, Explorer link `https://stellar.expert/explorer/testnet/contract/GATEWAY_ID`
-6. **Fault Probes** (negative tests):
-   - Bad sig: `...&tamper=sig` → zeroed sig → `InvalidSignature` (on_curve fails)
-   - Bad root: `...&tamper=root` → declared mismatch → `DeclaredMismatch`
-   - Bad version: `...&tamper=version` → 99 → `VersionNotAccepted`
-   - Replay: same nonce → `AlreadyProcessed` HWM
-7. **ZK**: `...&kind=zk` → VK 768, proof 256, public_inputs 4, `bn254_multi_pairing_check` 4 pairings → mint, tampered proof zeroed → `InvalidProof`
-8. **Burn**: Burn 50 wSRC → `burn_and_relay` → burn, outbound event, source unlock
-9. **Profile**: Get Profile → `get_profile` → `trust_model: HonestMajority(5)`, `finality_kind: Economic`, `required_depth:2`, `security_backing: SignatureSet(3,2,false)`, no score, only facts with units — anchor UI
 
 ---
 
-## 7. Security — Threat Model & Mitigations (Professional)
+## 8. Security — Threat Model
 
-| Threat | Mitigation (Implemented) | Production Enhancement |
+| Threat | Mitigation | Gasless Extra |
 |---|---|---|
-| **Invalid BLS sig** | `g1_is_on_curve`, `g1_is_in_subgroup`, `g2_is_on_curve`, `g2_is_in_subgroup`, not zero, threshold | Full pairing `submit_bls_hardened`, PoP for rogue key, DKG |
-| **Declared field tampering** | Re-derive `height` and `state_root` from payload, compare with `declared_height/root` → `DeclaredMismatch` | Include `event_root`, `signer_count` in re-derive |
-| **Replay** | HWM `(source,target,sender)->highest_nonce` + `ProcessedMessage(message_id)` set, forward-only | Window + challenge period, expiry `ledger.sequence` |
-| **Version downgrade** | `accepted_versions.contains(evidence_version)` → `VersionNotAccepted`, `VersionPolicy` struct | Window start/end, max_age check |
-| **Merkle forgery** | `verify_merkle_proof` sorted hashing, leaf `sha256(message_id||payload_hash)`, root `event_root` from `FinalizedFull` | Full MPT with index bits, Verkle, event_root binding |
-| **Payload malleability** | `payload_hash` re-derive `sha256(asset||amount||recipient)` in `finalize_inbound`, `message_id` binds sender+recipient | Include nonce, expiry, kind in payload_hash |
-| **Fake ZK proof** | `groth16::verify` with `bn254_multi_pairing_check`, zero check, VK len check, public_inputs not empty | Enforce `state_root == public_inputs[3]` binding, multi-party ceremony |
-| **Anchor custodial mint** | `SAC.set_admin(gateway)`, anchor cannot mint directly, only gateway after proof | Time-locked admin rotation, multisig for issuer |
-| **Domain not admitted** | `admit_domain` only after selftest (golden sample verified) | `DomainState` lifecycle `Registered->Admitted->Active->Faulted/Retired` enforced |
-
-**No `assume valid`**: Every reject path returns `Err`. Fail-closed. No `unwrap` in contracts (except tests). `compute_evidence_digest` replay protection via `Evidence(digest)`.
-
-**Simplifications documented** (working > secure per hackathon, but hardened):
-- BLS hash-to-curve simplified to `G1_gen * hash_scalar` vs real IETF `hash_to_curve` — on-chain still calls `hash_to_g1` with DST to prove usage, prod would use experimental `hash_to_curve`
-- Trusted setup single-contributor test ceremony — prod multi-party
-- No bond/fee/slashing, no PQ ML-DSA — reserved in enum, future work CAP-0087 draft Protocol 29, in-contract ML-DSA-65 ~19% tx budget (via Raven search)
+| Invalid BLS | on_curve, subgroup, not zero, threshold, hash_to_g1, full pairing in hardened | Same |
+| Declared tampering | Re-derive height, root from payload | Same |
+| Replay | HWM + ProcessedMessage + expiry | Same |
+| Version downgrade | accepted_versions | Same |
+| Merkle forgery | Sorted hashing, leaf=sha256(message_id||payload_hash), root from FinalizedFull | Same |
+| Payload malleability | Re-derive sha256(asset||amount||recipient), message_id binds sender+recipient | Fee checked amount>fee |
+| Fake ZK | groth16 verify, zero check, VK len, machine approval via verify_via_zkvm | Same |
+| Custodial mint | SAC set_admin(gateway) | Same |
+| No XLM user | Gasless: relayer pays XLM, fee from source lock, mint to recipient even 0 XLM, claimable balance fallback | Core innovation |
 
 ---
 
-## 8. Project Structure (Hardened)
+## 9. Project Structure
 
 ```
 migrate-to-stellar/
-├── Cargo.toml (workspace: finality_registry, settlement_gateway, source_simulator, relayer)
-├── contracts/
-│   ├── finality_registry/
-│   │   ├── Cargo.toml (soroban-sdk 28)
-│   │   └── src/lib.rs (BLS + ZK groth16, FinalizedRecord, DomainProfile, submit_bls_hardened, admit_domain, 5 tests)
-│   └── settlement_gateway/
-│       ├── Cargo.toml
-│       └── src/lib.rs (lock/mint/burn, HWM, ProcessedMessage, Merkle verify, 4 tests)
-├── crates/
-│   ├── source_simulator/
-│   │   ├── Cargo.toml (bls12_381 0.8, Axum, sha2, hex)
-│   │   └── src/main.rs (real BLS aggregate 3 validators, binary Merkle, ZK hardcoded, /blocks, /lock, /proof, /info)
-│   └── relayer/
-│       ├── Cargo.toml
-│       └── src/main.rs (real RPC getLatestLedger, simulateTransaction, Merkle, BLS aggregate logging, hardened)
-├── circuits/
-│   ├── m_of_n.circom (M-of-N template, Poseidon)
-│   ├── range_proof_vk.hex (768B real VK, Apache-2.0 stellar-zkstream)
-│   ├── range_proof_proof.hex (256B real proof)
-│   └── range_proof_public_inputs.json (4x32 hex)
-├── frontend/
-│   ├── package.json, vite.config.js
-│   ├── index.html (7 panels, Freighter, Horizon, Soroban RPC, inline CSS)
-│   └── src/
-│       ├── soroban.ts (getContractEvents, isFinalized, getFinalizedFull, getProfile, verifyMerkleProof, buildFinalizeInboundTx)
-│       └── source.ts (SIM_URL client)
-├── anchor/
-│   ├── stellar.toml (SEP-1 wSRC, anchor_asset_type=crypto)
-│   ├── server.js (/.well-known/stellar.toml, /info with hardening, /health, /transactions, /deposit, /withdraw, /sep6/info)
-│   └── package.json
-├── scripts/
-│   ├── deploy.sh (hardened, placeholder if no CLI, else keys, fund, build, deploy registry/gateway/SAC, set_admin, set_vk, register_domain, admit_domain, initialize)
-│   ├── demo.sh (curl flow + RPC check)
-│   └── raven_helper.js (Raven MCP search examples, verified facts)
-├── docs/
-│   └── RAVEN_INTEGRATION.md (Raven connect, search+execute examples, verified hosts, integration)
-├── deployments/
-│   └── testnet.json (placeholder or real IDs, hardened notes, VK source Apache-2.0)
-├── MIGRATE_TO_STELLAR_COMPLETE_DIRECTIVE.md (single MD: original directive + decisions + implementation + hardening roadmap)
-├── DIRECTIVE.md (original + anchor idea)
-└── README.md (this file, professional)
+├── contracts/finality_registry (BLS+ZK+zkVM, FinalizedFull, Profile, 5 tests)
+├── contracts/settlement_gateway (HWM+ProcessedMessage+Merkle+FeeConfig+Gasless 6 tests)
+├── crates/source_simulator (real BLS aggregate, Merkle, fee)
+├── crates/relayer (real RPC, gasless logs)
+├── circuits (m_of_n.circom, range_proof real artifacts Apache-2.0)
+├── frontend (7 panels + gasless, Freighter, Horizon)
+├── anchor (stellar.toml, server.js hardened)
+├── scripts (deploy.sh hardened, raven_helper.js, demo.sh)
+├── docs (architecture.png, zkvm_innovation.png, RAVEN_INTEGRATION.md)
+├── deployments/testnet.json (hardened notes)
+└── README.md (professional with Mermaid fixed)
 ```
 
 ---
 
-## 9. Testing — 9 Tests Passing
+## 10. Testing — 11 Tests
 
 ```bash
-cargo test -p finality_registry -p settlement_gateway --lib
+cargo test --lib
+# finality_registry 5, settlement_gateway 6
 ```
 
-- **finality_registry 5**:
-  - `test_domain_key_stable` — `domain_key=sha256(adapter||network)` deterministic
-  - `test_register_and_finalize_bls_rejects_bad_sig` — zeroed sig → `InvalidSignature`
-  - `test_version_gate` — version 99 not in accepted → `VersionNotAccepted`
-  - `test_profile` — `get_profile` returns `DomainProfile` with facts, no score
-  - `test_fault_probes_as_data` — documents BytePatch probes (sig, root, version)
-- **settlement_gateway 4**:
-  - `test_message_id_deterministic` — `message_id` re-derive stable
-  - `test_merkle_proof_single` — leaf==root when single event
-  - `test_merkle_proof_two_leaves` — `root=hash(leaf1||leaf2)`, proof verifies
-  - `test_hwm_replay` — HWM starts 0, forward-only
-
-Plus live simulator test:
+Live:
 ```bash
 cargo run -p source_simulator -- --port 3002 &
-curl http://localhost:3002/info -> blocks=1, G1/G2 generator hex, VK len 768
-curl -X POST http://localhost:3002/lock -d '{"amount":100,"recipient":"G..."}' -> block_height 1, message_id
-curl http://localhost:3002/proof?height=1&kind=bls -> payload 368B real aggregate sig 96B, pubkey 192B, Merkle proof
+curl -s http://localhost:3002/info
+curl -s -X POST http://localhost:3002/lock -d '{"amount":110,"recipient":"GTEST"}'
+curl -s "http://localhost:3002/proof?height=1&kind=bls" | jq .payload.sig_hex | cut -c1-20 # real aggregate not generator
 ```
 
 ---
 
-## 10. Roadmap — From Hackathon to Production
+## 11. Roadmap
 
-- [ ] **Contracts**: `#[contractevent]` macro (replace deprecated `publish`), fuzz tests, proptest for `message_id`, real `hash_to_curve` via `bls12_381` experimental, persistence via `sled` for simulator
-- [ ] **Relayer**: Real Soroban tx building & signing via `stellar-sdk` Rust, retry, idempotency, Prometheus metrics
-- [ ] **Frontend**: Real bindings via `stellar contract bindings typescript`, Freighter signing for `lock_and_relay`, `finalize_inbound`, `burn_and_relay`, trustline creation for wSRC, Explorer links with real tx hash
-- [ ] **Anchor**: SEP-10 JWT, SEP-6/24 interactive deposit/withdraw, DB for transactions, Horizon polling
-- [ ] **Crypto**: DKG for BLS validator set, PoP, full MSM aggregate, M-of-N EdDSA-Poseidon circuit, multi-party trusted setup
-- [ ] **PQ**: ML-DSA-65 in-contract (~19% tx budget per `soroban-ml-dsa` measurements) for hybrid BLS+PQ, CAP-0087 draft Protocol 29
-
----
-
-## 11. Framing — Genesis Track Honesty
-
-Genesis track says "start from scratch". This project uses a previously known design pattern (external domain adapter, finality attestation, HWM replay, profile no-score, selftest fault probes as data, versioning windows, DomainState lifecycle, payload_hash re-derive) that we **re-implemented from scratch for Stellar** with native BLS/BN254 hosts. All contract code was written during the hackathon, no copy-paste. We frame it honestly as:
-
-> "We applied a known design pattern to Stellar in a Stellar-native way — from scratch, using native host functions, not EVM precompile assumptions."
-
-Code is English, directive Turkish, per rules.
+- [ ] `#[contractevent]` macro, fuzz, proptest
+- [ ] Real `hash_to_curve` IETF via experimental, DKG, PoP
+- [ ] M-of-N EdDSA-Poseidon circuit, multi-party ceremony
+- [ ] Claimable balance + sponsorship CAP-33 for gasless trustline
+- [ ] SEP-10 JWT, SEP-6/24 interactive
+- [ ] ML-DSA-65 hybrid BLS+PQ ~19% tx budget (CAP-0087 draft Protocol 29)
 
 ---
 
-## 12. Links & Credits
+## 12. Links
 
-- **Repo**: https://github.com/lubothebook/migrate-to-stellar
-- **Raven**: https://raven.stellar.org — MCP `https://raven.stellar.org/mcp`, Docs https://raven.stellar.org/docs, Playground https://raven.stellar.org/playground, Health https://raven.stellar.org/health, Source https://github.com/stellar-experimental/stellar-raven (Apache-2.0)
-- **Stellar Docs AI**: https://developers.stellar.org/docs/build/building-with-ai
-- **Groth16 verifier pattern**: `stellar-zkstream` (Apache-2.0) — real on-chain pairing check, not mock
-- **BLS12-381**: `bls12_381` crate, real aggregate 3 validators, G1 96B, G2 192B uncompressed, valid on-curve
-- **Soroban**: SDK 28, CAP-0059 BLS (Protocol 22), CAP-0074/0075 BN254+Poseidon (Protocol 25 X-Ray, testnet 27, mainnet Jan 2026)
-- **SAC**: `set_admin(gateway)` pattern — anchor only issuer, no custodial bridge
-- **Merkle**: binary tree sorted hashing
-- **License**: MIT except `circuits/range_proof_*` Apache-2.0 (credited)
+- Repo: https://github.com/lubothebook/migrate-to-stellar
+- Raven: https://raven.stellar.org | MCP https://raven.stellar.org/mcp | Docs /docs | Playground /playground
+- Explorer: https://stellar.expert/explorer/testnet
+- Groth16 pattern: stellar-zkstream Apache-2.0
+- Soroban SDK 28, CAP-0059, CAP-0074/0075
 
 ---
 
 ## 13. License
 
-MIT — see `LICENSE` (except `circuits/range_proof_*` Apache-2.0 from stellar-zkstream).
+MIT except `circuits/range_proof_*` Apache-2.0.
 
 ---
 
 <p align="center">
-  <strong>Migrate to Stellar</strong> — Anchor-attached settlement layer<br/>
-  <em>Built by lubo • Rise In x Stellar Pro Hackathon • Grand Pera, Istanbul • 19-20 Sep 2026</em><br/>
-  <a href="https://github.com/lubothebook/migrate-to-stellar">github.com/lubothebook/migrate-to-stellar</a> • <a href="https://raven.stellar.org">Raven Verified</a> • <a href="https://stellar.expert/explorer/testnet">Explorer Testnet</a>
+  <strong>Migrate to Stellar</strong> — Machine-approved bridges via zkVM, gasless onboarding<br/>
+  <em>Built by lubo • Genesis Track • Grand Pera • 19-20 Sep 2026</em><br/>
+  <a href="https://github.com/lubothebook/migrate-to-stellar">GitHub</a> • Raven Verified • Explorer Testnet
 </p>

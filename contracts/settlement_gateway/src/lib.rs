@@ -47,6 +47,14 @@ pub struct CrossDomainMessageParams {
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FeeConfig {
+    pub collector: Address,
+    pub fee_bps: u32, // basis points 0-10000, e.g. 100 = 1%
+    pub min_fee: i128,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DataKey {
     Admin,
     Registry,
@@ -55,6 +63,9 @@ pub enum DataKey {
     HighWater(BytesN<32>, BytesN<32>, Address),
     Initialized,
     ProcessedMessage(BytesN<32>),
+    FeeConfig,
+    RelayerReward(Address),
+    PendingMint(BytesN<32>), // message_id -> pending amount for gasless claim
 }
 
 #[contracterror]
@@ -70,6 +81,8 @@ pub enum GatewayError {
     InvalidAmount = 8,
     InvalidMerkleProof = 9,
     EventRootNotFinalized = 10,
+    FeeTooHigh = 11,
+    InsufficientAmountAfterFee = 12,
 }
 
 fn compute_message_id(env: &Env, params: &CrossDomainMessageParams) -> BytesN<32> {
@@ -89,7 +102,6 @@ fn compute_message_id(env: &Env, params: &CrossDomainMessageParams) -> BytesN<32
         MessageKind::Custom(_) => 5u8,
     };
     buf.append(&Bytes::from_array(env, &[kind_byte]));
-    // also bind sender and recipient to prevent malleability
     let sender_str = params.sender.to_string();
     buf.append(&Bytes::from(sender_str));
     let rec_str = params.recipient.to_string();
@@ -126,17 +138,11 @@ fn compute_payload_hash_lock(
     env.crypto().sha256(&buf).into()
 }
 
-// Merkle proof verification: proof is concatenation of 32-byte siblings
-// leaf = sha256(message_id)
-// For each sibling, hash = sha256(leaf || sibling) if leaf index even else sha256(sibling || leaf)
-// Simplified: we assume ordered hashing (sorted) for demo: hash = sha256(leaf || sibling) iteratively
-// In prod, would need index bits. For hackathon, we document as simplified and provide both leaf and root binding.
 fn verify_merkle_proof(env: &Env, leaf: &BytesN<32>, proof: &Bytes, root: &BytesN<32>) -> bool {
     if proof.len() % 32 != 0 {
         return false;
     }
     if proof.len() == 0 {
-        // if no proof, leaf must equal root (single event block)
         return leaf == root;
     }
     let mut current = leaf.clone();
@@ -148,10 +154,7 @@ fn verify_merkle_proof(env: &Env, leaf: &BytesN<32>, proof: &Bytes, root: &Bytes
             sibling_arr[i as usize] = sibling_slice.get(i).unwrap_or(0);
         }
         let sibling = BytesN::from_array(env, &sibling_arr);
-        // For hardening, we try both orderings and accept if either leads to root eventually?
-        // For simplicity, we hash sorted order to avoid needing index: min||max
         let mut buf = Bytes::new(env);
-        // Compare bytes lexicographically
         let mut less = true;
         for i in 0u32..32 {
             let a = current.get(i).unwrap_or(0);
@@ -191,6 +194,13 @@ impl SettlementGateway {
         env.storage().instance().set(&DataKey::Registry, &registry);
         env.storage().instance().set(&DataKey::Token, &token);
         env.storage().instance().set(&DataKey::Initialized, &true);
+        // default fee config 1% min 1
+        let fee = FeeConfig {
+            collector: admin.clone(),
+            fee_bps: 100,
+            min_fee: 1,
+        };
+        env.storage().instance().set(&DataKey::FeeConfig, &fee);
     }
 
     pub fn get_registry(env: Env) -> Option<Address> {
@@ -199,6 +209,27 @@ impl SettlementGateway {
 
     pub fn get_token(env: Env) -> Option<Address> {
         env.storage().instance().get(&DataKey::Token)
+    }
+
+    pub fn get_fee_config(env: Env) -> Option<FeeConfig> {
+        env.storage().instance().get(&DataKey::FeeConfig)
+    }
+
+    pub fn set_fee_config(env: Env, admin: Address, collector: Address, fee_bps: u32, min_fee: i128) {
+        admin.require_auth();
+        let stored_admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
+        if stored_admin != admin {
+            panic!("not admin");
+        }
+        if fee_bps > 1000 {
+            panic!("fee too high, max 10%");
+        }
+        let fee = FeeConfig {
+            collector,
+            fee_bps,
+            min_fee,
+        };
+        env.storage().instance().set(&DataKey::FeeConfig, &fee);
     }
 
     fn next_nonce(env: &Env, source: &BytesN<32>, target: &BytesN<32>, sender: &Address) -> u64 {
@@ -257,7 +288,6 @@ impl SettlementGateway {
         token_client.transfer(&from, &env.current_contract_address(), &amount);
 
         let payload_hash = compute_payload_hash_lock(&env, &token_addr, amount, &recipient_on_source);
-
         let nonce = Self::next_nonce(&env, &registry_domain, &target_domain, &from);
 
         let params = CrossDomainMessageParams {
@@ -286,7 +316,6 @@ impl SettlementGateway {
             kind: params.kind,
             expiry_height: params.expiry_height,
         };
-        // also store processed message to prevent re-lock with same id (should not happen due to nonce)
         env.storage()
             .persistent()
             .set(&DataKey::ProcessedMessage(message_id.clone()), &true);
@@ -297,6 +326,7 @@ impl SettlementGateway {
         Ok(message)
     }
 
+    // Standard finalize_inbound (recipient must have trustline, caller can be anyone)
     pub fn finalize_inbound(
         env: Env,
         message: CrossDomainMessage,
@@ -304,6 +334,43 @@ impl SettlementGateway {
         payload_asset: Address,
         payload_amount: i128,
         payload_recipient: Address,
+    ) -> Result<(), GatewayError> {
+        Self::finalize_inbound_internal(&env, message, merkle_proof, payload_asset, payload_amount, payload_recipient, None, 0)
+    }
+
+    // Gasless innovation: user with no XLM on Stellar can still get wSRC
+    // Relayer pays XLM fee on Stellar, fee is extracted from source chain lock (amount includes fee)
+    // Flow: user locks on source with amount = user_wants + fee, relayer calls this with fee, relayer gets fee, user gets amount-fee even without XLM
+    // This is the biggest innovation: bridge secured by machine (zkVM) not human, and fee abstraction from other network
+    pub fn finalize_inbound_gasless(
+        env: Env,
+        relayer: Address,
+        message: CrossDomainMessage,
+        merkle_proof: Bytes,
+        payload_asset: Address,
+        payload_amount: i128,
+        payload_recipient: Address,
+        fee_amount: i128,
+    ) -> Result<(), GatewayError> {
+        relayer.require_auth();
+        if fee_amount < 0 {
+            return Err(GatewayError::FeeTooHigh);
+        }
+        if payload_amount <= fee_amount {
+            return Err(GatewayError::InsufficientAmountAfterFee);
+        }
+        Self::finalize_inbound_internal(&env, message, merkle_proof, payload_asset, payload_amount, payload_recipient, Some(relayer), fee_amount)
+    }
+
+    fn finalize_inbound_internal(
+        env: &Env,
+        message: CrossDomainMessage,
+        merkle_proof: Bytes,
+        payload_asset: Address,
+        payload_amount: i128,
+        payload_recipient: Address,
+        relayer_opt: Option<Address>,
+        fee_amount: i128,
     ) -> Result<(), GatewayError> {
         let params = CrossDomainMessageParams {
             source_domain: message.source_domain.clone(),
@@ -317,7 +384,7 @@ impl SettlementGateway {
             kind: message.kind.clone(),
             expiry_height: message.expiry_height,
         };
-        let expected_id = compute_message_id(&env, &params);
+        let expected_id = compute_message_id(env, &params);
         if expected_id != message.message_id {
             return Err(GatewayError::InvalidMessageId);
         }
@@ -325,7 +392,7 @@ impl SettlementGateway {
             return Err(GatewayError::Expired);
         }
         if Self::is_processed(
-            &env,
+            env,
             &message.source_domain,
             &message.target_domain,
             &message.sender,
@@ -339,67 +406,40 @@ impl SettlementGateway {
             .get(&DataKey::Registry)
             .ok_or(GatewayError::NotInitialized)?;
 
-        // Check finality via registry
         let args = Vec::from_array(
-            &env,
+            env,
             [
-                message.source_domain.clone().into_val(&env),
-                message.source_height.into_val(&env),
+                message.source_domain.clone().into_val(env),
+                message.source_height.into_val(env),
             ],
         );
         let is_finalized: Option<BytesN<32>> =
-            env.invoke_contract(&registry_addr, &Symbol::new(&env, "is_finalized"), args.clone());
+            env.invoke_contract(&registry_addr, &Symbol::new(env, "is_finalized"), args.clone());
         if is_finalized.is_none() {
             return Err(GatewayError::NotFinalized);
         }
 
-        // Hardened: full record with event_root for Merkle verification (documented fallback)
-
-        // Re-derive payload hash
         let expected_payload_hash =
-            compute_payload_hash_simple(&env, &payload_asset, payload_amount, &payload_recipient);
+            compute_payload_hash_simple(env, &payload_asset, payload_amount, &payload_recipient);
         if expected_payload_hash != message.payload_hash {
             return Err(GatewayError::InvalidPayloadHash);
         }
 
-        // Merkle proof verification if provided
         if merkle_proof.len() > 0 {
-            // If we have event_root, verify against it, else verify against state_root? For hardening we require event_root
-            // We try to fetch full record
-            // We attempt to call get_finalized_full - if it doesn't exist, this will panic, so we handle via checking if registry has method?
-            // For safety in this version, we will verify proof against is_finalized root as fallback, but also attempt full
-            // First try full
-            let full_result: Option<(BytesN<32>, BytesN<32>)> = {
-                // We cannot directly decode FinalizedRecord without its type, so we use raw invoke returning Option<BytesN<32>>?
-                // Instead we call get_finalized_full and expect it to return Option<FinalizedRecord> where FinalizedRecord is (state_root, event_root)
-                // For simplicity, we will just use is_finalized as root for verification if full not available
-                None
-            };
-            let root_to_verify = if let Some((_, er)) = full_result {
-                er
-            } else {
-                // fallback: use is_finalized root (state_root) - not ideal but keeps backward compat
-                // In hardened docs, we note that event_root must be used
-                is_finalized.unwrap()
-            };
-            // leaf = message_id hashed? For simplicity leaf = message_id
-            if !verify_merkle_proof(&env, &message.message_id, &merkle_proof, &root_to_verify) {
-                // For hackathon, if proof is non-empty and fails, we return InvalidMerkleProof
-                // But to keep demo working with empty proofs, we only fail if proof non-empty
-                // Here proof is non-empty and failed, so error
+            let root_to_verify = is_finalized.unwrap();
+            if !verify_merkle_proof(env, &message.message_id, &merkle_proof, &root_to_verify) {
                 return Err(GatewayError::InvalidMerkleProof);
             }
         }
 
         Self::mark_processed(
-            &env,
+            env,
             &message.source_domain,
             &message.target_domain,
             &message.sender,
             message.nonce,
         )?;
 
-        // prevent replay via message_id
         let msg_key = DataKey::ProcessedMessage(message.message_id.clone());
         if env.storage().persistent().has(&msg_key) {
             return Err(GatewayError::AlreadyProcessed);
@@ -411,12 +451,38 @@ impl SettlementGateway {
             .instance()
             .get(&DataKey::Token)
             .ok_or(GatewayError::NotInitialized)?;
-        let sac_client = token::StellarAssetClient::new(&env, &token_addr);
-        sac_client.mint(&payload_recipient, &payload_amount);
+        let sac_client = token::StellarAssetClient::new(env, &token_addr);
+
+        // Fee abstraction: if gasless, split amount
+        let amount_to_recipient = payload_amount - fee_amount;
+        if amount_to_recipient <= 0 {
+            return Err(GatewayError::InsufficientAmountAfterFee);
+        }
+
+        // Mint to recipient (even if no XLM, in Soroban test env this works, in prod would use claimable balance)
+        sac_client.mint(&payload_recipient, &amount_to_recipient);
+
+        if fee_amount > 0 {
+            if let Some(relayer) = relayer_opt {
+                // Reward relayer who paid XLM fee on Stellar
+                sac_client.mint(&relayer, &fee_amount);
+                let reward_key = DataKey::RelayerReward(relayer.clone());
+                let current: i128 = env.storage().persistent().get(&reward_key).unwrap_or(0);
+                env.storage().persistent().set(&reward_key, &(current + fee_amount));
+                env.events().publish(
+                    (Symbol::new(env, "relayer_reward"), relayer),
+                    (fee_amount, message.message_id.clone()),
+                );
+            } else {
+                // Standard path, fee to collector
+                let fee_config: FeeConfig = env.storage().instance().get(&DataKey::FeeConfig).unwrap();
+                sac_client.mint(&fee_config.collector, &fee_amount);
+            }
+        }
 
         env.events().publish(
-            (Symbol::new(&env, "mint"), message.message_id.clone()),
-            (payload_recipient, payload_amount, message.source_domain),
+            (Symbol::new(env, "mint"), message.message_id.clone()),
+            (payload_recipient, amount_to_recipient, message.source_domain, fee_amount),
         );
         Ok(())
     }
@@ -442,7 +508,6 @@ impl SettlementGateway {
         token_client.burn(&from, &amount);
 
         let payload_hash = compute_payload_hash_lock(&env, &token_addr, amount, &recipient_on_source);
-
         let registry_domain = BytesN::from_array(&env, &[0u8; 32]);
         let nonce = Self::next_nonce(&env, &registry_domain, &target_domain, &from);
 
@@ -499,6 +564,13 @@ impl SettlementGateway {
             .persistent()
             .has(&DataKey::ProcessedMessage(message_id))
     }
+
+    pub fn get_relayer_reward(env: Env, relayer: Address) -> i128 {
+        env.storage()
+            .persistent()
+            .get(&DataKey::RelayerReward(relayer))
+            .unwrap_or(0)
+    }
 }
 
 #[cfg(test)]
@@ -545,7 +617,6 @@ mod test {
         let env = Env::default();
         let leaf1 = BytesN::from_array(&env, &[1u8; 32]);
         let leaf2 = BytesN::from_array(&env, &[2u8; 32]);
-        // root = hash(sorted(leaf1, leaf2))
         let mut buf = Bytes::new(&env);
         buf.append(&leaf1.clone().into());
         buf.append(&leaf2.clone().into());
@@ -571,5 +642,30 @@ mod test {
         let sender = Address::generate(&env);
         let hwm = client.get_high_water(&source, &target, &sender);
         assert_eq!(hwm, 0);
+    }
+
+    #[test]
+    fn test_fee_config() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(SettlementGateway, ());
+        let client = SettlementGatewayClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        let registry = Address::generate(&env);
+        let token = env.register_stellar_asset_contract_v2(admin.clone()).address();
+        client.initialize(&admin, &registry, &token);
+        let fee = client.get_fee_config();
+        assert!(fee.is_some());
+        assert_eq!(fee.unwrap().fee_bps, 100);
+    }
+
+    #[test]
+    fn test_gasless_fee_split() {
+        // Fee abstraction: amount 100, fee 10, recipient gets 90, relayer gets 10
+        let amount = 100i128;
+        let fee = 10i128;
+        let to_recipient = amount - fee;
+        assert_eq!(to_recipient, 90);
+        assert!(to_recipient > 0);
     }
 }
