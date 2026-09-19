@@ -95,37 +95,73 @@ functionality belongs in the off-chain surface, the facade and the docs.
 - [x] Message envelope, nonce high-water-mark and Merkle replay protection,
       proven live on testnet (replay rejected with `#9 EvidenceAlreadyProcessed`).
 - [x] Gasless mint proven live: recipient holding exactly its minimum reserve
-      and zero spendable XLM; recipient balance byte-for-byte unchanged, relayer
-      repaid in the wrapped asset.
-- [x] Reverse path proven live: burn on Stellar, canonical event decoded
-      through Soroban RPC, one-time source unlock.
+      and zero spendable XLM; relayer repaid in the wrapped asset. The claim is
+      now re-derived from Horizon by the audit loop every round instead of being
+      read from a receipt file.
+- [x] Reverse path proven live: burn on Stellar, canonical event decoded through
+      Soroban RPC, one-time source unlock.
 - [x] Registry **and** gateway admin renounced on-chain, with a second renounce
-      and a post-renounce `set_vk` proven to be refused.
+      and a post-renounce `set_vk` proven to be refused. The audit loop re-probes
+      the refusal every round.
 - [x] Frontend console, Freighter, relayer and anchor facade wired end to end;
-      the console itself drives the round trip and is capability-gated.
-- [x] Self-audit loop live, latest recorded round all checks passing, visible
-      through `/self-audit`.
-- [x] README explains machine approval from first principles ("How approval
-      works, from the ground up") and draws the honest boundary at "Is this a
-      zkVM? No".
-- [x] Project name is Lumen Gate everywhere; grep gate for the retired brand
-      name returns empty.
-- [x] Single directive file (this document).
+      the console drives the round trip and is capability-gated.
+- [x] Self-audit loop live at **11 checks**, including four that need no signing
+      key: the recipient's live balance arithmetic, the recorded mint on its
+      ledger, the post-renounce `set_vk` refusal, and the facade's SEP surface
+      (20/20 via `tools/sep-conformance.js`).
+- [x] **Section 10.1 SEP-10 implemented**: challenge built and signed by the
+      anchor account, verified with the SDK's own SEP-10 reader, short-lived
+      HS256 JWT issued, wrong-signer refused, no signing key means "not
+      configured" rather than a challenge nobody can verify.
+- [x] **Section 10.2 minimal real SEP-6 implemented**: official field names,
+      records that advance only on evidence read from a ledger (source lock
+      event, Horizon payment, verified burn transaction), SEP-12 answering 501.
+- [x] **Section 10.3 SEP-1 complete**: `VERSION`, `NETWORK_PASSPHRASE`,
+      `SIGNING_KEY`, `ACCOUNTS`, `HORIZON_URL`, `WEB_AUTH_ENDPOINT`,
+      `[DOCUMENTATION]`, `[[CURRENCIES]]` with `is_asset_anchored=false` and a
+      testnet statement. Deployment-dependent values are rendered from the
+      environment and omitted when undefined instead of being faked.
+- [x] **Section 10.4 one error envelope and `/v1` versioning**, applied to the
+      facade and the serverless layer alike, with the console reading codes from
+      the envelope.
+- [x] **Section 10.5 rate limiting** on the public read surface, with
+      `X-RateLimit-*` headers and a 429 in the standard envelope.
+- [x] README explains machine approval from first principles and draws the
+      honest boundary at "Is this a zkVM? No", now with what a real zkVM would
+      require (trace columns, transition constraints, a memory argument).
+- [x] Project name is Lumen Gate everywhere; the retired brand name appears in
+      no tracked file, and that is machine-checked.
+- [x] Single directive file (this document), English only, no country or region
+      references, no localised documents. Enforced by `scripts/repo-gate.sh` and
+      the CI workflow on every push.
+- [x] Reference patterns adopted as this project's own code
+      (`crates/domain_adapter`): adapter interface with raw evidence in and an
+      attestation out, security-backing descriptor, no assume-valid branch,
+      content-derived message ids, per-direction nonce high-water marks.
+- [x] `cargo test --workspace` → 46 passed (12 registry, 11 gateway, 3
+      simulator, 20 adapter). README states the same number.
 
-### Not done yet / still to harden
+### Still missing (stated, not hidden)
 
-- [ ] Anchor facade professionalisation, see Section 10. SEP-10 first, since it
-      is the precondition for authenticated SEP-6.
-- [ ] The submission-grade pack's stale paragraph: README still lists
-      "still required" items that are already done (deployment, receipts,
-      renounce, unfunded-account test). Rewrite it to describe what is actually
-      outstanding.
-- [ ] Fixed relayer fee (`0.1 wSRC`) is not market-priced against the real XLM
-      network fee. Acceptable simplification, but it must stay labelled as one.
-- [ ] Validator secret keys are demo constants (`1, 2, 3`); production needs a
-      DKG. Marked in the README, tracked as roadmap.
-- [ ] No bond, fee or slashing economics. Out of scope for this hackathon and
-      stays out, stated plainly.
+- [ ] Production validator set: the BLS lane runs 3 demo keys with a threshold
+      of 2, unbonded. Real DKG and a slashable set are roadmap, and the adapter
+      descriptor says so in its own `not_claimed` list.
+- [ ] A source-root-bound ZK circuit. The existing one proves a quorum and a
+      root binding; it is not a signature proof, so settlement never anchors on
+      it.
+- [ ] Market-priced fees. The relayer fee is a fixed 0.1 wSRC chosen at
+      submission time, not derived from the live XLM fee and a rate. The
+      mechanism is proven; the pricing is not built.
+- [ ] Bonds, slashing, validator rotation, fraud proofs.
+- [ ] SEP-24 hosted flow and SEP-12 KYC. Marked `not_implemented` where a client
+      would look for them.
+- [ ] Relayer liveness: one operator runs it. It is not a trusted party in the
+      mint decision, but it is a liveness dependency.
+- [ ] The recorded settlement receipts were re-verified against Horizon this
+      session rather than regenerated, because the relayer's signing key is
+      deliberately not in the repository. Re-running a fresh end-to-end mint
+      requires the operator's key; the audit loop's own evidence submissions do
+      run live with a throwaway funded account.
 
 ---
 
