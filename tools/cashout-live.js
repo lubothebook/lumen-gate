@@ -4,7 +4,7 @@
 // ---------------------------------------------------------------------------
 // The cash-out exit, driven through the facade instead of around it.
 //
-// anchor/tr-anchor-client.js proves the *client* works against the anchor
+// anchor/cashout-client.js proves the *client* works against the anchor
 // directly. This proves the *deployment* works: every request goes through the
 // facade's public routes, which is the path the console's Cash out tab takes.
 // The difference matters, because a proxy is where credentials get confused —
@@ -14,12 +14,12 @@
 //
 // Configuration (env):
 //   FACADE_URL        facade origin                     (required)
-//   TR_USER_SECRET    the paying account's secret       (required)
+//   CASHOUT_USER_SECRET  the paying account's secret     (required)
 //   CASHOUT_AMOUNT    how much to exit                  (default: 0.2)
 //   CASHOUT_OUT       where to write the record         (default: deployments/cashout-live.json)
 //
 // Usage:
-//   FACADE_URL=http://127.0.0.1:8081 TR_USER_SECRET=S... node tools/cashout-live.js
+//   FACADE_URL=http://127.0.0.1:8081 CASHOUT_USER_SECRET=S... node tools/cashout-live.js
 // ---------------------------------------------------------------------------
 
 const fs = require('node:fs');
@@ -63,9 +63,9 @@ async function main() {
     console.error('FACADE_URL is required');
     process.exit(2);
   }
-  const secret = (process.env.TR_USER_SECRET || '').trim();
+  const secret = (process.env.CASHOUT_USER_SECRET || '').trim();
   if (!secret) {
-    console.error('TR_USER_SECRET is required');
+    console.error('CASHOUT_USER_SECRET is required');
     process.exit(2);
   }
   const started = new Date().toISOString();

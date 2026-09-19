@@ -210,10 +210,10 @@ functionality belongs in the off-chain surface, the facade and the docs.
       stored in its own slot. A quorum proof is not a signature proof, so it does
       not get to move the anchor settlement reads.
 - [x] **The exit into a local currency runs through a real SEP-6 anchor.** New
-      `anchor/tr-anchor-client.js` (SEP-1 discovery, SEP-10 auth, a firm SEP-38
+      `anchor/cashout-client.js` (SEP-1 discovery, SEP-10 auth, a firm SEP-38
       quote, SEP-6 withdrawal, a memo-bearing USDC payment, polled to a terminal
       status) and six new facade routes behind `api/cashout.js`. Live:
-      `deployments/tr-cashout.json` (0.5 USDC → `completed`, 24.27 out, reference
+      `deployments/cashout-quote.json` (0.5 USDC → `completed`, 24.27 out, reference
       `FAST-0UDDCJJKSY`) and `deployments/cashout-live.json`, which drives the same
       exit **through the facade** in 8/8 checks, including two refusals: no
       session → 401, and the operator token is not a substitute for the user.

@@ -1,11 +1,12 @@
 'use strict';
 
 // ---------------------------------------------------------------------------
-// Cash-out to a TRY bank account, through a real SEP-6 anchor.
+// Cash-out to a bank account, through a real SEP-6 anchor. The payout currency
+// is whatever the anchor quotes; the client names none of its own.
 //
 // This is a client, not a mock. It speaks SEP-1 (discovery), SEP-10 (auth),
 // SEP-6 (withdraw + transaction polling) and SEP-38 (a firm quote) to the
-// anchor named by `TR_ANCHOR_HOME_DOMAIN`, and it moves real testnet assets with
+// anchor named by `CASHOUT_ANCHOR_HOME`, and it moves real testnet assets with
 // the Stellar SDK. The bank and the KYC behind that anchor are simulated by the
 // anchor itself -- that is the anchor's business, not ours -- and the Stellar
 // leg is real testnet USDC.
@@ -23,7 +24,7 @@
 //   2. SEP-10 GET  /auth?account=G...                        -> challenge XDR
 //             sign the challenge with the user's key
 //             POST /auth {transaction}                       -> JWT
-//   3. SEP-38 GET  /sep38/price                              -> firm TRY rate
+//   3. SEP-38 GET  /sep38/price                              -> firm fiat quote
 //   4. SEP-6  GET  /sep6/withdraw?asset_code=USDC&type=bank_account&amount=...
 //                                                            -> treasury + memo
 //   5.        send USDC on-chain to that treasury with that memo
@@ -36,11 +37,13 @@
 // see `bridgeToUsdc`.
 //
 // Configuration (env):
-//   TR_ANCHOR_HOME_DOMAIN  anchor home domain        (default: the testnet sandbox)
-//   TR_ANCHOR_BASE_URL     override the HTTPS base   (default: https://<home>)
-//   TR_USER_SECRET         user secret key           (or pass --secret)
-//   TR_SWAP_SECRET         counterparty secret for the simplified swap
-//   TR_SWAP_RATE           USDC per wSRC in that swap (default: 1.0)
+//   CASHOUT_ANCHOR_HOME    anchor home domain        (default: the testnet sandbox)
+//   CASHOUT_ANCHOR_BASE_URL  override the HTTPS base (default: https://<home>)
+//   CASHOUT_QUOTE_ASSET    the SEP-38 buy asset to request when the anchor
+//                          does not publish an asset list of its own
+//   CASHOUT_USER_SECRET    user secret key           (or pass --secret)
+//   CASHOUT_SWAP_SECRET    counterparty secret for the simplified swap
+//   CASHOUT_SWAP_RATE      USDC per wSRC in that swap (default: 1.0)
 //   HORIZON_URL            Horizon endpoint          (default: testnet)
 // ---------------------------------------------------------------------------
 
@@ -56,11 +59,11 @@ function sdk() {
 }
 
 function homeDomain() {
-  return (process.env.TR_ANCHOR_HOME_DOMAIN || DEFAULT_HOME).trim();
+  return (process.env.CASHOUT_ANCHOR_HOME || DEFAULT_HOME).trim();
 }
 
 function baseUrl() {
-  const explicit = (process.env.TR_ANCHOR_BASE_URL || '').trim();
+  const explicit = (process.env.CASHOUT_ANCHOR_BASE_URL || '').trim();
   if (explicit) return explicit.replace(/\/+$/, '');
   return `https://${homeDomain()}`;
 }
@@ -208,18 +211,38 @@ async function info(token, discovered) {
 /**
  * A firm quote from the anchor for the amount being withdrawn.
  *
- * SEP-38 prices are asked with the asset identifiers the anchor publishes, and
- * the identifier format differs between deployments (`iso4217:TRY` here, and
- * `fiat:TRY` in parts of the specification). Rather than guess, the client asks
- * once and, on an "unsupported asset pair" answer, retries with the other
- * spelling -- and records which spelling worked, so the next call is exact.
+ * SEP-38 identifiers differ between deployments, so the client does not name a
+ * currency at all: it asks the anchor's own /info which assets it quotes and
+ * tries every non-on-chain one it publishes, falling back to an explicitly
+ * configured identifier when the anchor publishes no list. A client that
+ * hard-coded a counterparty's currency would be a demo of one anchor, not of
+ * the standard.
  */
 async function price({ sellAmount, sellAsset, buyAsset, token, discovered }) {
   const anchor = discovered || (await discover());
   if (!anchor.quote_server) return null;
-  const candidates = buyAsset
-    ? [buyAsset]
-    : ['iso4217:TRY', 'fiat:TRY'];
+  let candidates = buyAsset ? [buyAsset] : [];
+  if (!candidates.length) {
+    try {
+      const info = await fetchJson(`${anchor.quote_server}/info`);
+      candidates = (info.assets || [])
+        .map((entry) => entry.asset)
+        .filter((asset) => typeof asset === 'string' && !asset.startsWith('stellar:'));
+    } catch {
+      // no published list: only an explicit configuration can proceed
+    }
+  }
+  if (!candidates.length) {
+    const configured = (process.env.CASHOUT_QUOTE_ASSET || '').trim();
+    candidates = configured ? [configured] : [];
+  }
+  if (!candidates.length) {
+    return {
+      unsupported: true,
+      tried: [],
+      reason: 'the anchor publishes no SEP-38 buy assets and CASHOUT_QUOTE_ASSET is not set',
+    };
+  }
   const urls = [];
   for (const buy of candidates) {
     const url = `${anchor.quote_server}/price?sell_asset=${encodeURIComponent(sellAsset)}&buy_asset=${encodeURIComponent(buy)}&sell_amount=${encodeURIComponent(sellAmount)}&context=sep6`;
@@ -389,8 +412,8 @@ async function findBridgePath({ sourceAsset, amount, destinationAsset, horizon }
  *      route this code exists to use, and it needs no trust: the trade either
  *      happens at the market's price or it does not happen.
  *   2. **A simplified counterparty exchange**, executed only when
- *      `TR_SWAP_SECRET` is configured. The counterparty receives the wSRC and
- *      sends USDC back at `TR_SWAP_RATE` (default 1.0, i.e. no spread). This is
+ *      `CASHOUT_SWAP_SECRET` is configured. The counterparty receives the wSRC and
+ *      sends USDC back at `CASHOUT_SWAP_RATE` (default 1.0, i.e. no spread). This is
  *      a swap with an operator standing behind it, which is why it is opt-in and
  *      why the README states it rather than describing this function as a DEX.
  *
@@ -433,16 +456,16 @@ async function bridgeToUsdc({ userSecret, amount, wsrc, usdc, horizon }) {
     return { kind: 'order_book', hash: result.hash, received: route.destination_amount, rate_source: 'order book' };
   }
 
-  const counterpartySecret = (process.env.TR_SWAP_SECRET || '').trim();
+  const counterpartySecret = (process.env.CASHOUT_SWAP_SECRET || '').trim();
   if (!counterpartySecret) {
     throw new CashoutError(
       'no_bridge_route',
-      'no order book route from wSRC to the anchor asset exists, and no counterparty is configured (TR_SWAP_SECRET). Nothing was swapped and nothing was guessed.',
+      'no order book route from wSRC to the anchor asset exists, and no counterparty is configured (CASHOUT_SWAP_SECRET). Nothing was swapped and nothing was guessed.',
       { lookup: route }
     );
   }
 
-  const rate = Number(process.env.TR_SWAP_RATE || '1');
+  const rate = Number(process.env.CASHOUT_SWAP_RATE || '1');
   const received = (Number(amount) * rate).toFixed(7);
   const counterparty = Keypair.fromSecret(counterpartySecret);
 
@@ -618,7 +641,7 @@ async function cashOutToTry({
 // ---------------------------------------------------------------------------
 
 function parseArgs(argv) {
-  const args = { amount: null, secret: process.env.TR_USER_SECRET || '', out: null, skipBridge: false, json: false, discoverOnly: false };
+  const args = { amount: null, secret: process.env.CASHOUT_USER_SECRET || '', out: null, skipBridge: false, json: false, discoverOnly: false };
   for (let index = 0; index < argv.length; index += 1) {
     const key = argv[index];
     const value = argv[index + 1];
@@ -646,7 +669,7 @@ async function main() {
   }
 
   if (!args.secret) {
-    console.error('a user secret is required: pass --secret or set TR_USER_SECRET');
+    console.error('a user secret is required: pass --secret or set CASHOUT_USER_SECRET');
     process.exit(2);
   }
 

@@ -267,7 +267,7 @@ function capabilities() {
       note: 'a session substitutes for the operator token for these two actions only; it grants no mint authority and cannot redirect a mint',
     },
     cashout: {
-      anchor_home_domain: trAnchor.homeDomain(),
+      anchor_home_domain: cashoutClient.homeDomain(),
       routes: ['GET /v1/cashout/anchor', 'GET /v1/cashout/bridge', 'GET /v1/cashout/challenge', 'POST /v1/cashout/token', 'POST /v1/cashout/start', 'GET /v1/cashout/status'],
       note: 'an exit through an external SEP-6 anchor; this facade proxies and stores nothing',
     },
@@ -402,10 +402,10 @@ function readBody(req, limitBytes = 64 * 1024) {
 // route table
 // ---------------------------------------------------------------------------
 
-// The TRY exit client. It is a client of an external anchor, used only by the
+// The bank-account exit client. It is a client of an external anchor, used only by the
 // cash-out routes below; nothing else in the facade depends on it, and if the
 // external anchor is unreachable those routes fail alone.
-const trAnchor = require('./tr-anchor-client');
+const cashoutClient = require('./cashout-client');
 
 /** Per-account cooldown for user-initiated relay passes. A map, not a counter:
  *  one account hammering the endpoint must not slow down another account. */
@@ -975,8 +975,8 @@ async function handle(req, res, pathname, query) {
 
   if (route === 'GET /v1/cashout/anchor') {
     try {
-      const discovered = await trAnchor.discover();
-      const rateNote = await trAnchor.info(null, discovered).then(
+      const discovered = await cashoutClient.discover();
+      const rateNote = await cashoutClient.info(null, discovered).then(
         (info) => (info.withdraw && info.withdraw.USDC ? 'withdraw enabled' : 'withdraw not offered'),
         () => 'info endpoint requires authentication'
       );
@@ -987,7 +987,7 @@ async function handle(req, res, pathname, query) {
       });
     } catch (error) {
       return fail(res, 502, 'upstream_unavailable', `the cash-out anchor could not be read: ${error.message}`, {
-        anchor_home_domain: trAnchor.homeDomain(),
+        anchor_home_domain: cashoutClient.homeDomain(),
         code: error.code || null,
       });
     }
@@ -1008,8 +1008,8 @@ async function handle(req, res, pathname, query) {
       const manifestIssuer = (MANIFEST && MANIFEST.accounts && MANIFEST.accounts.deployer_and_relayer) || '';
       const source = explicit || (manifestIssuer ? `${manifestCode}:${manifestIssuer}` : '');
       const amount = /^\d+(\.\d{1,7})?$/.test(String(query.get('amount') || '1')) ? query.get('amount') || '1' : '1';
-      const discovered = await trAnchor.discover();
-      const usdc = discovered.usdc || {code: 'USDC', issuer: trAnchor.USDC_ISSUER_FALLBACK};
+      const discovered = await cashoutClient.discover();
+      const usdc = discovered.usdc || {code: 'USDC', issuer: cashoutClient.USDC_ISSUER_FALLBACK};
       const [code, issuer] = String(source).split(':');
       if (!issuer) {
         return json(res, 200, {
@@ -1020,7 +1020,7 @@ async function handle(req, res, pathname, query) {
           usdc,
         });
       }
-      const path = await trAnchor.findBridgePath({
+      const path = await cashoutClient.findBridgePath({
         sourceAsset: {code, issuer},
         amount,
         destinationAsset: {code: usdc.code, issuer: usdc.issuer},
@@ -1042,8 +1042,8 @@ async function handle(req, res, pathname, query) {
         looked_up: {source: `${code}:${issuer}`, destination: `${usdc.code}:${usdc.issuer}`, amount},
         lookup: path,
         configured: {
-          counterparty: process.env.TR_SWAP_SECRET ? 'configured' : 'not configured',
-          rate: Number(process.env.TR_SWAP_RATE || '1'),
+          counterparty: process.env.CASHOUT_SWAP_SECRET ? 'configured' : 'not configured',
+          rate: Number(process.env.CASHOUT_SWAP_RATE || '1'),
         },
       });
     } catch (error) {
@@ -1057,7 +1057,7 @@ async function handle(req, res, pathname, query) {
       return fail(res, 400, 'invalid_request', 'a Stellar account is required', {example: '/v1/cashout/challenge?account=G...'});
     }
     try {
-      const discovery = await trAnchor.discover();
+      const discovery = await cashoutClient.discover();
       const response = await fetch(`${discovery.web_auth_endpoint}?account=${encodeURIComponent(account)}`);
       const body = await response.text();
       if (!response.ok) {
@@ -1085,7 +1085,7 @@ async function handle(req, res, pathname, query) {
       });
     }
     try {
-      const discovery = await trAnchor.discover();
+      const discovery = await cashoutClient.discover();
       const response = await fetch(discovery.web_auth_endpoint, {
         method: 'POST',
         headers: {'content-type': 'application/json'},
@@ -1136,8 +1136,8 @@ async function handle(req, res, pathname, query) {
       return fail(res, 400, 'invalid_request', 'account must be the Stellar account that owns the anchor session');
     }
     try {
-      const discovery = await trAnchor.discover();
-      const instructions = await trAnchor.startWithdraw({
+      const discovery = await cashoutClient.discover();
+      const instructions = await cashoutClient.startWithdraw({
         amount,
         account,
         assetCode: 'USDC',
@@ -1151,7 +1151,7 @@ async function handle(req, res, pathname, query) {
         memo_type: instructions.memo_type,
         amount,
         asset_code: 'USDC',
-        asset_issuer: discovery.usdc ? discovery.usdc.issuer : trAnchor.USDC_ISSUER_FALLBACK,
+        asset_issuer: discovery.usdc ? discovery.usdc.issuer : cashoutClient.USDC_ISSUER_FALLBACK,
         eta: instructions.eta,
         fee_percent: instructions.fee_percent,
         extra_info: instructions.extra_info,
@@ -1176,8 +1176,8 @@ async function handle(req, res, pathname, query) {
       return fail(res, 400, 'invalid_request', 'id must be the transaction id the anchor returned');
     }
     try {
-      const discovery = await trAnchor.discover();
-      const current = await trAnchor.transaction({id, token: anchorToken, discovered: discovery});
+      const discovery = await cashoutClient.discover();
+      const current = await cashoutClient.transaction({id, token: anchorToken, discovered: discovery});
       return json(res, 200, {
         id,
         status: current.status,

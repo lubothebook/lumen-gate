@@ -56,6 +56,25 @@ else
   printf '%s\n' "$region_hits"
 fi
 
+# The word list above missed what a feature can carry without naming a place
+# outright: a currency code, a variable prefix, and a slug. All three are
+# region content by effect -- a reader learns which country the project
+# "belongs to" -- so the gate now also fails on our own use of them. The
+# exclusion has a reason: the recorded anchor responses in deployments/ are
+# verbatim third-party payloads, and a receipt whose wording has been tidied
+# is no longer a receipt. Our prose and identifiers must stay clean; what a
+# counterparty's endpoint answered stays byte-exact.
+currency_hits="$(git grep -nw -- "$(decode VFJZ)" -- . ':!Cargo.lock' ':!deployments' 2>/dev/null | head -10)"
+prefix_hits="$(git grep -nE -- "\b$(decode VFJf)[A-Z]" -- . ':!Cargo.lock' ':!deployments' 2>/dev/null | head -10)"
+slug_hits="$(git grep -n -e "$(decode dHItYW5jaG9y)" -e "$(decode dHItY2FzaG91dA==)" -- . ':!Cargo.lock' 2>/dev/null | head -10)"
+region_leaks="$(printf '%s\n%s\n%s\n' "$currency_hits" "$prefix_hits" "$slug_hits" | grep -v '^$' || true)"
+if [ -z "$region_leaks" ]; then
+  pass "no region-bound currency codes, env prefixes, or slugs outside recorded evidence"
+else
+  fail "region-bound identifiers found in project files:"
+  printf '%s\n' "$region_leaks"
+fi
+
 # ---------------------------------------------------------------------------
 # 3. Every document is English. Checked by looking for the letters that exist
 #    in another language's alphabet and not in English, rather than by guessing at

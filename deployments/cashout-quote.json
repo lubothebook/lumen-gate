@@ -67,7 +67,7 @@
     {
       "step": "sep38_price",
       "ok": true,
-      "detail": "1 USDC = 0.0204980712 iso4217:TRY, as quoted by the anchor's SEP-38 endpoint",
+      "detail": "1 USDC = 0.0204980712 in the anchor's payout currency, as quoted by its SEP-38 endpoint",
       "at": "2026-09-19T20:05:09.277Z",
       "quote": {
         "total_price": "0.0206015657",
