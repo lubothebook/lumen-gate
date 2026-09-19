@@ -542,7 +542,7 @@ async function handle(req, res, pathname, query) {
       return fail(res, 400, 'invalid_request', 'the body must carry the signed challenge as {"transaction": "<base64 XDR>"}');
     }
     try {
-      const verified = sep10.verifyChallenge({transaction: parsed.body.transaction});
+      const verified = await sep10.verifyChallenge({transaction: parsed.body.transaction});
       const issued = jwt.issue(verified.account, {audience: 'sep6'});
       return json(res, 200, {
         token: issued.token,
@@ -551,10 +551,11 @@ async function handle(req, res, pathname, query) {
         account: verified.account,
         matched_home_domain: verified.matched_home_domain,
         signers: verified.signers,
+        verification: verified.verification,
         note: 'the challenge transaction was verified against this anchor account and is never submitted to the network',
       });
     } catch (error) {
-      const status = error.code === 'unauthorized' ? 401 : error.code === 'not_configured' ? 503 : 400;
+      const status = error.code === 'unauthorized' ? 401 : error.code === 'not_configured' || error.code === 'upstream_unavailable' ? 503 : 400;
       return fail(res, status, error.code || 'invalid_transaction', error.message);
     }
   }

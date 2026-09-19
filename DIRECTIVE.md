@@ -186,6 +186,22 @@ functionality belongs in the off-chain surface, the facade and the docs.
       `console_wiring_consistent` record, so a silent lattice fails the round.
       Verified: `node tools/check-grid-fx.js`, `node tools/check-console.js`
       (74 ids, 50 lookups, 4/4 embedded assets).
+- [x] Shared skill library vendored under `skills/` (Apache-2.0 dev skills for
+      contracts, cross-chain, zk, standards, dapp, assets, data; MIT review
+      skills), indexed in `skills/README.md` with attribution in
+      `skills/NOTICE.md`, so every agent on this repo works from the same
+      reference material. Directive Section 0 precedence stated there.
+- [x] SEP-10 hardened per the standards skill: signature verification now
+      reads the client account's signer record from Horizon and requires the
+      collected weight to meet the account's medium threshold; unfunded
+      accounts keep the spec's master-key fallback, Horizon unavailability
+      refuses loudly, and the method used is returned in the response.
+      Verified live on testnet (threshold path with a real funded account,
+      master-key path with an unfunded one, wrong signer refused) and
+      mechanically by `tools/check-sep10.js`, whose second case is the
+      below-threshold master-key signature the previous verifier accepted.
+- [x] The self-audit loop asks twelve questions; question 12 runs
+      `tools/check-sep10.js` as `sep10_weight_verification`.
 
 ### Still missing (stated, not hidden)
 

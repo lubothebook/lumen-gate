@@ -7,7 +7,7 @@
  * what it saw, with timestamps, so a reader does not have to take anyone's
  * word for it.
  *
- * Every round it asks eleven questions, and none of them is answered by
+ * Every round it asks twelve questions, and none of them is answered by
  * trusting an earlier answer:
  *   1. Is the source chain reachable at all?
  *   2. Does a fresh, honest proof still get ACCEPTED?
@@ -22,6 +22,9 @@
  *      assets it serves, and still frame the lattice cube under the pointer?
  *  11. Does the anchor facade still satisfy its SEP surface? (SEP-1, SEP-10,
  *      SEP-6, the error envelope and the rate limiter, probed as a client)
+ *  12. Does SEP-10 signature verification still demand real weight? (the
+ *      library driven against a stubbed signer record, including the
+ *      below-threshold signature that must be refused)
  *
  * It holds no mint authority and can approve nothing. It only submits probes
  * and records verdicts. If it dies, nothing in the settlement path changes.
@@ -563,6 +566,21 @@ async function runRound() {
       /* keep the raw tail */
     }
     record("facade_sep_conformance", false, detail.slice(0, 300));
+  }
+
+  // The wire-level conformance probe above talks to the running facade. This
+  // one drives the verification library itself against a stubbed signer
+  // record: weight below the account threshold must be refused even when the
+  // master key signed, and an unreachable Horizon must refuse loudly instead
+  // of falling back to a weaker check.
+  try {
+    const { execFileSync } = require("node:child_process");
+    const output = execFileSync(process.execPath, [path.join(ROOT, "tools", "check-sep10.js")], {
+      encoding: "utf8",
+    });
+    record("sep10_weight_verification", true, output.trim().split("\n").pop());
+  } catch (e) {
+    record("sep10_weight_verification", false, String((e.stdout || e.message || e)).trim().split("\n").pop());
   }
 
   return finish(startedAt, checks);

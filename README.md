@@ -107,7 +107,7 @@ The audit loop found its own operator mistake first. Round 8 reported `honest_ev
 
 ### What the expanded loop found the first time it ran
 
-The loop asks eleven questions now, not seven, and its first two rounds against the live contracts found defects in the tools rather than in the contracts — which is what a loop that is not decoration is for.
+The loop asks twelve questions now, not seven, and its first two rounds against the live contracts found defects in the tools rather than in the contracts — which is what a loop that is not decoration is for.
 
 - **Round 13:** `gateway_admin_renounced` reported *no gateway id: set GATEWAY_ID or record contracts.settlement_gateway in the manifest*, while the gateway id was in the manifest. The helper read `contracts.settlement_gateway` as a bare string and called `.trim()` on the object that is actually recorded there; the type error was swallowed by the helper's own `catch`, so a capability that really is renounced was reported as unproven. It now accepts both shapes, and round 14 proved the check on evidence — a second `renounce_admin` trapping inside the host.
 - **Round 14:** `facade_sep_conformance` came back 3/14 with HTTP 429 on its opening requests. Nothing was wrong with the facade: the probe's own last check bursts the rate limit deliberately, and the previous round had run inside the same window. The probe now waits out a window that a previous burst closed — bounded at 90 seconds, using the `Retry-After` the facade sends — and round 15 is **11/11** with the facade at **20/20**. Round 16 repeats it with the lattice's frame behaviour folded into the console-surface record.

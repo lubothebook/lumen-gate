@@ -165,11 +165,18 @@ async function buildChallenge({account, clientDomain, memo}) {
 /**
  * Verifies a signed challenge.
  *
- * Returns `{account, matched_home_domain, signers}`. Every failure path throws
- * with a code; there is no path that returns success without a verified
- * signature from the account named in the challenge.
+ * Returns `{account, matched_home_domain, signers, verification}`. Every
+ * failure path throws with a code; there is no path that returns success
+ * without a verified signature from the account named in the challenge.
+ *
+ * What "verified" means depends on what the ledger knows: if the account
+ * exists, its signers and thresholds are read from Horizon and the collected
+ * weight must meet the account's medium threshold (the spec's rule for
+ * multisig accounts). If the account is not on the ledger yet, the master
+ * key alone is verified, which is exactly the case the spec reserves for
+ * unfunded accounts. The method used is returned, never implied.
  */
-function verifyChallenge({transaction}) {
+async function verifyChallenge({transaction}) {
   const config = status();
   if (!config.configured) {
     const error = new Error('SEP-10 is not configured');
@@ -199,6 +206,34 @@ function verifyChallenge({transaction}) {
     throw error;
   }
 
+  const record = await clientAccountRecord(read.clientAccountID);
+  if (record) {
+    const summary = record.signers || [];
+    const threshold = record.thresholds ? Number(record.thresholds.med_threshold) || 0 : 0;
+    try {
+      const met = WebAuth.verifyChallengeTxThreshold(
+        transaction,
+        serverAccountID,
+        networkPassphrase(),
+        threshold,
+        summary,
+        homeDomain(),
+        webAuthDomain()
+      );
+      return {
+        account: read.clientAccountID,
+        matched_home_domain: read.matchedHomeDomain,
+        memo: read.memo || null,
+        signers: met,
+        verification: {method: 'threshold', med_threshold: threshold, signers_on_record: summary.length},
+      };
+    } catch (cause) {
+      const error = new Error(`the collected signature weight does not meet ${read.clientAccountID}'s threshold ${threshold}: ${cause.message}`);
+      error.code = 'unauthorized';
+      throw error;
+    }
+  }
+
   let signers;
   try {
     signers = WebAuth.verifyChallengeTxSigners(
@@ -220,7 +255,34 @@ function verifyChallenge({transaction}) {
     matched_home_domain: read.matchedHomeDomain,
     memo: read.memo || null,
     signers,
+    verification: {method: 'master_key', reason: 'account not on the ledger yet'},
   };
+}
+
+function horizonUrl() {
+  const explicit = (process.env.HORIZON_URL || '').trim();
+  if (explicit) return explicit.replace(/\/+$/, '');
+  return networkName() === 'public' ? 'https://horizon.stellar.org' : 'https://horizon-testnet.stellar.org';
+}
+
+/** Loads the signer/threshold record for threshold verification; null when the account is unfunded. */
+async function clientAccountRecord(account) {
+  const response = await fetch(`${horizonUrl()}/accounts/${encodeURIComponent(account)}`, {
+    headers: {accept: 'application/json'},
+    signal: AbortSignal.timeout(6000),
+  }).catch(() => null);
+  if (!response) {
+    const error = new Error(`Horizon is unreachable at ${horizonUrl()}, so signature weight cannot be proven`);
+    error.code = 'upstream_unavailable';
+    throw error;
+  }
+  if (response.status === 404) return null;
+  if (!response.ok) {
+    const error = new Error(`Horizon answered ${response.status} reading the signer record`);
+    error.code = 'upstream_unavailable';
+    throw error;
+  }
+  return response.json().catch(() => null);
 }
 
 function isAccountId(value) {
