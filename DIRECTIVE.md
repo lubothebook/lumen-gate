@@ -470,6 +470,24 @@ functionality belongs in the off-chain surface, the facade and the docs.
       pre-existing breakage from the 2.2.3 transition, fixed semantically
       intact, and the workspace now passes `cargo clippy --all-targets
       -- -D warnings` with the two trivial sibling-crate lints swept.
+- [x] **The hero banner is the operator's own file, byte for byte.** The
+      submitted 1500×500 PNG replaced the previous banner in the page and in
+      `frontend/public/` (sha256 `27756e19…4549`, 10,308 bytes), and the page's
+      embedded copy is regenerated from that file rather than retyped — the
+      proof tool compares the two and reports `5/5 embedded assets verified`.
+      Rendered and read back in a real browser: the image resolves at its own
+      aspect, 560×187 on a 1440×900 viewport, and does not resample; the
+      full-bleed lattice behind it stays interactive. No generated artwork
+      anywhere, per the standing rule that the operator's pixels are the
+      design.
+- [x] **A real browser harness exists for this repository now**
+      (headless Chromium, driven outside the sandbox and not committed): it
+      boots the actual page with the API layer running, screenshots desktop and
+      mobile, enumerates every control with its disabled state, and reports
+      every non-2xx response. First full pass: 25 controls enumerated, the
+      network pill green on a live ledger, one 500 from `/api/finality` — which
+      is this sandbox missing the root `node_modules` the function requires,
+      not a defect in the handler — and no other failed request.
 
 ### Still missing (stated, not hidden)
 
