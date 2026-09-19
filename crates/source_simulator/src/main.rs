@@ -364,12 +364,12 @@ impl SimulatorState {
         msg.extend_from_slice(&event_root_bytes);
         let g1_hash =
             <G1Projective as HashToCurve<ExpandMsgXmd<Sha256>>>::hash_to_curve(
-                std::iter::once(msg.as_slice()),
+                msg.as_slice(),
                 b"lumen-gate-finality-v1",
             );
         let g2_gen =
             <G2Projective as HashToCurve<ExpandMsgXmd<Sha256>>>::hash_to_curve(
-                std::iter::once(&b"lumen-gate-g2-generator"[..]),
+                &b"lumen-gate-g2-generator"[..],
                 b"lumen-gate-finality-v1",
             );
 

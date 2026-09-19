@@ -809,11 +809,23 @@ mod test {
         let source = BytesN::from_array(&env, &[1u8; 32]);
         let target = BytesN::from_array(&env, &[2u8; 32]);
         let sender = Address::generate(&env);
-        assert!(!SettlementGateway::is_processed(&env, &source, &target, &sender, 0));
-        SettlementGateway::mark_processed(&env, &source, &target, &sender, 0).unwrap();
-        assert!(SettlementGateway::is_processed(&env, &source, &target, &sender, 0));
-        assert!(!SettlementGateway::is_processed(&env, &source, &target, &sender, 1));
-        assert!(SettlementGateway::mark_processed(&env, &source, &target, &sender, 0).is_err());
+        // The high-water mark is (source, target, sender) scoped and defaults to
+        // "nothing seen yet", so the very first nonce -- even nonce 0 -- must be
+        // accepted. Storage is only reachable from inside a contract frame.
+        let gateway_id = env.register(SettlementGateway, ());
+        env.as_contract(&gateway_id, || {
+            assert!(!SettlementGateway::is_processed(&env, &source, &target, &sender, 0));
+            SettlementGateway::mark_processed(&env, &source, &target, &sender, 0).unwrap();
+            assert!(SettlementGateway::is_processed(&env, &source, &target, &sender, 0));
+            assert!(!SettlementGateway::is_processed(&env, &source, &target, &sender, 1));
+            // Replaying the same nonce must fail: the mark only moves forward.
+            assert!(SettlementGateway::mark_processed(&env, &source, &target, &sender, 0).is_err());
+            // And every nonce below the mark is covered without extra state.
+            SettlementGateway::mark_processed(&env, &source, &target, &sender, 5).unwrap();
+            assert!(SettlementGateway::is_processed(&env, &source, &target, &sender, 3));
+            assert!(SettlementGateway::mark_processed(&env, &source, &target, &sender, 4).is_err());
+            assert!(!SettlementGateway::is_processed(&env, &source, &target, &sender, 6));
+        });
     }
 
     #[test]
@@ -932,7 +944,7 @@ mod test {
         let message = CrossDomainMessage {
             message_id: compute_message_id(&env, &params),
             source_domain,
-            target_domain,
+            target_domain: target_domain.clone(),
             source_height: 1,
             event_index: 0,
             nonce: 0,
