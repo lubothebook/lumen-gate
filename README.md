@@ -1,10 +1,49 @@
 # Lumen Gate
 
-**Anchor-attached settlement infrastructure for neutral, machine-verified source-chain finality.**
+> **Trust should not be an off-chain callback.**
+>
+> **Lumen Gate is the neutral finality layer that lets Stellar anchors settle value from other domains without becoming the source chain's validator, bridge operator, or single point of truth.**
 
-Lumen Gate is being built for the [Rise In x Stellar Pro Hackathon](https://www.risein.com/programs/stellar-pro-hackathon), Genesis track. The product puts a neutral finality-proof layer behind a Stellar anchor: the anchor keeps issuer, reserve and customer responsibilities, while Soroban contracts verify source-chain evidence and control the mint/burn settlement path.
+[![Stellar](https://img.shields.io/badge/built%20for-Stellar%20%2F%20Soroban-000?style=flat-square&logo=stellar&logoColor=white)](https://developers.stellar.org/docs/build/smart-contracts/overview) [![Status](https://img.shields.io/badge/status-Testnet%20engineering%20demo-d9ff63?style=flat-square&labelColor=050505)](#honest-status) [![Track](https://img.shields.io/badge/Rise%20In%20x%20Stellar%20Pro-Genesis-000?style=flat-square)](https://www.risein.com/programs/stellar-pro-hackathon)
 
-> **Important status note:** this repository is an implementation snapshot and work plan. The checked-in deployment manifest still contains placeholders, and this snapshot must not be described as a completed production bridge until the real testnet receipts, contract IDs and end-to-end negative probes are added.
+<p align="center"><img src="frontend/public/lumen-gate-banner.svg" alt="Lumen Gate banner" width="100%" /></p>
+
+Stellar already has the payment rails, the anchor model and a smart-contract platform built for financial applications. The missing product layer is not another wrapped token UI: it is a **credible settlement boundary** between an anchor and a source domain. Lumen Gate puts that boundary in Soroban, where a Registry checks finality evidence, a Gateway controls the asset, and every accepted or rejected path can be inspected as a receipt.
+
+This is the proposal for the [Rise In x Stellar Pro Hackathon](https://www.risein.com/programs/stellar-pro-hackathon), Genesis track. It is deliberately ambitious and deliberately honest: the source chain may remain a deterministic simulator for the hackathon, but Stellar-side contracts, Soroban RPC calls, event ingestion and transaction receipts are designed for real Testnet execution. No green button is allowed to turn an unverified fixture into a production claim.
+
+## The 30-second pitch
+
+**Lumen Gate turns source-chain finality into an on-chain Stellar settlement decision.** An anchor can keep its issuer, reserve, compliance and customer relationship while delegating neither trust nor mint authority to a private bridge database. The flow is:
+
+```text
+source lock → BLS or Groth16 evidence → Soroban verification → Stellar mint
+Stellar burn → canonical contract event → relayer → source unlock
+```
+
+The result is a reusable settlement primitive for anchors, wallets, exchanges and payment applications: one integration surface, two proof lanes, explicit replay protection, a reversible asset path, and a failure mode that is safer than “the relayer said it was fine.”
+
+## Why Stellar, why now
+
+Lumen Gate is shaped around capabilities that make Stellar unusually relevant to this problem:
+
+- **Anchors are a first-class distribution model.** Stellar’s Anchor Platform standardizes the service surface around SEP-1, SEP-6, SEP-10, SEP-12, SEP-24, SEP-31 and SEP-38. Lumen Gate complements that surface rather than replacing the issuer or compliance layer.
+- **Soroban can make the settlement decision executable.** The Gateway does not ask an API to mint; it asks a Registry contract to accept evidence and then enforces the result through the SAC asset authority.
+- **Cryptography is close to the ledger.** Soroban’s documented BLS12-381 and BN254 primitives make aggregate signatures and Groth16-style verification a native design target instead of a promise hidden in a server.
+- **Events make the reverse path indexable.** A canonical `burn` event can be ingested through Soroban RPC, decoded by a relayer and consumed exactly once by the source side.
+- **The output is composable value.** Once settled, a wrapped source asset can use Stellar wallets, liquidity and payment rails instead of living inside a bridge-specific silo.
+
+### What we are not building
+
+Lumen Gate is not an issuer, not a reserve manager, not a source-chain validator set and not a claim that every chain can be made trustless by adding a signature. It is an adapter and finality-verification boundary. The anchor remains responsible for its real-world obligations; the Registry is responsible for refusing evidence that does not satisfy the registered policy.
+
+> **The pitch to judges:** this is infrastructure an anchor can actually integrate, a cryptography surface Soroban can actually enforce, and a demo where the negative path is part of the product—not a slide hidden after the happy path.
+
+## Honest status
+
+This checkout is a **Testnet engineering snapshot**, not a completed production bridge. `deployments/testnet.json` still contains placeholders. The browser and relayer paths are written for live Soroban RPC and Freighter submission, but no deployment, contract IDs, receipt set or fresh-unfunded-account gasless result is claimed until those artifacts are collected and linked. The checked-in Groth16 material is explicitly quarantined as development-only. See [`circuits/DEVELOPMENT_FIXTURE.md`](circuits/DEVELOPMENT_FIXTURE.md).
+
+The source side is intentionally local. The Stellar side is not intended to be mocked: the acceptance bar is a real registry/gateway/SAC deployment, real transaction hashes, real events, a reverse `/burn-unlock` receipt and negative probes against the deployed contracts.
 
 ## Product thesis
 
@@ -16,7 +55,28 @@ An anchor that does not want to operate a separate bridge per source chain shoul
 4. mint or release the anchor's wrapped asset only after verification;
 5. burn the asset and emit a reverse message without keeping validator keys in the anchor.
 
-The source chain is intentionally simulated for the hackathon. The Stellar-side code is written for a real Soroban Testnet deployment and real Soroban RPC/Horizon calls, but this checkout is not deployed until `deployments/testnet.json` is replaced with receipts.
+The codebase implements this boundary with a local source simulator and a live-Soroban-shaped Stellar side. The simulator makes the demo deterministic; it does not make a live Testnet claim on our behalf.
+
+## Judge's 90-second path
+
+1. Open [`frontend/index.html`](frontend/index.html) or the deployed preview and read the banner: the thesis is settlement, not a token gimmick.
+2. Connect Freighter on Testnet and inspect the registry, gateway and SAC IDs. Placeholder IDs are intentionally obvious until deployment evidence exists.
+3. Create a source lock, fetch both BLS and Groth16 evidence, then run the fault probes for bad signatures, roots, versions, malformed proof roots and replayed nonces.
+4. Follow the reverse path: `burn_and_relay` emits canonical Bytes, the relayer polls Soroban RPC, and the source simulator consumes `/burn-unlock` once.
+5. Replace the manifest with real receipts and repeat the exact flow against Testnet. The README and [`DIRECTIVE.md`](DIRECTIVE.md) define what counts as evidence.
+
+## Research notes and ecosystem fit
+
+The product direction follows the current Stellar developer surface rather than treating Stellar as a generic chain:
+
+- [Anchors](https://developers.stellar.org/docs/learn/fundamentals/anchors) defines anchors as the on/off-ramp layer connecting Stellar to financial rails and points builders toward SEP-6, SEP-24, SEP-31, SEP-10, SEP-12 and SEP-38.
+- [Anchor Platform](https://developers.stellar.org/docs/platforms/anchor-platform) provides standardized asset, authentication, transaction and callback surfaces. Lumen Gate’s facade is intentionally shaped to sit beside that platform.
+- [Soroban `getEvents`](https://developers.stellar.org/network/soroban-rpc/methods/getEvents) supports contract/topic filtering and cursor-based pagination. The relayer uses this surface for reverse burn ingestion, while the deployment plan treats event retention as an operational constraint.
+- [Contract event ingestion guidance](https://developers.stellar.org/docs/build/guides/events/ingest) recommends maintaining an own record because RPC event retention is limited. That is why Lumen Gate’s relayer keeps a cursor and why a production deployment must persist event IDs rather than poll blindly.
+- [Stellar privacy and ZK primitives](https://developers.stellar.org/docs/build/apps/privacy) documents BLS12-381 and BN254 as Soroban cryptographic building blocks. Lumen Gate exposes both lanes so an anchor can compare an aggregate-signature finality policy with a proof-carrying policy.
+- [Soroban BLS signature example](https://developers.stellar.org/docs/build/smart-contracts/example-contracts/bls-signature) demonstrates the native pairing pattern that informs the Registry’s BLS path.
+
+These are product inputs, not endorsements. The repository still requires deployment receipts and negative Testnet evidence before making a live security claim.
 
 ## Demo story
 
@@ -120,31 +180,30 @@ An anchor must not be described as operating source-chain validators. It only co
 
 ## Implementation status
 
-### Present in this snapshot
+### Built in this snapshot
 
-- Soroban contract skeletons for the registry and gateway;
-- raw evidence, domain profile, attestation and message envelope types;
-- HWM and Merkle helper code;
-- BLS and BN254 host-call verifier patterns;
-- source simulator, relayer, frontend and anchor facade scaffolding;
-- admin-renounce and fault-probe test fixtures;
-- the permanent plan in [`DIRECTIVE.md`](DIRECTIVE.md).
+- Soroban Registry and Gateway contracts with explicit evidence parsing, domain profiles, Merkle checks and nonce HWM replay protection;
+- BLS12-381 aggregate-signature verification and Groth16/BN254 verification paths with malformed-point, scalar, root and signature rejection branches;
+- payload-derived height/root checks—there is no `assume valid` branch;
+- source simulator with deterministic lock/proof fixtures and idempotent `/burn-unlock` accounting;
+- Rust relayer with real Soroban RPC `getEvents` polling, strict SCVal Bytes decoding and reverse source delivery;
+- Freighter-facing frontend checkout, burn submission path and positive/negative proof probes;
+- Anchor facade with Stellar metadata, health, info, transaction and withdrawal integration surfaces;
+- fixture quarantine and an evidence-first deployment directive in [`DIRECTIVE.md`](DIRECTIVE.md).
 
-### Required before a truthful submission claim
+### Still required for the submission-grade evidence pack
 
-- deploy the registry, gateway and SAC to Stellar Testnet;
-- record contract IDs, explorer links and setup transaction hashes;
-- call `register_domain(admin, ...)`, `set_bls_policy(admin, ...)` and
-  `admit_domain(admin, ...)` for the BLS and ZK domains, then prove registry
-  and gateway admin renounce;
-- bind BLS verification to the registered domain key and align the signer with
-  the exact on-chain hash-to-curve scheme;
-- replace the static ZK example with a root-bound finality statement and then connect its finalized event root to gateway minting;
-- make the relayer sign, submit and confirm real transactions;
-- implement source unlock and reverse-flow event consumption;
-- prove the zero-XLM recipient path with a fresh testnet keypair, or remove the
-  claim;
-- run the full test, build, preview and negative-probe matrix.
+- deploy the Registry, Gateway and SAC to Stellar Testnet and replace placeholders in `deployments/testnet.json`;
+- record contract IDs, explorer links, setup transaction hashes, event IDs and `getTransaction` receipts;
+- execute `register_domain`, BLS policy setup and domain admission, then permanently constrain or renounce Registry and Gateway admin authority;
+- prove the exact BLS hash-to-curve/signature scheme against the deployed Soroban host functions;
+- regenerate a source-root-bound Groth16 circuit, VK and proof, then show positive and negative receipts against the deployed Registry;
+- run source lock → proof → Registry verification → Gateway mint, followed by Gateway burn → RPC event → source `/burn-unlock`;
+- prove HWM rejection keyed by `(source_domain, target_domain, sender)` and retain the receipt for the negative probe;
+- test a fresh unfunded Testnet account before using any gasless onboarding language;
+- run the full Rust format/test/build matrix and archive the live evidence under the documented manifest format.
+
+Until these steps are complete, words such as “live,” “trustless,” “machine-only” and “gasless” refer to an intended design path—not a collected Testnet fact.
 
 ## Local development
 
