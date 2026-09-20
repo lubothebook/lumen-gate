@@ -226,22 +226,61 @@
 
                 <section id="page-battery" class="page hidden" role="tabpanel">
                   <h2>Battery</h2>
-                  <p class="warn">The Battery contract is not written yet (F5). Balance, top-up, withdraw or forward are not invented.</p>
-                  <p class="muted" style="margin-top:12px">
+                  <p class="muted">
                     The relayer pays network fees in XLM and is repaid in USDC from the Battery.
-                    That sentence is how this screen will work once the contract and F7 evidence exist.
+                    Live on testnet — the balance below is read from the contract, not stored here.
                     Inspired by Tonkeeper Battery: off-chain on TON, on-chain and user-owned on Gate.
-                    There is no balance to show today.
+                  </p>
+                  <p class="contracts" style="margin-top:10px">Battery: <span id="battery-id" class="mono"></span></p>
+
+                  <table class="kv" style="margin-top:14px">
+                    <tbody id="batteryKv">
+                      <tr><td>Balance</td><td class="mono">connect a wallet or query an address</td></tr>
+                    </tbody>
+                  </table>
+
+                  <div class="row" style="margin-top:14px">
+                    <input id="in-battery-addr" class="input mono" type="text" placeholder="G… address to read (defaults to the connected wallet)" />
+                    <button class="btn small" id="btn-battery-read" type="button">Read balance</button>
+                  </div>
+                  <div id="res-battery"></div>
+
+                  <div class="btn-row" style="margin-top:16px">
+                    <input id="in-battery-amount" class="input mono" type="text" placeholder="USDC amount, 6 decimals (e.g. 1.5)" />
+                    <button class="btn mini" id="btn-battery-deposit" type="button" disabled title="Connect Freighter first — a deposit moves USDC and needs a signature.">Top up</button>
+                    <button class="btn mini" id="btn-battery-withdraw" type="button" disabled title="Connect Freighter first — a withdrawal needs a signature.">Withdraw</button>
+                  </div>
+                  <p class="note" id="batteryNote" style="margin-top:10px; font-size:0.8125rem">
+                    Top-up and withdraw need a USDC trustline and a funded balance. Both are real
+                    signed transactions against the contract above — on testnet, with testnet USDC.
                   </p>
                 </section>
 
                 <section id="page-tickets" class="page hidden" role="tabpanel">
                   <h2>My tickets</h2>
-                  <p class="warn">The Ticket contract is not written yet (F6). List, send, redeem or split are not invented.</p>
-                  <p class="muted" style="margin-top:12px">
+                  <p class="muted">
                     A ticket is a claim on native USDC in the vault. It is not a bridged asset.
-                    It is bearer paper: a ticket sent to the wrong address or stolen cannot be clawed back.
-                    If Circle freezes the vault, every ticket is affected.
+                    It is bearer paper: a ticket sent to the wrong address or stolen cannot be
+                    clawed back. If Circle freezes the vault, every ticket is affected.
+                  </p>
+                  <p class="contracts" style="margin-top:10px">Ticket: <span id="ticket-id" class="mono"></span></p>
+
+                  <table class="kv" style="margin-top:14px">
+                    <tbody id="ticketKv">
+                      <tr><td>Supply</td><td class="mono">reading…</td></tr>
+                    </tbody>
+                  </table>
+
+                  <div class="row" style="margin-top:14px">
+                    <input id="in-ticket-addr" class="input mono" type="text" placeholder="G… address to list (defaults to the connected wallet)" />
+                    <button class="btn small" id="btn-ticket-read" type="button">List tickets</button>
+                  </div>
+                  <div id="res-tickets"></div>
+
+                  <p class="warn" id="ticketMintNote" style="margin-top:14px">
+                    Minting is closed: no minter contract is deployed on testnet, so
+                    <span class="mono">init_minter</span> was never called and
+                    <span class="mono">mint_ticket</span> would be refused on chain. Reads above are live.
                   </p>
                 </section>
               </div>
@@ -268,7 +307,7 @@
             </div>
             <div>
               <strong>Who does not custody</strong>
-              <p>GateClaim and BurnRouter hold no funds. The two vaults that will — Battery and Ticket — are not written yet.</p>
+              <p>GateClaim and BurnRouter hold no funds. The two vaults that do — Battery and Ticket — are live on testnet and hold nothing yet; both report a zero balance on chain, which you can read above.</p>
             </div>
             <div>
               <strong>What is absent</strong>

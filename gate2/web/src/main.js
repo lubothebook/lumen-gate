@@ -162,7 +162,7 @@ function acctLog(text, hash) {
 }
 
 function setWalletActions(on, reason) {
-  for (const id of ["btn-fund", "btn-trust-open", "btn-bump", "btn-trust-open-burn", "btn-stamp"]) {
+  for (const id of ["btn-fund", "btn-trust-open", "btn-bump", "btn-trust-open-burn", "btn-stamp", "btn-battery-deposit", "btn-battery-withdraw"]) {
     const b = $(id);
     if (!b) continue;
     b.disabled = !on;
@@ -664,3 +664,162 @@ window.addEventListener("resize", queueLattice);
 buildLattice();
 initLatticeFrame();
 watchSections();
+
+// ---------- F5 Battery / F6 Tickets: live testnet reads and writes ----------
+// Both contracts went live on 2026-09-20. Ids come from the receipt via
+// config.js, never hand-copied. Every number below is read from chain; nothing
+// on this screen is simulated or remembered locally.
+
+const idBox = (id, value) => {
+  const n = $(id);
+  if (n) n.textContent = value;
+};
+idBox("battery-id", CONFIG.battery);
+idBox("ticket-id", CONFIG.ticket);
+
+// USDC is 6 decimals. Parse without floating point so 1.5 -> 1500000 exactly.
+function parseUsdc6(raw) {
+  const t = String(raw ?? "").trim();
+  if (!t) return { ok: false, why: "enter an amount" };
+  if (!/^\d+(\.\d{1,6})?$/.test(t)) {
+    return { ok: false, why: "amount must be a number with at most 6 decimals" };
+  }
+  const [whole, frac = ""] = t.split(".");
+  const units = BigInt(whole) * 1000000n + BigInt(frac.padEnd(6, "0"));
+  if (units <= 0n) return { ok: false, why: "amount must be greater than zero" };
+  return { ok: true, units };
+}
+
+function whichAddress(inputId) {
+  const typed = ($(inputId)?.value || "").trim();
+  const g = typed || connectedAddress || "";
+  if (!g) return { ok: false, why: "connect a wallet or type a G… address" };
+  if (!StrKey.isValidEd25519PublicKey(g)) return { ok: false, why: "not a valid StrKey address" };
+  return { ok: true, g };
+}
+
+function kvRows(tbodyId, rows) {
+  const body = $(tbodyId);
+  if (!body) return;
+  body.innerHTML = "";
+  for (const [k, v] of rows) {
+    const tr = document.createElement("tr");
+    tr.appendChild(el("td", null, k));
+    tr.appendChild(el("td", "mono", v));
+    body.appendChild(tr);
+  }
+}
+
+async function readBatteryBalance() {
+  const who = whichAddress("in-battery-addr");
+  const out = $("res-battery");
+  if (!who.ok) {
+    if (out) out.textContent = who.why;
+    return;
+  }
+  if (out) out.textContent = "reading…";
+  const r = await readContract(CONFIG.battery, "balance_of", [{ scVal: addrScVal(who.g) }]);
+  if (!r.ok) {
+    if (out) out.textContent = `read failed: ${String(r.error).slice(0, 180)}`;
+    return;
+  }
+  if (out) out.textContent = "";
+  kvRows("batteryKv", [
+    ["Address", `${who.g.slice(0, 8)}…${who.g.slice(-6)}`],
+    ["Balance", `${div6(r.value)} USDC`],
+  ]);
+}
+
+async function readTickets() {
+  const out = $("res-tickets");
+  const who = whichAddress("in-ticket-addr");
+  if (out) out.textContent = "reading…";
+
+  const [total, vault] = await Promise.all([
+    readContract(CONFIG.ticket, "live_total", []),
+    readContract(CONFIG.ticket, "vault_balance", []),
+  ]);
+
+  const rows = [
+    ["Live total", total.ok ? `${div6(total.value)} USDC` : "read failed"],
+    ["Vault balance", vault.ok ? `${div6(vault.value)} USDC` : "read failed"],
+  ];
+
+  if (who.ok) {
+    const [ids, value] = await Promise.all([
+      readContract(CONFIG.ticket, "tickets_of", [{ scVal: addrScVal(who.g) }]),
+      readContract(CONFIG.ticket, "value_of", [{ scVal: addrScVal(who.g) }]),
+    ]);
+    const list = ids.ok && Array.isArray(ids.value) ? ids.value : [];
+    rows.push(["Address", `${who.g.slice(0, 8)}…${who.g.slice(-6)}`]);
+    rows.push(["Tickets held", list.length ? list.map(String).join(", ") : "none"]);
+    rows.push(["Held value", value.ok ? `${div6(value.value)} USDC` : "read failed"]);
+    if (out) out.textContent = list.length ? "" : "No tickets at this address — that is a real read, not a placeholder.";
+  } else if (out) {
+    out.textContent = who.why;
+  }
+
+  kvRows("ticketKv", rows);
+}
+
+$("btn-battery-read")?.addEventListener("click", readBatteryBalance);
+$("btn-ticket-read")?.addEventListener("click", readTickets);
+
+$("btn-battery-deposit")?.addEventListener("click", () =>
+  withButton("btn-battery-deposit", "Signing…", async () => {
+    const out = $("res-battery");
+    const amount = parseUsdc6($("in-battery-amount")?.value);
+    if (!amount.ok) {
+      if (out) out.textContent = amount.why;
+      return;
+    }
+    if (!connectedAddress) {
+      if (out) out.textContent = "connect Freighter first";
+      return;
+    }
+    const f = getFreighter();
+    const r = await sendWithFreighter(f, CONFIG.battery, "deposit", [
+      { scVal: addrScVal(connectedAddress) },
+      { scVal: addrScVal(connectedAddress) },
+      { value: amount.units, type: "i128" },
+    ]);
+    if (r.ok) {
+      acctLog(`Battery topped up by ${div6(amount.units)} USDC.`, r.hash);
+      await readBatteryBalance();
+    } else {
+      acctLog(`Top-up refused: ${String(r.error).slice(0, 180)}`, r.hash);
+    }
+  })
+);
+
+$("btn-battery-withdraw")?.addEventListener("click", () =>
+  withButton("btn-battery-withdraw", "Signing…", async () => {
+    const out = $("res-battery");
+    const amount = parseUsdc6($("in-battery-amount")?.value);
+    if (!amount.ok) {
+      if (out) out.textContent = amount.why;
+      return;
+    }
+    if (!connectedAddress) {
+      if (out) out.textContent = "connect Freighter first";
+      return;
+    }
+    const f = getFreighter();
+    const r = await sendWithFreighter(f, CONFIG.battery, "withdraw", [
+      { scVal: addrScVal(connectedAddress) },
+      { value: amount.units, type: "i128" },
+    ]);
+    if (r.ok) {
+      acctLog(`Withdrew ${div6(amount.units)} USDC from the Battery.`, r.hash);
+      await readBatteryBalance();
+    } else {
+      acctLog(`Withdrawal refused: ${String(r.error).slice(0, 180)}`, r.hash);
+    }
+  })
+);
+
+// Supply figures do not need a wallet, so show them as soon as the tab opens.
+$("tab-tickets")?.addEventListener("click", () => { readTickets(); }, { once: true });
+$("tab-battery")?.addEventListener("click", () => {
+  if (connectedAddress) readBatteryBalance();
+}, { once: true });
