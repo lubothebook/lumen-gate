@@ -48,3 +48,6 @@ circuits/ptau/
 /gate2/scripts/node_modules/
 /gate2/soroban/gate_stamp/target/
 /gate2/soroban/gate_stamp/.stellar/
+
+/stello/web/node_modules/
+/stello/web/dist/
