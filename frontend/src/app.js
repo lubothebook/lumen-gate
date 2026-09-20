@@ -59,6 +59,11 @@ const state = {
   walletSource: null,
 };
 
+// Set once the first /api/status round trip has answered (success or
+// failure). A write clicked before that moment is a boot race, not a
+// misconfiguration, and may wait for the answer instead of guessing.
+let statusSettled = false;
+
 const $ = (id) => document.getElementById(id);
 const el = (tag, props = {}, children = []) => {
   const node = document.createElement(tag);
@@ -1027,7 +1032,7 @@ async function connectWallet() {
       // "undefined" as an address or a generic failure. The last concrete
       // reason is the one a reader can act on.
       const why = attempts.length ? attempts[attempts.length - 1] : 'the extension exposes no way to ask for an address';
-      $('walletNote').textContent = `Freighter did not share an address (${why}). Unlock the extension and approve the request, or read the demo account without any wallet.`;
+      $('walletNote').textContent = `Freighter did not share an address (${why}). Unlock the extension and approve the request, or read the demo account — receiving needs no wallet at all.`;
       log(`Wallet connection was not approved: ${why}`, 'warn');
       return null;
     }
@@ -1405,8 +1410,20 @@ async function burn() {
   const recipient = ($('burnRecipient').value || '').trim();
   if (!recipient) return log('Unlock recipient is required: burning locks the value for an address on the source chain, and an empty one would strand it.', 'bad');
   if (!/^G[A-Z2-7]{55}$/.test(recipient)) return log('Unlock recipient must be a source-chain account address (G..., 56 characters).', 'bad');
-  const gateway = state.status?.contracts?.gateway;
-  const targetDomain = state.status?.domain?.key;
+  let gateway = state.status?.contracts?.gateway;
+  let targetDomain = state.status?.domain?.key;
+  if ((!gateway || !targetDomain) && !statusSettled) {
+    // A burn clicked before the first /api/status answer is a boot race, not
+    // a misconfiguration: wait for the answer instead of reporting addresses
+    // that are a moment away. Once the round trip has settled (even in
+    // failure) the loop exits at once and the degraded message stands.
+    const t0 = Date.now();
+    while ((!gateway || !targetDomain) && !statusSettled && Date.now() - t0 < 10000) {
+      await new Promise((r) => setTimeout(r, 150));
+      gateway = state.status?.contracts?.gateway;
+      targetDomain = state.status?.domain?.key;
+    }
+  }
   if (!gateway || !targetDomain) return log('Deployment addresses are not loaded yet.', 'warn');
 
   log(`Preparing a burn of ${amount} with unlock to ${short(recipient)}...`);
@@ -1956,9 +1973,12 @@ renderLanes().catch(() => {});
 wire();
 
 // Say it before the reader presses anything. In a frame the extension is
-// unreachable no matter what, so the wallet card should show the way out on
-// arrival rather than after a click that was always going to fail.
-if (embeddedFrame() && !freighterProvider()) {
+// unreachable no matter what - the official module included, since it talks
+// to a content script that never injects into a frame - so the wallet card
+// should show the way out on arrival rather than after a click that was
+// always going to fail. (Not `!freighterProvider()`: that always answers a
+// provider now, and would suppress this.)
+if (embeddedFrame() && !injectedFreighterProvider()) {
   offerTopLevelTab();
   const note = $('walletNote');
   if (note) note.textContent = walletAbsenceNote();
@@ -1990,4 +2010,7 @@ loadStatus()
     // first click landed before wire() had run. The flag below is the page
     // saying it is ready, for the tools that drive it.
     document.documentElement.dataset.lumenReady = 'ready';
+    // Whatever the first status round trip answered, it has now answered:
+    // a write that lands from here on can stop waiting for addresses.
+    statusSettled = true;
   });
