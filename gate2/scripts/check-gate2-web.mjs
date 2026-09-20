@@ -81,10 +81,36 @@ await page.waitForFunction(() => (document.getElementById("res-trustline")?.text
 const tl = await page.$eval("#res-trustline", (n) => n.textContent);
 check("trustline check live from Horizon (deployer has no USDC)", tl.includes("NO") || tl.includes("YES"), tl.replace(/\s+/g, " ").slice(0, 90));
 
-// 5 — BURN word can never enable the button while the router is missing
+// 5 — BURN word can never make the action available while the router is
+// missing, and pressing the control answers with that reason instead of
+// swallowing the click: the controls carry aria-disabled rather than a hard
+// `disabled`, so the press reaches the handler and the reason is the answer.
 await page.type("#in-burnword", "BURN");
-const burnDisabled = await page.$eval("#btn-burn", (n) => n.disabled);
-check("BURN button stays disabled without router", burnDisabled === true);
+const burnState = await page.$eval("#btn-burn", (n) => ({
+  unavailable: n.disabled === true || n.getAttribute("aria-disabled") === "true",
+}));
+check("BURN stays unavailable without router", burnState.unavailable === true);
+await jsClick(page, "#btn-burn");
+const burnAnswer = await page.$eval("#res-burn", (n) => n.textContent);
+check(
+  "BURN press answers with the no-router reason",
+  /not deployed on Sepolia/i.test(burnAnswer) && /No burn happened/i.test(burnAnswer),
+  burnAnswer.replace(/\s+/g, " ").slice(0, 110)
+);
+
+// 5b — an unavailable wallet action answers its press instead of being dead:
+// pressing the (grey) stamp control before connecting must log the reason.
+await jsClick(page, "#btn-stamp");
+await page.waitForFunction(
+  () => /Connect Freighter first|wallet signature/i.test(document.getElementById("acct-log")?.textContent || ""),
+  { timeout: 15000 }
+);
+const gateAnswer = await page.$eval("#acct-log", (n) => n.textContent);
+check(
+  "unavailable stamp press answers with the reason",
+  /Connect Freighter first/i.test(gateAnswer),
+  gateAnswer.replace(/\s+/g, " ").slice(-90)
+);
 
 check("no failed requests / console errors", badRequests.length === 0, badRequests.slice(0, 3).join(" | "));
 

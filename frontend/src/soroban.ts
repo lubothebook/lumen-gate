@@ -1,5 +1,14 @@
 // Soroban helpers for Lumen Gate - hardened
 import * as StellarSdk from '@stellar/stellar-sdk';
+// Node's Buffer is a global in Node and *absent* in the browser: every
+// hex/utf8 bytes call below referenced a bare `Buffer` that only existed
+// because the module was first exercised from Node harnesses. In the browser
+// each of those lines threw `ReferenceError: Buffer is not defined` before a
+// single byte reached the network, which is how the burn button could look
+// "dead" while actually being broken. The buffer package is already in the
+// tree (stellar-base depends on it); importing it here makes the module work
+// in both worlds.
+import { Buffer } from 'buffer';
 
 const RPC_URL = import.meta.env.VITE_RPC_URL || 'https://soroban-testnet.stellar.org';
 const NETWORK_PASSPHRASE = StellarSdk.Networks.TESTNET;
