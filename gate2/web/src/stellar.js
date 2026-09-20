@@ -28,7 +28,12 @@ export const EXPLORER_ACCOUNT = "https://stellar.expert/explorer/testnet/account
 
 export async function readContract(contractId, method, args = []) {
   const contract = new Contract(contractId);
-  const scArgs = args.map((a) => (a.scVal !== undefined ? a.scVal : nativeToScVal(a.value, a.type)));
+  // The type hint is an options object, not a bare string: nativeToScVal(v, "i128")
+  // silently ignores the hint and encodes a BigInt as scvU64, so a contract
+  // expecting i128 (the Battery's deposit/withdraw amounts) received the wrong
+  // shape and the VM refused with InvalidAction before the call ever ran.
+  // Passing { type } makes the hint do what its callers meant.
+  const scArgs = args.map((a) => (a.scVal !== undefined ? a.scVal : nativeToScVal(a.value, { type: a.type })));
   const raw = contract.call(method, ...scArgs);
   const account = await server.getAccount(CONFIG.deployerPublicKey);
   const tx = new TransactionBuilder(account, {
@@ -228,7 +233,12 @@ export async function waitSoroban(hash, timeoutMs = 90000) {
 
 export async function sendWithFreighter(f, contractId, method, args = []) {
   const contract = new Contract(contractId);
-  const scArgs = args.map((a) => (a.scVal !== undefined ? a.scVal : nativeToScVal(a.value, a.type)));
+  // The type hint is an options object, not a bare string: nativeToScVal(v, "i128")
+  // silently ignores the hint and encodes a BigInt as scvU64, so a contract
+  // expecting i128 (the Battery's deposit/withdraw amounts) received the wrong
+  // shape and the VM refused with InvalidAction before the call ever ran.
+  // Passing { type } makes the hint do what its callers meant.
+  const scArgs = args.map((a) => (a.scVal !== undefined ? a.scVal : nativeToScVal(a.value, { type: a.type })));
   const raw = contract.call(method, ...scArgs);
   const addr = await freighterConnect(f);
   const account = await server.getAccount(addr);

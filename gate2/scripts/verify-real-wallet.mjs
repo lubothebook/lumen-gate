@@ -150,15 +150,27 @@ const waitForText = async (page, sel, needle, timeout = 90000) => {
 // testnet getTransaction shape, and the proof must not depend on SDK
 // version quirks - the RPC answer itself is the evidence.
 async function waitForFinal(page, sel, word) {
+  return waitForFinalText(page, sel, [word]);
+}
+
+async function waitForFinalText(page, sel, finals, timeout = 150000) {
+  // The account log keeps its last rows, so a "waiting" line that was already
+  // answered must not keep the wait pending forever: pendingness is decided
+  // by the box's own last line, not by any line it still remembers.
   try {
     await page.waitForFunction(
-      (s, w) => {
-        const t = document.querySelector(s)?.textContent || "";
-        return t.includes(w) && !/bekleniyor/.test(t) && /[a-f0-9]{64}/.test(t);
+      (s, words) => {
+        const box = document.querySelector(s);
+        if (!box) return false;
+        const t = box.textContent || "";
+        const lastLine = box.lastElementChild ? box.lastElementChild.textContent : t;
+        const settled = words.some((w) => t.includes(w));
+        const pending = /bekleniyor|waiting|Waiting|Requesting|Simulating|imzası|Signing/.test(lastLine);
+        return settled && !pending && /[a-f0-9]{64}|#\d|NoMigration/.test(t);
       },
-      { timeout: 150000 },
+      { timeout },
       sel,
-      word
+      finals
     );
   } catch { /* report whatever is there */ }
   return (await page.$eval(sel, (n) => n.textContent).catch(() => "")).replace(/\s+/g, " ").trim();
@@ -195,8 +207,8 @@ if (await reachable(GATE2_URL)) {
 
   // 2 — a real USDC ChangeTrust through the button
   await jsClick(page, "#btn-trust-open");
-  let trustLog = await waitForText(page, "#acct-log", "Trustline");
-  let trustHash = (trustLog.match(/[a-f0-9]{64}/) || [])[0];
+  let trustLog = await waitForFinalText(page, "#acct-log", ["Trustline opened", "Trustline not opened", "Trustline error"]);
+  let trustHash = (trustLog.match(/[a-f0-9]{64}/g) || []).pop();
   check("gate2 trustline button reported", Boolean(trustHash), trustLog.slice(0, 90));
   if (trustHash) {
     let hasUsdc = false;
@@ -210,8 +222,10 @@ if (await reachable(GATE2_URL)) {
 
   // 3 — a real TESTNET stamp invocation (stamp(owner) — the owner arg is the call)
   await jsClick(page, "#btn-stamp");
-  let stampLog = await waitForFinal(page, "#acct-log", "Damga");
-  let stampHash = (stampLog.match(/[a-f0-9]{64}/) || [])[0];
+  let stampLog = await waitForFinal(page, "#acct-log", "Stamp");
+  // the account log keeps its rows in order, so the newest row's hash is the
+  // LAST one in the text - the first would be some earlier action's hash.
+  let stampHash = (stampLog.match(/[a-f0-9]{64}/g) || []).pop();
   check("gate2 stamp button sent a real tx", Boolean(stampHash), stampLog.slice(0, 120));
   if (stampHash) {
     const st = await txStatus(stampHash);
@@ -221,7 +235,7 @@ if (await reachable(GATE2_URL)) {
   // 4 — a real bump invocation
   await jsClick(page, "#btn-bump");
   let bumpLog = await waitForFinal(page, "#acct-log", "bump");
-  let bumpHash = (bumpLog.match(/[a-f0-9]{64}/) || [])[0];
+  let bumpHash = (bumpLog.match(/[a-f0-9]{64}/g) || []).pop();
   check("gate2 bump button sent a real tx", Boolean(bumpHash), bumpLog.slice(0, 120));
   if (bumpHash) {
     const st = await txStatus(bumpHash);
@@ -233,14 +247,27 @@ if (await reachable(GATE2_URL)) {
   // against real ledger state; the app reports it instead of submitting a
   // doomed transaction - that answer is the proof the button works.
   await jsClick(page, "#btn-tier-send");
-  const tierLog = await waitForText(page, "#res-tier", "Reddedildi", 90000);
+  const tierLog = await waitForFinalText(page, "#res-tier", ["Rejected", "Rejected:"], 90000);
   check(
     "gate2 claim_tier gets the chain's own NoMigration refusal",
-    /Reddedildi/.test(tierLog) && /#3|NoMigration/.test(tierLog),
+    /Rejected|Reddedildi/.test(tierLog) && /#3|NoMigration/.test(tierLog),
     tierLog.slice(0, 120)
   );
 
-  // 6 — no runtime errors anywhere above
+  // 6 — battery: a real withdrawal attempt for a zero balance. The contract's
+  // own refusal is the proof the button executes the real contract path; no
+  // fake success, no fake balance.
+  await jsClick(page, "#tab-battery");
+  await page.$eval("#in-battery-amount", (n, v) => { n.value = v; }, "0.5");
+  await jsClick(page, "#btn-battery-withdraw");
+  const battLog = await waitForFinalText(page, "#acct-log", ["Withdrawal refused", "Withdrew"], 120000);
+  check(
+    "gate2 battery withdraw gets the contract's own InsufficientBalance refusal",
+    /Withdrawal refused/.test(battLog) && /#5|InsufficientBalance/.test(battLog),
+    battLog.slice(-160)
+  );
+
+  // 7 — no runtime errors anywhere above
   check("gate2 zero page errors", pageErrors.length === 0, pageErrors.slice(0, 3).join(" | "));
   await page.close();
 } else {

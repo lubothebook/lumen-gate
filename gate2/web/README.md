@@ -42,11 +42,12 @@ npm run dev        # http://localhost:5174/gate2/
 
 ## Kanıt
 
-`gate2/scripts/check-gate2-web.mjs` — gerçek headless tarayıcıda 17 kontrol:
+`gate2/scripts/check-gate2-web.mjs` — gerçek headless tarayıcıda 18 kontrol:
 canlı testnet RPC okumaları (kayıt yok ×2, 0 NFT ×2, claim_tier → Error #3
 NoMigration), Horizon trustline (deployer’da USDC yok), StrKey geçerli/geçersiz,
 BURN eyleminin router yokken kullanılamaz kalması **ve basıldığında gerekçesini
-yazması**, 0 başarısız istek. Koşum:
+yazması**, cüzdan bağlanmadan basılan damga düğmesinin gerekçeyi loga yazması,
+0 başarısız istek. Koşum:
 
 ```
 NODE_PATH=<repo>/node_modules node gate2/scripts/check-gate2-web.mjs
@@ -60,9 +61,10 @@ yeni bir anahtar üretir, Friendbot ile fonlar, sayfa açılmadan önce gerçek
 Freighter API yüzeyiyle aynı biçimde bir cüzdan enjekte eder (imzalar gerçek
 ed25519 imzasıdır) ve iki kapiyi de tıklar: USDC trustline (ChangeTrust),
 TESTNET damgası `stamp(owner)` ve bump gerçek işlem olarak gönderilir,
-claim_tier zincirin kendi reddiyle (NoMigration #3) döner, 1.0 burn akışı
-zincire kadar gidip wSRC trustline’ı olmayan hesap için sözleşmenin kendi
-cevabını raporlar. Çalıştırma:
+claim_tier zincirin kendi reddiyle (NoMigration #3) döner, Batarya doldur/çek
+düğmeleri gerçek imzalı işlem yollarını izler, 1.0 burn akışı zincire kadar
+gidip wSRC trustline’ı olmayan hesap için sözleşmenin kendi cevabını rapor
+eder. Çalıştırma:
 
 ```
 cd gate2/scripts && npm install
