@@ -15,6 +15,13 @@ export const CONFIG = {
   gateClaimPreHardening: c.gate_claim_testnet_pre_hardening.id,
   campaign: c.gate_campaign_example_testnet.id,
   stamp: c.gate_stamp_testnet.id,
+  // F5/F6: live on testnet since 2026-09-20. Read straight from the receipt,
+  // exactly like every other id on this screen.
+  battery: c.gate_battery_testnet.id,
+  ticket: c.gate_ticket_testnet.id,
+  // mint_ticket needs a minter contract that does not exist on testnet yet, so
+  // init_minter was never called. Reads are live; minting stays honestly shut.
+  ticketMinterSet: !c.gate_ticket_testnet.minter_not_set,
   deployerPublicKey: c.testnet_deployer.public_key,
   usdc: c.circle_testnet_reference.native_usdc_stellar_testnet,
   usdcIssuer: c.circle_testnet_reference.native_usdc_stellar_testnet_issuer,
@@ -25,7 +32,7 @@ export const CONFIG = {
     tokenMessengerV2: c.circle_testnet_reference.sepolia_domain0.token_messenger_v2,
     messageTransmitterV2: c.circle_testnet_reference.sepolia_domain0.message_transmitter_v2,
   },
-  burnRouter: null, // F2/F4 Sepolia fonu bekliyor; uydurma adres yazilmaz
+  burnRouter: null, // deploy + makbuz bekliyor; uydurma adres yazilmaz
   burnRouterBlocker:
-    "BurnRouter Sepolia'de kurulu degil: F2 uctan uca burn, Sepolia testnet ETH/USDC fonu bekliyor (DIRECTIVE 2.0 Bolum 10 stop-raporu). Fon geldiginde router adresi makbuza yazilir ve bu ekran canlanir.",
+    "BurnRouter is not deployed on Sepolia. The v2 router, its 31/31 test suite and the deploy script are ready in the repo; the lane is gated on two operator inputs: Sepolia testnet funding, and the router-binding finding (the live gate_claim accepts burns only from the exact bound router address — the router must land there or a fresh gate_claim must be bound to it). When deployed and receipted, this screen lights up from the same manifest.",
 };

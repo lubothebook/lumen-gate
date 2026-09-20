@@ -189,12 +189,12 @@ export async function freighterConnect(f) {
       const answer = await open();
       const address = walletAddressFrom(answer);
       if (address) return address;
-      attempts.push(`${label}: ${walletReasonFrom(answer) || "adres yok"}`);
+      attempts.push(`${label}: ${walletReasonFrom(answer) || "no address"}`);
     } catch (error) {
       attempts.push(`${label}: ${error && error.message ? error.message : String(error)}`);
     }
   }
-  const why = attempts.length ? attempts[attempts.length - 1] : "uzantı adres vermedi";
+  const why = attempts.length ? attempts[attempts.length - 1] : "extension returned no address";
   throw new Error(why);
 }
 
@@ -204,7 +204,7 @@ async function signXdr(f, xdr, addr) {
     networkPassphrase: CONFIG.networkPassphrase,
   });
   const signed = typeof signedXdr === "string" ? signedXdr : signedXdr?.signedTxXdr || signedXdr?.xdr;
-  if (!signed) throw new Error("Freighter imzali XDR dondurmedi");
+  if (!signed) throw new Error("Freighter did not return a signed XDR");
   return signed;
 }
 
@@ -270,5 +270,16 @@ export async function openUsdcTrustline(f) {
   const result = await horizon.submitTransaction(
     TransactionBuilder.fromXDR(signed, CONFIG.networkPassphrase)
   );
-  return { ok: Boolean(result.hash || result.successful), hash: result.hash, result };
+  // A Horizon response ALWAYS carries a hash, even when the transaction
+  // failed on chain. "ok" must follow `successful`, or the UI would print
+  // "Trustline opened" for a rejected tx.
+  if (result.successful === true) return { ok: true, hash: result.hash, result };
+  return {
+    ok: false,
+    hash: result.hash,
+    result,
+    error:
+      result.exceptions ||
+      "transaction was submitted but failed on chain — open the hash to inspect",
+  };
 }

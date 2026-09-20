@@ -3,7 +3,7 @@
 # dependency, same spirit as the no-upgrade rule. deny_warnings turns every
 # compiler warning into a build error, per the annex.
 solc_version = "0.8.30"
-deny_warnings = true # forge 1.8 wants `deny = "warnings"`; both spellings honored by this version
+deny = "warnings" # forge 1.8 wants `deny = "warnings"`; both spellings honored by this version
 evm_version = "cancun"
 src = "src"
 out = "out"

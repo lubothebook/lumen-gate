@@ -7,7 +7,6 @@ import {
   hasUsdcTrustline,
   getFreighter,
   watchFreighter,
-  detectFreighter,
   freighterConnect,
   sendWithFreighter,
   friendbot,
@@ -25,22 +24,11 @@ const el = (tag, cls, text) => {
   return n;
 };
 const pill = (text, cls = "pill") => el("span", cls, text);
-const fmtUsdc6 = (v) => (typeof v === "bigint" ? Number(v) : v ?? 0).toLocaleString("tr-TR", { maximumFractionDigits: 6 }) ;
 const div6 = (v) => (Number(typeof v === "bigint" ? v : v ?? 0) / 1e6).toFixed(6);
 
 let connectedAddress = null;
 let currentQueryAddress = null;
-
-// An unavailable action is not a dead button. A hard `disabled` swallows the
-// click before any handler runs, so the control can never say why it is grey;
-// aria-disabled keeps it focusable and clickable, and the handler is where
-// the honest reason lands. The handlers below all answer when they cannot act.
-function markAction(id, available) {
-  const b = $(id);
-  if (!b) return;
-  if (available) b.removeAttribute("aria-disabled");
-  else b.setAttribute("aria-disabled", "true");
-}
+let walletWritesAllowed = false;
 
 // ---------- tabs (1.0 Move-value pattern: one card, the pane below switches) ----------
 const TAB_NAMES = ["proof", "burn", "battery", "tickets"];
@@ -56,9 +44,10 @@ function showTab(name) {
     if (page) page.classList.toggle("hidden", !on);
   }
   if (name === "burn" || name === "proof") {
-    const consoleEl = $("console");
-    if (consoleEl && window.matchMedia("(max-width: 720px)").matches) {
-      /* keep the working pane in view on a phone after a tab change */
+    const pageEl = $(`page-${name}`);
+    if (pageEl && window.matchMedia("(max-width: 720px)").matches) {
+      // keep the working pane in view on a phone after a tab change
+      pageEl.scrollIntoView({ block: "start" });
     }
   }
 }
@@ -67,17 +56,17 @@ $("tab-burn").addEventListener("click", () => showTab("burn"));
 $("tab-battery")?.addEventListener("click", () => showTab("battery"));
 $("tab-tickets")?.addEventListener("click", () => showTab("tickets"));
 
-// 2.0 kutucuğu: 1.0'daki gibi alttaki bandı bu sürümün çalışma alanı yapar.
+  // 2.0 pill: same as 1.0 — the band below is this version's workspace.
 $("gate2Select")?.addEventListener("click", () => {
   $("console")?.scrollIntoView({ behavior: "smooth", block: "start" });
 });
 
 // ---------- static honesty ----------
 $("contract-ids").textContent =
-  `gate_claim (kanonik/sertlestirilmis): ${CONFIG.gateClaimCanonical} · ` +
-  `gate_claim (F3 kulvari, kampanya buna bagli): ${CONFIG.gateClaimPreHardening} · ` +
-  `kampanya: ${CONFIG.campaign} · ` +
-  `testnet damga: ${CONFIG.stamp}`;
+  `gate_claim (canonical/hardened): ${CONFIG.gateClaimCanonical} · ` +
+  `gate_claim (F3 lane, campaign is wired here): ${CONFIG.gateClaimPreHardening} · ` +
+  `campaign: ${CONFIG.campaign} · ` +
+  `testnet stamp: ${CONFIG.stamp}`;
 $("burn-blocker").textContent = CONFIG.burnRouterBlocker;
 $("iris-url").textContent = CONFIG.irisApi;
 
@@ -96,41 +85,40 @@ function paintEmbedGate() {
     tab.classList.toggle("hidden", !framed);
   }
   if (framed) {
-    setWalletState("Bu çerçevede uzantı yok. Sekmede aç, sonra bağlan.", "error");
+    setWalletState("No extension in this frame. Open in a tab, then connect.", "error");
   }
 }
 async function connectWallet() {
-  paintEmbedGate();
-  const found = await detectFreighter();
-  if (!found.installed) {
-    const note = embeddedFrame()
-      ? "Freighter bu çerçeveye giremez. Sekmede aç, sonra bağlan."
-      : "Freighter yok. chrome.google.com/webstore’dan Freighter kur, sayfayı yenile, bağlan.";
-    setWalletState(note, "error");
-    acctLog(note);
-    return null;
-  }
-  setWalletState("Freighter açılıyor…", "muted");
+  // requestAccess must run in this click turn. Awaiting isConnected first
+  // (2s) drops the user gesture and the browser blocks the popup — that is
+  // why Connect did nothing on a real Freighter install.
+  const f = getFreighter();
+  setWalletState("Opening Freighter…", "muted");
   try {
-    const addr = await freighterConnect(found.api, { installed: found.installed });
+    const addr = await freighterConnect(f);
     connectedAddress = addr;
-    setWalletState(`${addr.slice(0, 8)}…${addr.slice(-6)} bağlı`, "ok");
+    setWalletState(`${addr.slice(0, 8)}…${addr.slice(-6)} connected`, "ok");
     $("in-address").value = addr;
     $("in-strkey").value = addr;
-    markAction("btn-tier-send", true);
-    markAction("btn-trustline", true);
+    walletWritesAllowed = true;
+    $("btn-tier-send").disabled = false;
+    $("btn-trustline").disabled = false;
     setWalletActions(true);
     await refreshBalances(addr);
-    acctLog(`Bağlandı. Expert: ${addr.slice(0, 8)}…`);
-    if (typeof found.api.getNetwork === "function") {
+    acctLog(`Connected. Expert: ${addr.slice(0, 8)}…`);
+    if (typeof f.getNetwork === "function") {
       try {
-        const net = await found.api.getNetwork();
+        const net = await f.getNetwork();
         const name = typeof net === "string" ? net : net && (net.network || net.networkPassphrase);
         if (name && !/test/i.test(String(name))) {
-          setWalletState(`Bağlı ama Freighter ${name} üzerinde. Mainnet’te işlem düğmeleri kapalı.`, "error");
-          markAction("btn-tier-send", false);
-          markAction("btn-burn", false);
-          setWalletActions(false);
+          setWalletState(`Connected, but Freighter is on ${name}. Action buttons stay closed on mainnet.`, "error");
+          walletWritesAllowed = false;
+          $("btn-tier-send").disabled = true;
+          $("btn-burn").disabled = true;
+          setWalletActions(
+            false,
+            `Freighter is on ${name} — this console only signs on testnet. Switch the wallet to Stellar testnet.`
+          );
         }
       } catch {
         /* getNetwork is advisory; some builds refuse it until unlocked */
@@ -138,7 +126,7 @@ async function connectWallet() {
     }
     return addr;
   } catch (e) {
-    setWalletState(`Bağlantı hatası: ${e.message || e}`, "error");
+    setWalletState(`Connection error: ${e.message || e}`, "error");
     return null;
   }
 }
@@ -148,16 +136,19 @@ function onFreighter(f) {
     return;
   }
   if (!f) {
-    setWalletState("Freighter bulunamadı. Uzantıyı kur, sayfayı yenile, bağlan.", "muted");
+    setWalletState("Freighter not found. Install it, reload, then connect.", "muted");
+    setWalletActions(
+      false,
+      "No Freighter extension in this browser. Read-only actions (My Migration Proof, StrKey) work without a wallet; anything needing a signature stays closed."
+    );
     return;
   }
-  setWalletState("Freighter hazır — bağlanmak için tıkla", "ok");
+  setWalletState("Freighter ready — click to connect", "ok");
 }
 function acctLog(text, hash) {
   const box = $("acct-log");
   if (!box) return;
-  box.textContent = "";
-  box.appendChild(el("div", "muted", text));
+  const row = el("div", "muted", text);
   if (hash) {
     const a = document.createElement("a");
     a.href = EXPLORER_TX + hash;
@@ -165,13 +156,83 @@ function acctLog(text, hash) {
     a.rel = "noreferrer";
     a.textContent = hash;
     a.className = "contracts";
-    box.appendChild(a);
+    row.appendChild(document.createTextNode(" "));
+    row.appendChild(a);
+  }
+  box.appendChild(row);
+  while (box.children.length > 8) box.removeChild(box.firstChild); // a log, not a billboard: last 8 stay
+}
+
+function setWalletActions(on, reason) {
+  for (const id of ["btn-fund", "btn-trust-open", "btn-bump", "btn-trust-open-burn", "btn-stamp", "btn-battery-deposit", "btn-battery-withdraw"]) {
+    const b = $(id);
+    if (!b) continue;
+    b.disabled = !on;
+    // A disabled control should say why it is disabled. Without this the
+    // buttons just look broken.
+    if (on) b.removeAttribute("title");
+    else b.title = reason || "Connect Freighter first — this action needs a wallet signature.";
+  }
+  const gate = $("walletGate");
+  if (gate) {
+    if (on) {
+      gate.classList.add("hidden");
+    } else {
+      gate.classList.remove("hidden");
+      gate.innerHTML = "";
+      gate.append(
+        reason ||
+          "The four buttons above unlock once you connect — each one needs a Freighter signature."
+      );
+    }
   }
 }
 
-function setWalletActions(on) {
-  for (const id of ["btn-fund", "btn-trust-open", "btn-bump", "btn-trust-open-burn", "btn-stamp"]) {
-    markAction(id, on);
+async function withButton(id, pendingText, work) {
+  const button = $(id);
+
+  if (!button || button.disabled) return;
+
+  const label = button.textContent;
+
+  button.disabled = true;
+  button.setAttribute("aria-busy", "true");
+  button.textContent = pendingText;
+
+  try {
+    return await work();
+  } catch (e) {
+    acctLog(`Action error: ${e?.message || e}`);
+    return null;
+  } finally {
+    button.textContent = label;
+    button.removeAttribute("aria-busy");
+    button.disabled = !walletWritesAllowed;
+  }
+}
+
+// Point-of-use network guard: the connect-time check can go stale if the user
+// switches the wallet's network afterwards, so every signing action re-checks
+// right before it asks Freighter to sign.
+async function assertTestnet() {
+  const f = getFreighter();
+  if (!f || typeof f.getNetwork !== "function") return true; // advisory
+  try {
+    const net = await f.getNetwork();
+    const name = typeof net === "string" ? net : net && (net.network || net.networkPassphrase);
+    if (name && !/test/i.test(String(name))) {
+      walletWritesAllowed = false;
+      setWalletState(`Freighter is on ${name}. Action buttons stay closed on mainnet.`, "error");
+      setWalletActions(
+        false,
+        `Freighter is on ${name} — this console only signs on testnet. Switch the wallet to Stellar testnet.`
+      );
+      acctLog(`Blocked: wallet is on ${name}; this console only signs on testnet.`);
+      return false;
+    }
+    return true;
+  } catch {
+    return true; // some builds refuse getNetwork until unlocked — stay advisory
   }
 }
 
@@ -182,9 +243,8 @@ async function refreshBalances(g) {
     const r = await hasUsdcTrustline(g);
     kv.innerHTML = "";
     if (!r.exists) {
-      kv.appendChild(el("tr", null, null));
       const tr = document.createElement("tr");
-      tr.innerHTML = "<td>Hesap</td><td>zincirde yok — Friendbot ile XLM al</td>";
+      tr.innerHTML = "<td>Account</td><td>not on chain — fund with Friendbot</td>";
       kv.appendChild(tr);
       return;
     }
@@ -197,16 +257,21 @@ async function refreshBalances(g) {
       kv.appendChild(tr);
     };
     row("XLM", xlm ? Number(xlm.balance).toFixed(7) : "—");
-    row("USDC", usdc ? `${Number(usdc.balance).toFixed(7)} (trustline var)` : "trustline yok");
+    row("USDC", usdc ? `${Number(usdc.balance).toFixed(7)} (trustline open)` : "no trustline");
+    const trLink = document.createElement("tr");
+    trLink.appendChild(el("td", null, "Explorer"));
+    const tdLink = el("td", null, null);
     const link = document.createElement("a");
     link.href = EXPLORER_ACCOUNT + g;
     link.target = "_blank";
     link.rel = "noreferrer";
-    link.textContent = "Stellar Expert’te aç";
+    link.textContent = "Open in Stellar Expert";
     link.className = "link-btn";
-    $("walletNote")?.append?.("");
+    tdLink.appendChild(link);
+    trLink.appendChild(tdLink);
+    kv.appendChild(trLink);
   } catch (e) {
-    acctLog(`Bakiye okunamadı: ${e.message || e}`);
+    acctLog(`Could not read balances: ${e.message || e}`);
   }
 }
 
@@ -214,21 +279,20 @@ paintEmbedGate();
 watchFreighter(onFreighter);
 $("btn-connect").addEventListener("click", () => connectWallet());
 
-// ---------- Taşıma Kanıtım ----------
+  // ---------- Proof of Migration ----------
 async function queryAddress(g) {
   currentQueryAddress = g;
   $("res-which").textContent = `${g.slice(0, 8)}…${g.slice(-6)}`;
   $("results").classList.remove("hidden");
   const migBox = $("res-migration");
   const nftBox = $("res-nfts");
-  migBox.textContent = "Zincirden okunuyor…";
-  nftBox.textContent = "";
+  nftBox.textContent = "Reading the chain…";
 
   // Both live gate_claim deployments are queried — the canonical hardened
   // one and the F3-lane one the campaign is wired to. Nothing is hidden.
   const lanes = [
-    { name: "kanonik (sertlestirilmis)", id: CONFIG.gateClaimCanonical },
-    { name: "F3 kulvari (kampanya buna bagli)", id: CONFIG.gateClaimPreHardening },
+    { name: "canonical (hardened)", id: CONFIG.gateClaimCanonical },
+    { name: "F3 lane (campaign is wired here)", id: CONFIG.gateClaimPreHardening },
   ];
   migBox.innerHTML = "";
   for (const lane of lanes) {
@@ -236,19 +300,19 @@ async function queryAddress(g) {
     migBox.appendChild(head);
     const r = await readContract(lane.id, "get_migration", [{ scVal: addrScVal(g) }]);
     if (!r.ok) {
-      migBox.appendChild(el("div", "error", `Okuma hatası: ${r.error}`));
+      migBox.appendChild(el("div", "error", `Read error: ${r.error}`));
       continue;
     }
     if (r.value == null) {
-      migBox.appendChild(pill("kayıt yok"));
+      migBox.appendChild(pill("no record"));
       continue;
     }
     const t = el("table");
     const rows = [
-      ["Toplam USDC (6 ondalık)", div6(r.value.total_usdc)],
-      ["Claim sayısı", String(r.value.claim_count)],
-      ["İlk / son ledger", `${r.value.first_ledger} / ${r.value.last_ledger}`],
-      ["Kaynak domainler", (r.value.sources || []).join(", ") || "—"],
+      ["Total USDC (6 decimals)", div6(r.value.total_usdc)],
+      ["Claim count", String(r.value.claim_count)],
+      ["First / last ledger", `${r.value.first_ledger} / ${r.value.last_ledger}`],
+      ["Source domains", (r.value.sources || []).join(", ") || "—"],
     ];
     for (const [k, v] of rows) {
       const tr = el("tr");
@@ -264,25 +328,25 @@ async function queryAddress(g) {
   try {
     const st = await readContract(CONFIG.stamp, "stamp_of", [{ scVal: addrScVal(g) }]);
     if (st.ok && st.value !== null && st.value !== undefined) {
-      migBox.appendChild(el("div", "muted", `TESTNET damga (CCTP değil): id=${st.value}`));
+      migBox.appendChild(el("div", "muted", `TESTNET stamp (not CCTP): id=${st.value}`));
     } else if (st.ok) {
-      migBox.appendChild(el("div", "muted", "TESTNET damga: yok"));
+      migBox.appendChild(el("div", "muted", "TESTNET stamp: none"));
     }
   } catch { /* stamp is additive */ }
 
-  nftBox.textContent = "NFT listesi okunuyor…";
+  nftBox.textContent = "Reading NFT list…";
   nftBox.innerHTML = "";
   for (const lane of lanes) {
     const r = await readContract(lane.id, "proofs_of", [{ scVal: addrScVal(g) }]);
     if (!r.ok) {
-      nftBox.appendChild(el("div", "error", `${lane.name}: okuma hatası ${r.error}`));
+      nftBox.appendChild(el("div", "error", `${lane.name}: read error ${r.error}`));
       continue;
     }
     const ids = r.value || [];
     nftBox.appendChild(el("div", "muted", `${lane.name}: ${ids.length} NFT`));
     for (const id of ids) {
       const card = el("div", "nft");
-      card.appendChild(el("h3", null, `Taşıma Kanıtı #${id}`));
+      card.appendChild(el("h3", null, `Proof of Migration #${id}`));
       const [proof, meta, owner] = await Promise.all([
         readContract(lane.id, "get_proof", [{ value: id, type: "u64" }]),
         readContract(lane.id, "get_meta", [{ value: id, type: "u64" }]),
@@ -291,14 +355,14 @@ async function queryAddress(g) {
       const p = proof.value || {};
       const t = el("table");
       const rows = [
-        ["Sahip (owner_of)", owner.ok && owner.value ? String(owner.value) : "—"],
-        ["Kaynak domain", String(p.source_domain ?? "—")],
+        ["Owner (owner_of)", owner.ok && owner.value ? String(owner.value) : "—"],
+        ["Source domain", String(p.source_domain ?? "—")],
         ["Nonce", String(p.nonce ?? "—")],
-        ["Tutar (USDC 6 ondalık)", div6(p.amount_6)],
-        ["Yürütülen ücret", div6(p.fee_executed_6)],
+        ["Amount (USDC 6 decimals)", div6(p.amount_6)],
+        ["Fee executed", div6(p.fee_executed_6)],
         ["Ledger", String(p.ledger ?? "—")],
-        ["Mesaj hash", p.message_hash ? String(p.message_hash) : "—"],
-        ["Meta (domain/nonce/tutar/ücret/ledger)", meta.ok && meta.value ? JSON.stringify(meta.value, (k, v) => typeof v === "bigint" ? String(v) : v) : "—"],
+        ["Message hash", p.message_hash ? String(p.message_hash) : "—"],
+        ["Meta (domain/nonce/amount/fee/ledger)", meta.ok && meta.value ? JSON.stringify(meta.value, (k, v) => typeof v === "bigint" ? String(v) : v) : "—"],
       ];
       for (const [k, v] of rows) {
         const tr = el("tr");
@@ -316,175 +380,215 @@ $("btn-query").addEventListener("click", () => {
   const g = $("in-address").value.trim();
   const box = $("addr-error");
   if (!StrKey.isValidEd25519PublicKey(g)) {
-    box.textContent = "Geçersiz Stellar adresi — StrKey doğrulaması başarısız.";
+    box.textContent = "Invalid Stellar address — StrKey check failed.";
     box.classList.remove("hidden");
     return;
   }
   box.classList.add("hidden");
   queryAddress(g).catch((e) => {
-    box.textContent = `Sorgu hatası: ${e.message || e}`;
+    box.textContent = `Query error: ${e.message || e}`;
     box.classList.remove("hidden");
   });
 });
 
 // ---------- claim_tier ----------
+function tierName(v) {
+  if (v == null) return null;
+  if (typeof v === "number") return { 1: "Bronze", 2: "Silver", 3: "Gold" }[v] || null;
+  if (typeof v === "object") {
+    if (v.value !== undefined) return tierName(v.value);
+    // Soroban enums decode to a single-key object, e.g. { Bronze: null }
+    const keys = Object.keys(v);
+    if (keys.length === 1 && (v[keys[0]] === null || v[keys[0]] === undefined)) {
+      return ["Bronze", "Silver", "Gold"].includes(keys[0]) ? keys[0] : null;
+    }
+  }
+  return null;
+}
 function renderTier(box, label, r) {
   box.innerHTML = "";
   box.appendChild(el("div", "muted", label));
   if (!r.ok) {
-    box.appendChild(el("div", "error", `Reddedildi: ${String(r.error).slice(0, 300)}`));
-    box.appendChild(pill("rozet yok → sözleşme reddetti", "pill bad"));
+    box.appendChild(el("div", "error", `Rejected: ${String(r.error).slice(0, 300)}`));
+    box.appendChild(pill("no badge → contract refused", "pill bad"));
     return;
   }
-  const names = { 1: "Bronze", 2: "Silver", 3: "Gold" };
-  const v = r.value;
-  const name = names[v] || (v && names[v.value]) || JSON.stringify(v, (k, x) => typeof x === "bigint" ? String(x) : x);
-  box.appendChild(pill(`Kademe: ${name}`, "pill ok"));
+  const name = tierName(r.value);
+  if (name) {
+    box.appendChild(pill(`Tier: ${name}`, "pill ok"));
+  } else {
+    // null / unrecognized: say so in neutral — never a green "Tier: null"
+    box.appendChild(pill("no tier returned", "pill warn"));
+  }
 }
 
 $("btn-tier-sim").addEventListener("click", async () => {
   const g = currentQueryAddress || connectedAddress || $("in-address").value.trim();
   if (!StrKey.isValidEd25519PublicKey(g)) {
-    renderTier($("res-tier"), "Önce geçerli bir adres sorgula.", { ok: true, value: null });
+    renderTier($("res-tier"), "Query a valid address first.", { ok: true, value: null });
     return;
   }
-  $("res-tier").textContent = "Simüle ediliyor (tx gönderilmez)…";
+  $("res-tier").textContent = "Simulating (no tx)…";
   const r = await readContract(CONFIG.campaign, "claim_tier", [{ scVal: addrScVal(g) }]);
-  renderTier($("res-tier"), `claim_tier simülasyonu — ${g.slice(0, 8)}…`, r);
+  renderTier($("res-tier"), `claim_tier simulation — ${g.slice(0, 8)}…`, r);
 });
 
-$("btn-tier-send").addEventListener("click", async () => {
-  const f = getFreighter();
-  if (!f || !connectedAddress) {
-    const box = $("res-tier");
-    box.innerHTML = "";
-    box.appendChild(el("div", "muted", "Once Freighter ile baglan: claim_tier, gercek bir imzali islemdir ve imza cüzdandan gelir."));
-    return;
-  }
-  $("res-tier").textContent = "Freighter imzası bekleniyor…";
-  try {
-    const r = await sendWithFreighter(f, CONFIG.campaign, "claim_tier", [
-      { scVal: addrScVal(connectedAddress) },
-    ]);
-    $("res-tier").innerHTML = "";
-    if (r.ok) {
-      $("res-tier").appendChild(pill(`tx: ${r.hash}`, "pill ok"));
-    } else {
-      $("res-tier").appendChild(el("div", "error", `Reddedildi: ${String(r.error).slice(0, 300)}`));
+$("btn-tier-send").addEventListener("click", () =>
+  withButton("btn-tier-send", "Waiting for signature…", async () => {
+    const f = getFreighter();
+    if (!f || !connectedAddress) {
+      renderTier($("res-tier"), "Freighter is not connected.", { ok: true, value: null });
+      return null;
     }
-  } catch (e) {
-    renderTier($("res-tier"), "Gönderim hatası", { ok: false, error: e.message || String(e) });
-  }
-});
+    if (!(await assertTestnet())) return null;
+    $("res-tier").textContent = "Waiting for Freighter signature…";
+    try {
+      const r = await sendWithFreighter(f, CONFIG.campaign, "claim_tier", [
+        { scVal: addrScVal(connectedAddress) },
+      ]);
+      $("res-tier").innerHTML = "";
+      if (r.ok) {
+        $("res-tier").appendChild(pill(`tier claim accepted (status ${r.status}) — tx: ${r.hash}`, "pill ok"));
+      } else if (r.status === "PENDING" || r.status === "TIMEOUT") {
+        $("res-tier").appendChild(pill(`submitted — still processing (not a refusal) — tx: ${r.hash}`, "pill warn"));
+      } else {
+        $("res-tier").appendChild(el("div", "error", `Rejected: ${String(r.error).slice(0, 300)}`));
+        $("res-tier").appendChild(pill("no badge → contract refused", "pill bad"));
+      }
+    } catch (e) {
+      renderTier($("res-tier"), "Submit error", { ok: false, error: e.message || String(e) });
+    }
+    return null;
+  })
+);
 
-// ---------- Burn Ekranı ön koşulları ----------
+  // ---------- Burn-screen preconditions ----------
 $("btn-strkey").addEventListener("click", () => {
   const g = $("in-strkey").value.trim();
   const box = $("res-strkey");
   box.innerHTML = "";
   const ok = StrKey.isValidEd25519PublicKey(g);
-  box.appendChild(pill(ok ? "StrKey geçerli" : "StrKey geçersiz", ok ? "pill ok" : "pill bad"));
+  box.appendChild(pill(ok ? "StrKey valid" : "StrKey invalid", ok ? "pill ok" : "pill bad"));
   if (ok) {
-    markAction("btn-trustline", true);
-    if (connectedAddress) markAction("btn-trust-open-burn", true);
+    $("btn-trustline").disabled = false; // read-only Horizon check — no signature needed
+    // The write button opens only when the wallet is connected AND on testnet;
+    // a valid typed address alone must never unlock signing on a mainnet wallet.
+    if (connectedAddress && walletWritesAllowed) $("btn-trust-open-burn").disabled = false;
   }
 });
 
 async function runTrustOpen() {
   const f = getFreighter();
   if (!f || !connectedAddress) {
-    acctLog("Önce Freighter ile bağlan.");
+    acctLog("Connect Freighter first.");
     return;
   }
-  acctLog("Freighter imzası bekleniyor (USDC trustline)…");
+  if (!(await assertTestnet())) return;
+  acctLog("Waiting for Freighter (USDC trustline)…");
   try {
     const r = await openUsdcTrustline(f);
     if (r.ok && r.hash) {
-      acctLog("Trustline açıldı — Freighter ve Expert’te görünür.", r.hash);
+      acctLog("Trustline opened — visible in Freighter and Expert.", r.hash);
       await refreshBalances(connectedAddress);
     } else {
-      acctLog(`Trustline reddedildi: ${JSON.stringify(r).slice(0, 180)}`);
+      acctLog(`Trustline not opened: ${r.error || "no result"} — the account needs XLM for the fee.`, r.hash);
     }
   } catch (e) {
-    acctLog(`Trustline hatası: ${e.message || e}`);
+    acctLog(`Trustline error: ${e.message || e}`);
   }
 }
 
-$("btn-fund")?.addEventListener("click", async () => {
-  if (!connectedAddress) {
-    acctLog("Once Freighter ile baglan: Friendbot, bagli hesabin adresini fonlar.");
-    return;
-  }
-  acctLog("Friendbot çağrılıyor…");
-  const r = await friendbot(connectedAddress);
-  if (r.ok) {
-    acctLog("Friendbot XLM gönderdi (testnet).", r.hash);
-    await refreshBalances(connectedAddress);
-  } else {
-    acctLog(`Friendbot: ${r.status} — hesap zaten dolu olabilir.`);
-    await refreshBalances(connectedAddress);
-  }
-});
-$("btn-trust-open")?.addEventListener("click", () => runTrustOpen());
-$("btn-trust-open-burn")?.addEventListener("click", () => runTrustOpen());
-$("btn-stamp")?.addEventListener("click", async () => {
-  const f = getFreighter();
-  if (!f || !connectedAddress) {
-    acctLog("Once Freighter ile baglan: damga, bagli adrese basilan imzali bir islemdir.");
-    return;
-  }
-  acctLog("TESTNET damgası — Freighter imzası bekleniyor (CCTP Pasaportu değil).");
-  try {
-    // stamp(owner: Address) — the receipt says "caller mints to self via
-    // stamp(owner)". Called without the owner argument the VM refuses with
-    // MismatchingParameterLen before anything happens on chain, so the owner
-    // IS the call: the connected address, require_auth'd by the contract.
-    const r = await sendWithFreighter(f, CONFIG.stamp, "stamp", [
-      { scVal: addrScVal(connectedAddress) },
-    ]);
-    if (r.ok) acctLog(`Damga ${r.status}`, r.hash);
-    else acctLog(`Damga: ${String(r.error || r.status).slice(0, 220)}`, r.hash);
-  } catch (e) {
-    acctLog(`Damga hatası: ${e.message || e}`);
-  }
-});
-$("btn-bump")?.addEventListener("click", async () => {
-  const f = getFreighter();
-  if (!f || !connectedAddress) {
-    acctLog("Once Freighter ile baglan: bump, TTL'i uzatan imzali bir islemdir.");
-    return;
-  }
-  acctLog("bump imzası bekleniyor…");
-  try {
-    const r = await sendWithFreighter(f, CONFIG.gateClaimCanonical, "bump", [
-      { scVal: addrScVal(connectedAddress) },
-    ]);
-    if (r.ok) {
-      acctLog(`bump ${r.status}`, r.hash);
-    } else {
-      acctLog(`bump: ${String(r.error || r.status).slice(0, 220)}`, r.hash);
+$("btn-fund")?.addEventListener(
+  "click",
+  () =>
+    withButton("btn-fund", "Requesting XLM…", async () => {
+      if (!connectedAddress) return;
+      acctLog("Calling Friendbot…");
+      const r = await friendbot(connectedAddress);
+      if (r.ok) {
+        acctLog("Friendbot sent XLM (testnet).", r.hash);
+      } else {
+        const reason =
+          r.payload?.detail ||
+          r.payload?.error ||
+          r.payload?.raw ||
+          `HTTP ${r.status}`;
+        acctLog(`Friendbot refused: ${String(reason).slice(0, 180)}`);
+      }
+      await refreshBalances(connectedAddress);
+    })
+);
+$("btn-trust-open")?.addEventListener("click", () =>
+  withButton("btn-trust-open", "Waiting for signature…", runTrustOpen)
+);
+$("btn-trust-open-burn")?.addEventListener("click", () =>
+  withButton("btn-trust-open-burn", "Waiting for signature…", runTrustOpen)
+);
+$("btn-stamp")?.addEventListener("click", () =>
+  withButton("btn-stamp", "Waiting for signature…", async () => {
+    const f = getFreighter();
+    if (!f || !connectedAddress) {
+      acctLog("Connect Freighter first.");
+      return null;
     }
-  } catch (e) {
-    acctLog(`bump hatası: ${e.message || e}`);
-  }
-});
+    if (!(await assertTestnet())) return null;
+    acctLog("TESTNET stamp — waiting for Freighter (not a CCTP Passport).");
+    try {
+      // The contract is stamp(owner: Address) — the caller stamps themselves.
+      const r = await sendWithFreighter(f, CONFIG.stamp, "stamp", [
+        { scVal: addrScVal(connectedAddress) },
+      ]);
+      if (r.ok) {
+        acctLog(`Stamp accepted (status ${r.status}).`, r.hash);
+      } else if (r.status === "PENDING" || r.status === "TIMEOUT") {
+        acctLog("Stamp submitted — still processing (not a refusal). Open the hash to watch it.", r.hash);
+      } else if (String(r.error || r.status).includes("AlreadyStamped")) {
+        acctLog("Already stamped — this account holds its TESTNET stamp (soulbound).", r.hash);
+      } else {
+        acctLog(`Stamp: ${String(r.error || r.status).slice(0, 220)}`, r.hash);
+      }
+    } catch (e) {
+      acctLog(`Stamp error: ${e.message || e}`);
+    }
+    return null;
+  })
+);
+$("btn-bump")?.addEventListener("click", () =>
+  withButton("btn-bump", "Waiting for signature…", async () => {
+    const f = getFreighter();
+    if (!f || !connectedAddress) return null;
+    if (!(await assertTestnet())) return null;
+    acctLog("Waiting for bump signature…");
+    try {
+      const r = await sendWithFreighter(f, CONFIG.gateClaimCanonical, "bump", [
+        { scVal: addrScVal(connectedAddress) },
+      ]);
+      if (r.ok) {
+        acctLog(`bump accepted (status ${r.status}) — storage TTL extended.`, r.hash);
+      } else if (r.status === "PENDING" || r.status === "TIMEOUT") {
+        acctLog("bump submitted — still processing (not a refusal). Open the hash to watch it.", r.hash);
+      } else {
+        acctLog(`bump: ${String(r.error || r.status).slice(0, 220)}`, r.hash);
+      }
+    } catch (e) {
+      acctLog(`bump error: ${e.message || e}`);
+    }
+    return null;
+  })
+);
 
 $("btn-trustline").addEventListener("click", async () => {
   const g = $("in-strkey").value.trim();
   const box = $("res-trustline");
-  if (!StrKey.isValidEd25519PublicKey(g)) {
-    box.textContent = "Üstteki alana geçerli bir G… adresi gir: kontrol, Horizon'a tek bir gerçek istek yapar.";
-    return;
-  }
-  box.textContent = "Horizon’a soruluyor…";
+  box.textContent = "Asking Horizon…";
   try {
     const r = await hasUsdcTrustline(g);
     box.innerHTML = "";
     if (!r.exists) {
-      box.appendChild(pill("hesap zincirde yok — trustline da yok, burn butonu kapalı kalırdı", "pill warn"));
+      box.appendChild(pill("account not on chain — no trustline either, burn would stay closed", "pill warn"));
       return;
     }
-    box.appendChild(pill(r.trusted ? "USDC trustline VAR" : "USDC trustline YOK — burn butonu kapalı kalırdı", r.trusted ? "pill ok" : "pill bad"));
+    box.appendChild(pill(r.trusted ? "USDC trustline YES" : "USDC trustline NO — burn would stay closed", r.trusted ? "pill ok" : "pill bad"));
     const t = el("table");
     for (const b of r.balances || []) {
       const tr = el("tr");
@@ -495,26 +599,20 @@ $("btn-trustline").addEventListener("click", async () => {
     }
     box.appendChild(t);
   } catch (e) {
-    box.textContent = `Hata: ${e.message || e}`;
+    box.textContent = `Error: ${e.message || e}`;
   }
 });
 
-// BURN word gate: the word must be typed AND a router must exist before the
-// action becomes available. There is no router yet, so it never opens — by
-// design. The control still answers when pressed: the reason is the answer.
+// BURN word gate: button stays disabled until the word is typed AND a
+// router exists. There is no router yet, so it can never enable — by design.
 $("in-burnword").addEventListener("input", (ev) => {
   const typed = ev.target.value.trim().toUpperCase() === "BURN";
-  markAction("btn-burn", typed && Boolean(CONFIG.burnRouter));
+  $("btn-burn").disabled = !(typed && CONFIG.burnRouter);
 });
 $("btn-burn").addEventListener("click", () => {
   if (!CONFIG.burnRouter) {
-    $("res-burn").textContent =
-      "Yakma yapılmadı: BurnRouter Sepolia'de kurulu degil (F2, Sepolia testnet fonu bekleniyor). " +
-      "Bu dugme sahte bir yakma islemi yapmaz; router kurulup makbuza yazildiginda kelime kapisi ve gercek burn akisi burada acilir.";
-    return;
+    $("res-burn").textContent = "No router — this button should never have enabled; that is a bug, please report it.";
   }
-  $("res-burn").textContent =
-    "Router makbuzda kayitli ama burn akisi (F2) henuz baglanmadi; bu tik bir islem gondermedi.";
 });
 
 // ---------- lattice (same wall as Gate 1.0; pointer frame only on visible cubes)
@@ -642,3 +740,162 @@ window.addEventListener("resize", queueLattice);
 buildLattice();
 initLatticeFrame();
 watchSections();
+
+// ---------- F5 Battery / F6 Tickets: live testnet reads and writes ----------
+// Both contracts went live on 2026-09-20. Ids come from the receipt via
+// config.js, never hand-copied. Every number below is read from chain; nothing
+// on this screen is simulated or remembered locally.
+
+const idBox = (id, value) => {
+  const n = $(id);
+  if (n) n.textContent = value;
+};
+idBox("battery-id", CONFIG.battery);
+idBox("ticket-id", CONFIG.ticket);
+
+// USDC is 6 decimals. Parse without floating point so 1.5 -> 1500000 exactly.
+function parseUsdc6(raw) {
+  const t = String(raw ?? "").trim();
+  if (!t) return { ok: false, why: "enter an amount" };
+  if (!/^\d+(\.\d{1,6})?$/.test(t)) {
+    return { ok: false, why: "amount must be a number with at most 6 decimals" };
+  }
+  const [whole, frac = ""] = t.split(".");
+  const units = BigInt(whole) * 1000000n + BigInt(frac.padEnd(6, "0"));
+  if (units <= 0n) return { ok: false, why: "amount must be greater than zero" };
+  return { ok: true, units };
+}
+
+function whichAddress(inputId) {
+  const typed = ($(inputId)?.value || "").trim();
+  const g = typed || connectedAddress || "";
+  if (!g) return { ok: false, why: "connect a wallet or type a G… address" };
+  if (!StrKey.isValidEd25519PublicKey(g)) return { ok: false, why: "not a valid StrKey address" };
+  return { ok: true, g };
+}
+
+function kvRows(tbodyId, rows) {
+  const body = $(tbodyId);
+  if (!body) return;
+  body.innerHTML = "";
+  for (const [k, v] of rows) {
+    const tr = document.createElement("tr");
+    tr.appendChild(el("td", null, k));
+    tr.appendChild(el("td", "mono", v));
+    body.appendChild(tr);
+  }
+}
+
+async function readBatteryBalance() {
+  const who = whichAddress("in-battery-addr");
+  const out = $("res-battery");
+  if (!who.ok) {
+    if (out) out.textContent = who.why;
+    return;
+  }
+  if (out) out.textContent = "reading…";
+  const r = await readContract(CONFIG.battery, "balance_of", [{ scVal: addrScVal(who.g) }]);
+  if (!r.ok) {
+    if (out) out.textContent = `read failed: ${String(r.error).slice(0, 180)}`;
+    return;
+  }
+  if (out) out.textContent = "";
+  kvRows("batteryKv", [
+    ["Address", `${who.g.slice(0, 8)}…${who.g.slice(-6)}`],
+    ["Balance", `${div6(r.value)} USDC`],
+  ]);
+}
+
+async function readTickets() {
+  const out = $("res-tickets");
+  const who = whichAddress("in-ticket-addr");
+  if (out) out.textContent = "reading…";
+
+  const [total, vault] = await Promise.all([
+    readContract(CONFIG.ticket, "live_total", []),
+    readContract(CONFIG.ticket, "vault_balance", []),
+  ]);
+
+  const rows = [
+    ["Live total", total.ok ? `${div6(total.value)} USDC` : "read failed"],
+    ["Vault balance", vault.ok ? `${div6(vault.value)} USDC` : "read failed"],
+  ];
+
+  if (who.ok) {
+    const [ids, value] = await Promise.all([
+      readContract(CONFIG.ticket, "tickets_of", [{ scVal: addrScVal(who.g) }]),
+      readContract(CONFIG.ticket, "value_of", [{ scVal: addrScVal(who.g) }]),
+    ]);
+    const list = ids.ok && Array.isArray(ids.value) ? ids.value : [];
+    rows.push(["Address", `${who.g.slice(0, 8)}…${who.g.slice(-6)}`]);
+    rows.push(["Tickets held", list.length ? list.map(String).join(", ") : "none"]);
+    rows.push(["Held value", value.ok ? `${div6(value.value)} USDC` : "read failed"]);
+    if (out) out.textContent = list.length ? "" : "No tickets at this address — that is a real read, not a placeholder.";
+  } else if (out) {
+    out.textContent = who.why;
+  }
+
+  kvRows("ticketKv", rows);
+}
+
+$("btn-battery-read")?.addEventListener("click", readBatteryBalance);
+$("btn-ticket-read")?.addEventListener("click", readTickets);
+
+$("btn-battery-deposit")?.addEventListener("click", () =>
+  withButton("btn-battery-deposit", "Signing…", async () => {
+    const out = $("res-battery");
+    const amount = parseUsdc6($("in-battery-amount")?.value);
+    if (!amount.ok) {
+      if (out) out.textContent = amount.why;
+      return;
+    }
+    if (!connectedAddress) {
+      if (out) out.textContent = "connect Freighter first";
+      return;
+    }
+    const f = getFreighter();
+    const r = await sendWithFreighter(f, CONFIG.battery, "deposit", [
+      { scVal: addrScVal(connectedAddress) },
+      { scVal: addrScVal(connectedAddress) },
+      { value: amount.units, type: "i128" },
+    ]);
+    if (r.ok) {
+      acctLog(`Battery topped up by ${div6(amount.units)} USDC.`, r.hash);
+      await readBatteryBalance();
+    } else {
+      acctLog(`Top-up refused: ${String(r.error).slice(0, 180)}`, r.hash);
+    }
+  })
+);
+
+$("btn-battery-withdraw")?.addEventListener("click", () =>
+  withButton("btn-battery-withdraw", "Signing…", async () => {
+    const out = $("res-battery");
+    const amount = parseUsdc6($("in-battery-amount")?.value);
+    if (!amount.ok) {
+      if (out) out.textContent = amount.why;
+      return;
+    }
+    if (!connectedAddress) {
+      if (out) out.textContent = "connect Freighter first";
+      return;
+    }
+    const f = getFreighter();
+    const r = await sendWithFreighter(f, CONFIG.battery, "withdraw", [
+      { scVal: addrScVal(connectedAddress) },
+      { value: amount.units, type: "i128" },
+    ]);
+    if (r.ok) {
+      acctLog(`Withdrew ${div6(amount.units)} USDC from the Battery.`, r.hash);
+      await readBatteryBalance();
+    } else {
+      acctLog(`Withdrawal refused: ${String(r.error).slice(0, 180)}`, r.hash);
+    }
+  })
+);
+
+// Supply figures do not need a wallet, so show them as soon as the tab opens.
+$("tab-tickets")?.addEventListener("click", () => { readTickets(); }, { once: true });
+$("tab-battery")?.addEventListener("click", () => {
+  if (connectedAddress) readBatteryBalance();
+}, { once: true });

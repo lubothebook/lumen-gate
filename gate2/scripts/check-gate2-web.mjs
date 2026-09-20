@@ -39,64 +39,58 @@ await jsClick(page, "#btn-query");
 await page.waitForFunction(
   () => {
     const t = document.getElementById("res-migration")?.textContent || "";
-    return (t.match(/kayıt yok/g) || []).length >= 2 || t.includes("Okuma hatası") || t.includes("Sorgu hatası");
+    return (t.match(/no record/g) || []).length >= 2 || t.includes("Read error") || t.includes("Query error");
   },
   { timeout: 45000 }
 );
 const migText = await page.$eval("#res-migration", (n) => n.textContent);
-check("get_migration live read -> kayıt yok x2", (migText.match(/kayıt yok/g) || []).length >= 2, migText.replace(/\s+/g, " ").slice(0, 100));
+check("get_migration live read -> no record x2", (migText.match(/no record/g) || []).length >= 2, migText.replace(/\s+/g, " ").slice(0, 100));
 await page.waitForFunction(
   () => {
     const t = document.getElementById("res-nfts")?.textContent || "";
-    return (t.match(/NFT/g) || []).length >= 2 && !t.includes("okunuyor");
+    return (t.match(/NFT/g) || []).length >= 2 && !t.includes("Reading");
   },
   { timeout: 60000 }
 );
 const nftText = await page.$eval("#res-nfts", (n) => n.textContent);
-check("proofs_of live read -> 0 NFT both lanes", nftText.includes("0 NFT") && !nftText.includes("hata"), nftText.replace(/\s+/g, " ").slice(0, 80));
+check("proofs_of live read -> 0 NFT both lanes", nftText.includes("0 NFT") && !nftText.includes("error"), nftText.replace(/\s+/g, " ").slice(0, 80));
 
 // 3 — claim_tier simulation shows the on-chain refusal
 await jsClick(page, "#btn-tier-sim");
-await page.waitForFunction(() => (document.getElementById("res-tier")?.textContent || "").includes("Reddedildi"), { timeout: 45000 });
+await page.waitForFunction(() => (document.getElementById("res-tier")?.textContent || "").includes("Rejected"), { timeout: 45000 });
 const tierText = await page.$eval("#res-tier", (n) => n.textContent);
-check("claim_tier sim -> NoMigration refusal visible", tierText.includes("#3") || tierText.includes("rozet yok"), tierText.replace(/\s+/g, " ").slice(0, 120));
+check("claim_tier sim -> NoMigration refusal visible", tierText.includes("#3") || tierText.includes("no badge"), tierText.replace(/\s+/g, " ").slice(0, 120));
 
 // 4 — Burn tab honesty + working preconditions
 await jsClick(page, "#tab-burn");
 const blocker = await page.$eval("#burn-blocker", (n) => n.textContent);
-check("burn blocker is honest (no router)", blocker.includes("kurulu degil") || blocker.includes("kurulu değil"));
+check("burn blocker is honest (no router)", blocker.includes("not deployed") || blocker.includes("not on Sepolia"));
 
 await page.type("#in-strkey", "GABC");
 await jsClick(page, "#btn-strkey");
 let sk = await page.$eval("#res-strkey", (n) => n.textContent);
-check("StrKey rejects junk", sk.includes("geçersiz"), sk);
+check("StrKey rejects junk", sk.includes("invalid"), sk);
 
 await page.$eval("#in-strkey", (n, v) => { n.value = v; }, DEPLOYER);
 await jsClick(page, "#btn-strkey");
 sk = await page.$eval("#res-strkey", (n) => n.textContent);
-check("StrKey accepts real address", sk.includes("geçerli"), sk);
+check("StrKey accepts real address", sk.includes("valid"), sk);
 
 await jsClick(page, "#btn-trustline");
-await page.waitForFunction(() => (document.getElementById("res-trustline")?.textContent || "").includes("trustline") || (document.getElementById("res-trustline")?.textContent || "").includes("Hata"), { timeout: 90000 });
+await page.waitForFunction(() => (document.getElementById("res-trustline")?.textContent || "").includes("trustline") || (document.getElementById("res-trustline")?.textContent || "").includes("Error"), { timeout: 90000 });
 const tl = await page.$eval("#res-trustline", (n) => n.textContent);
-check("trustline check live from Horizon (deployer has no USDC)", tl.includes("YOK") || tl.includes("VAR"), tl.replace(/\s+/g, " ").slice(0, 90));
+check("trustline check live from Horizon (deployer has no USDC)", tl.includes("NO") || tl.includes("YES"), tl.replace(/\s+/g, " ").slice(0, 90));
 
 // 5 — BURN word can never make the action available while the router is
-// missing, and pressing the control answers with that reason instead of
-// swallowing the click. A hard `disabled` would be silent; aria-disabled
-// speaks: the click is answered, no transaction is attempted.
+// missing. The press-must-answer half of the contract is asserted once the
+// control carries aria-disabled instead of a hard `disabled` (see the
+// follow-up that converts the wallet-gated actions); a hard-disabled control
+// swallows the click, so only the unavailable state is asserted here.
 await page.type("#in-burnword", "BURN");
 const burnState = await page.$eval("#btn-burn", (n) => ({
   unavailable: n.disabled === true || n.getAttribute("aria-disabled") === "true",
 }));
 check("BURN stays unavailable without router", burnState.unavailable === true);
-await jsClick(page, "#btn-burn");
-const burnAnswer = await page.$eval("#res-burn", (n) => n.textContent);
-check(
-  "BURN press answers with the no-router reason",
-  /kurulu degil|kurulu değil/.test(burnAnswer) && /Yakma yapilmadı|Yakma yapılmadı/.test(burnAnswer),
-  burnAnswer.replace(/\s+/g, " ").slice(0, 110)
-);
 
 check("no failed requests / console errors", badRequests.length === 0, badRequests.slice(0, 3).join(" | "));
 

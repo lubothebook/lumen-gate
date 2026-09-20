@@ -26,12 +26,12 @@ manifest file or it is not made at all.
 | | **Gate 1.0 — The settlement boundary** | **Gate 2.0 — Pasaport + Batarya + Bilet** |
 |---|---|---|
 | What it is | A neutral finality layer: Stellar anchors settle value from other domains after a Soroban registry verifies BLS/Groth16 finality evidence on-chain | A CCTP migration product: swap to USDC on Ethereum Sepolia, burn through Circle CCTP, claim native USDC on Stellar — with a soulbound Migration Passport, a user-owned on-chain fee Battery, and a transferable Ticket vault |
-| State | **Frozen and evidenced.** Live testnet contracts, admins renounced on-chain, ZK lanes verified on-chain, 137-test regression suite green | **In development.** Core claim contract live and initialized on Stellar testnet (two lanes), consumer demo live, web console live; BurnRouter built and tested but not deployed; Battery and Ticket not yet written |
+| State | **Frozen and evidenced.** Live testnet contracts, admins renounced on-chain, ZK lanes verified on-chain, 137-test regression suite green | **In development.** Core claim contract live and initialized on Stellar testnet (two lanes), consumer demo live, web console live (English, wallet-write-guarded); BurnRouter v2 built, tested (31/31 + test venue 8/8) and deploy-scripted but not deployed; Battery and Ticket written and fully tested (11/11, 12/12) but not deployed |
 | Authority | [`DIRECTIVE-1.0.md`](DIRECTIVE-1.0.md) | [`DIRECTIVE.md`](DIRECTIVE.md) (canonical operator mandate) + [`HARDENING-2.0.md`](HARDENING-2.0.md) |
 | Evidence | [`deployments/testnet.json`](deployments/testnet.json), [`deployments/step-chain.json`](deployments/step-chain.json), [`deployments/execution-lane.json`](deployments/execution-lane.json), [`deployments/gate-vm-lane.json`](deployments/gate-vm-lane.json) | [`deployments/testnet-2.0.json`](deployments/testnet-2.0.json) — no sentence about 2.0 may say "live", "1:1" or "proven" before its hash is in this file |
 | Console | `/` — the operator & verification console (31 interactive controls, harness-checked in a real browser) | `/gate2/` — the 2.0 console on the **same Vercel deployment**, reading live testnet contracts from the browser |
 | Code | `contracts/`, `crates/`, `circuits/`, `anchor/`, `api/`, `frontend/`, `tools/` | `gate2/` only — `evm/`, `soroban/`, `web/`, `scripts/` |
-| Honest blocker | Source chain is a deterministic simulator by design; testnet assets carry no production value | The end-to-end burn lane waits on Sepolia testnet funds (no captcha-free faucet reachable); the Battery and Ticket contracts (F5/F6) are not written yet |
+| Honest blocker | Source chain is a deterministic simulator by design; testnet assets carry no production value | The end-to-end burn lane waits on two operator inputs: Sepolia testnet funds (no captcha-free faucet reachable), and the router-binding decision — the live gate_claim accepts burns only from its exact bound router address, so the router must land at that address or a fresh gate_claim must be bound to it |
 
 **How to read this README.** Part I documents Gate 1.0 exactly as its evidence
 stands — its tables are receipts, not marketing, and they are unchanged.
@@ -450,7 +450,7 @@ The header and favicon use the project wordmark and mark.
 
 The wallet has three tabs — receive, send back, and **cash out to a bank account** — and the third one drives the flow in [Cashing out to a local currency](#cashing-out-to-a-local-currency) from the browser: read the anchor, quote the amount, sign the SEP-10 challenge with Freighter, open the withdrawal, pay the anchor's treasury with the memo attached through Freighter, and poll until the anchor reports the payout. Two other actions moved behind the *user's* own session this round, so a visitor can start something without holding a shared operator secret: `POST /v1/user/lock` opens a source-chain lock whose recipient is forced to the session account, and `POST /v1/user/relay` asks for one relayer pass under a per-account cooldown. Neither grants mint authority: the relayer still signs and pays, and the registry still decides what is final.
 
-The wallet sits directly under the hero, on purpose: it is the page's first working surface, and the explanation of how settlement works follows it rather than gating it. The hero is the one area on the page that carries **no black strip** — the lattice reads through it, which is the honest version of the same contrast, since the panel was framing and never contrast — and it holds a wordmark, one sentence and two buttons. The number the operator asked for lives at the end of the page, where it answers a question a reader already has: a **roadmap** strip carrying **1.0**, the system this repository contains, and **2.0**, a separate system whose design is not written yet, so its button is disabled with its reason stated rather than pretending to be a door.
+The wallet sits directly under the hero, on purpose: it is the page's first working surface, and the explanation of how settlement works follows it rather than gating it. The hero is the one area on the page that carries **no black strip** — the lattice reads through it, which is the honest version of the same contrast, since the panel was framing and never contrast — and it holds a wordmark, one sentence and two buttons. The version switch the operator asked for sits in the hero: a **1.0 / 2.0** pair of pills, where **1.0** is the system this page proves and **2.0** links out to the separate Gate 2.0 console at `/gate2/` on the same origin (an explicit operator order, so the 1.0 freeze otherwise stands), naming the one honest blocker instead of pretending the door leads somewhere it does not.
 
 The wallet card has the two directions as tabs, an account panel that reads real balances, and a live step readout (`Lock`, `Finality`, `Mint`) whose state comes from the responses, not from a hard-coded sequence. **Connecting a wallet needs the Freighter extension; reading does not.** The card therefore offers *View the demo account*: the deployment manifest names the gasless recipient, and that account's live balances are read straight from Horizon by anyone, signed by nobody. The chip says `read-only`, the note says what it cannot do, and burning still routes through the connect path, because signing needs a wallet and no amount of UI should imply otherwise.
 
@@ -814,10 +814,13 @@ strict proof-before-claim rule: *the core Stellar-side claim contract is
 deployed, initialized and negatively probed on testnet with recorded
 transaction hashes; the consumer demo reads it cross-contract on-chain; the web
 console serves live chain data from the same Vercel deployment as Gate 1.0 —
-but the source-side burn has never run, because the BurnRouter is not deployed
-while the Sepolia funds blocker stands, and two of the three product pillars
-(Battery, Ticket) are not written yet.* Nothing in this section is allowed to
-sound more finished than [`deployments/testnet-2.0.json`](deployments/testnet-2.0.json)
+but the source-side burn has never run: the BurnRouter is built, fully tested
+and deploy-scripted yet not deployed, because the Sepolia funds blocker stands
+and the router must land at the exact address the live gate_claim already
+bound. All three product pillars now exist — the Passport is on-chain, and the
+Battery and Ticket contracts are written and fully tested (11/11 and 12/12) —
+both local, both awaiting their deploy receipts.* Nothing in this section is
+allowed to sound more finished than [`deployments/testnet-2.0.json`](deployments/testnet-2.0.json)
 can prove.
 
 ### The product
@@ -838,7 +841,11 @@ receive native USDC — and three things make this more than a bridge UI:
   user has no XLM, Stellar transaction fees are paid from the Battery through
   a relayer — inspired by Tonkeeper Battery, with one difference worth stating
   plainly: on TON the Battery is an off-chain account at a provider; here it is
-  on-chain and belongs to the user. *Current state: contract not written (F5).*
+  on-chain and belongs to the user. *Current state: the contract is written
+  and fully tested (11/11, including the fee-cap and the
+  `sum(balances) == vault USDC` invariant) but is **not deployed to testnet** —
+  there is no on-chain balance to show and no live `forward` receipt yet (F5,
+  with the auto-fee web path F7).*
 - **Bilet (Ticket, transferable NFT).** Instead of delivering migrated USDC
   straight to a wallet, the user can choose to park it in a vault contract and
   hold a ticket: a bearer right to redeem that USDC. Transferring a ticket
@@ -850,7 +857,10 @@ receive native USDC — and three things make this more than a bridge UI:
   it is bearer paper: a ticket sent to a wrong address or stolen cannot be
   recovered, and if Circle froze the vault address every ticket would be
   affected — a concentrated risk that is stated, not hidden. *Current state:
-  contract not written (F6).*
+  the contract is written and fully tested (12/12, including the
+  `sum(active tickets) == USDC.balance(vault)` invariant, atomic redeem and
+  the no-XLM `redeem_to_battery` path) but is **not deployed to testnet** —
+  there is no vault to inspect yet (F6).*
 
 Why two separate NFTs: if the Passport were transferable, migration proof
 could be bought. The Ticket is a value right, and transferring it is the point.
@@ -889,26 +899,58 @@ Every row is a real transaction, read back from Horizon and recorded in
 | `gate_claim` (canonical, hardened) | `CDQ3PA5LBLIS22VXJSHXLOPFDD2ZDWPQWODIBLA5KPBOTKIXKOUZI4K2` | deploy `aa421501…` (ledger 4770371), init `21c53dfe…` (ledger 4770385) | junk claim → `Error #3 MessageTooShort`; second `initialize` → `Error #1 AlreadyInitialized` — codes, never panics |
 | `gate_claim` (F3 lane; the campaign is wired to this one) | `CBKSNJBQS4IC6IPUT452RLCJR3I6RH6ELNDZEE5R5TDVO6274AV7IGPC` | create `c17b20a8…` (ledger 4770419), init `af88a0b2…` (ledger 4770426) | re-init refused; `get_migration` returns `null` for a wallet with no record — the honest answer, served live |
 | `gate_campaign_example` | `CDDQLXIIR3LZ6NT2EFYX2FAZGKPEQPTKHZUC5NLK4BRZYE2JSYDOARCF` | create `8dd80c5a…` (ledger 4770423), init `e6a50507…` (ledger 4770430) | badgeless `claim_tier` → `Error #3 NoMigration` (simulation; no tx sent) |
+| `gate_stamp` (TESTNET soulbound stamp) | `CAC4XCFEDRRVDEHCJF4VSKVZEFHKYPARSHKLODZU3N4OZWDGYGNCCTDS` | deploy `36a4d188…` | the caller mints to themselves via `stamp(owner)`; a second `stamp` → `Error #1 AlreadyStamped` — the soulbound rule, no transfer, no admin |
 | Circle CCTP testnet (reference) | TokenMessenger `CDNG7HXA…`, MessageTransmitter `CBJ6MTCK…`, native USDC `CBIELTK6…` | — | domain 27, not paused, min fee 0 — read live |
 
 Two live `gate_claim` deployments coexist deliberately: the hardened canonical
 build and the earlier F3-lane build the campaign points at. Neither was
-deleted; both are receipted. `BurnRouter` (Foundry, `gate2/evm`) is **built and
-tested — 23/23 local and CI — and not deployed**: deploying and burning needs
-Sepolia testnet ETH and USDC, which is the standing blocker (§10 stop-report).
+deleted; both are receipted. `BurnRouter` (Foundry, `gate2/evm`) is **built,
+tested — v2, 31/31 — and not deployed**: beside the router suite it carries a
+deterministic `TestVenue` (8/8) that pins the exact Sepolia CCTP V2 topology it
+will talk to, and a deploy script is checked in behind a pre-deploy gate.
+Deploying and burning needs two operator inputs: Sepolia testnet ETH and USDC
+(the §10 stop-report stands), and the router-binding decision — since v2 the
+`gate_claim` refuses any burn not made by the exact `burn_router` address bound
+at initialization (rule 9), and that bound value is neither in the manifest nor
+readable from this sandbox, so the router must land at the bound address
+(original deployer's key and nonce) or a fresh `gate_claim` must be bound to
+the router we deploy first. Both options are documented in the
+`DeploySepolia.s.sol` header; the choice belongs to the operator who holds the
+deploy key.
 
 ### Test suites
 
-- `gate_claim`: 7 integration proofs (`tests/claim.rs`) — happy path forwards
-  everything and holds nothing; replay refused by stored message hash;
-  corrupted attestation traps with zero movement; wrong
-  destinationCaller/mintRecipient/source domain/destination domain/burn token
-  each refused with its own error code; broken hook refused before anything
-  moves; permissionless TTL `bump`.
-- `gate_campaign_example`: 3 tests including the tier-boundary matrix — and it
-  tests against the **real** GateClaim in one environment.
-- Regression gate after every phase: `cargo test --workspace --lib`; the 1.0
-  suites (61/17/11/20/28) must not move. They have not.
+All counts below are measured this round, not remembered:
+
+- `gate_claim`: **13/13** integration proofs (`tests/claim.rs`) — both delivery
+  modes (straight to wallet with the relay fee; ticket mode minting into the
+  ticket vault), the battery share landing in the battery under real nested
+  auth, and the refusal matrix: replay of the same message, corrupted
+  attestation, a message with a foreign destination caller, disallowed source
+  domain, wrong burn token, relay fee above the hook cap, relay fee above the
+  hard max, fees covering the whole mint, a star name outside the character
+  set, a burn not made by the bound router, and a second `initialize` — each
+  with its own error code, never a panic.
+- `gate_campaign_example`: **5/5** — the tier-boundary matrix, the badgeless
+  refusal, tier upgrades, and the zkVM tier-parity vectors the campaign reads
+  from the same shared file as the `gate2/zkvm` execution half — and it tests
+  against the **real** GateClaim in one environment.
+- `gate_battery`: **11/11** — deposit / withdraw / forward with the fee paid to
+  the relayer out of the battery, a fee above the signed cap refused, expired
+  and replayed nonces refused, a hostile relayer capped, a failing target
+  unwinding the fee, wallet USDC and battery as separate ledgers, and the
+  invariant `sum(owner balances) == vault USDC`.
+- `gate_ticket`: **12/12** — mint moving USDC into the vault, transfer changing
+  ownership only, redeem burning the ticket atomically (and reverting when the
+  payout fails), `redeem_to_battery` needing no XLM and no trustline, split
+  preserving the total, approvals disabled, the minter one-shot, and the live
+  invariant `sum(active tickets) == USDC.balance(vault)`.
+- `gate2/evm` (Foundry): **39/39** — BurnRouter v2 (31/31) against the full
+  §5.1 spec, plus the deterministic `TestVenue` (8/8) that pins the Sepolia
+  CCTP V2 topology.
+- Regression gate after every phase: `cargo test --workspace --lib` — the
+  workspace now measures **184 passed, 0 failed**; the 1.0 suites
+  (61/17/11/20/28) must not move. They have not.
 
 ### Phase ledger (canonical F0–F11)
 
@@ -918,13 +960,13 @@ Sepolia testnet ETH and USDC, which is the standing blocker (§10 stop-report).
 | F1 Spikes | S1–S4, S6, S10 evidenced; S5, S7–S9, S11, S12 open |
 | F2 Manual burn → contract claim | **blocked** — Sepolia funds (stop-reported, not faked) |
 | F3 Passport & query interface | query interface + TTL + deploy complete on-chain; soulbound NFT token + `token_uri` half open |
-| F4 BurnRouter | 23/23 green locally; full §5.1 spec (swap+minOut, v1 hook payload, modes, star name, gas-share guard) rescoped as additive at the deployed gate_claim |
-| F5 `gate_battery` | not written |
-| F6 `gate_ticket` | not written |
-| F7 Auto fee strategy & web | console built (see below); the XLM-less Battery path awaits F5 |
-| F8 Consumer demo | closed — campaign live, tiers proven, badgeless refusal proven on-chain |
+| F4 BurnRouter | v2 complete: 31/31 green locally + TestVenue 8/8; full §5.1 spec (swap+minOut, v1 hook payload, modes, star name, gas-share guard) rescoped as additive at the deployed gate_claim; deploy script checked in behind the pre-deploy gate (funding + router binding) |
+| F5 `gate_battery` | written, 11/11 green locally; not deployed to testnet |
+| F6 `gate_ticket` | written, 12/12 green locally; not deployed to testnet |
+| F7 Auto fee strategy & web | console built (see below); the XLM-less Battery path awaits the F5 deploy |
+| F8 Consumer demo | closed — campaign live, tiers proven (5/5 incl. zkVM parity), badgeless refusal proven on-chain |
 | F9 Visual layer (optional) | untouched |
-| F10 Negative tests & lock | core negatives passed; Battery/Ticket blocks await their contracts |
+| F10 Negative tests & lock | core + venue negatives passed (EVM 39/39, workspace 184/0); the live Sepolia lane awaits the router deploy |
 | F11 Self-audit & docs | `self-audit-2.0.js` not written |
 
 ### The web console — what you can test from the deployed app today
@@ -934,19 +976,24 @@ The 2.0 console ships at **`/gate2/` on the same Vercel deployment** as the
 `/gate2` to the 2.0 dev server, so development exercises the identical
 layout). It reads addresses from the receipt manifest at build time — no
 hand-copied IDs — and it never renders fake data: when a record does not exist
-it says "kayıt yok".
+it says "no record". The console is English, like the 1.0 page, and it draws a
+hard line between reading and writing: every read works without a wallet, and
+every button that signs (Friendbot, trustline, TTL bump, TESTNET stamp,
+`claim_tier`) is locked to a connected Freighter **on testnet** — the network
+is re-checked at the point of use, so a wallet switched to mainnet after
+connecting cannot sign here.
 
 Live and testable from the browser right now, against real testnet state:
 
-- **Taşıma Kanıtım:** enter any Stellar address (or connect Freighter) and read
-  `get_migration` on *both* live `gate_claim` deployments, list NFT records
-  (`proofs_of` → `get_proof` / `get_meta` / `owner_of`), and simulate
+- **Proof of Migration:** enter any Stellar address (or connect Freighter) and
+  read `get_migration` on *both* live `gate_claim` deployments, list NFT
+  records (`proofs_of` → `get_proof` / `get_meta` / `owner_of`), and simulate
   `claim_tier` on the live campaign — a badgeless address visibly receives the
   contract's `NoMigration` refusal. With Freighter connected, `claim_tier` can
   be sent as a real signed transaction.
-- **Burn Ekranı preconditions:** StrKey validation of the recipient address and
-  a real Horizon USDC-trustline check — the two gates that will guard the burn
-  button — plus the irreversibility "type BURN" lock, which cannot enable
+- **Burn screen preconditions:** StrKey validation of the recipient address
+  and a real Horizon USDC-trustline check — the two gates that will guard the
+  burn button — plus the irreversibility "type BURN" lock, which cannot enable
   while no router exists.
 - Deliberately **not** shown: a token list, price previews or an enabled BURN
   button. The router is not deployed, so the burn screen states its blocker
@@ -954,7 +1001,7 @@ Live and testable from the browser right now, against real testnet state:
   same manifest it already reads.
 
 All of the above is machine-checked in a real headless browser by
-`gate2/scripts/check-gate2-web.mjs` (10/10 green, zero failed requests), and
+`gate2/scripts/check-gate2-web.mjs` (16/16 green, zero failed requests), and
 the 1.0 page is checked by `tools/check-live-page.js` (31 controls reachable,
 frame contract intact, zero failing requests).
 
@@ -964,7 +1011,9 @@ frame contract intact, zero failing requests).
 - The trust root is **Circle's Iris attestation**. "Trustless" is never used.
   Circle can freeze USDC; a frozen vault address would affect every ticket.
 - CCTP messages are **irreversible**: a wrong hook target is a permanent loss,
-  which is why BurnRouter stays undeployed until its spec is met and funded.
+  which is why BurnRouter stays undeployed until its spec is met, funded, and
+  it lands at the address the live gate_claim already bound (or a fresh
+  gate_claim is bound to it).
 - The Battery's fee-paying relayer is a third-party **demo dependency**,
   configurable, capped by the user's signed fee ceiling — not a trust anchor.
 - "Automatic" and "XLM-less" will be claimed only when F7 is proven, with the
@@ -973,12 +1022,20 @@ frame contract intact, zero failing requests).
 
 ### The blocker, stated plainly
 
-F2 — the single real end-to-end burn — needs Sepolia testnet ETH (gas) and
-USDC. Captcha-free faucets were unreachable at the time of writing; per the
-directive's §10 the work stopped and reported instead of simulating a burn or
-fabricating hashes. Everything that does not need those funds has been built
-and proven anyway, which is why the claim path, the campaign, the console and
-the negative probes are live while the burn lane honestly is not.
+F2 — the single real end-to-end burn — needs two operator inputs. The first is
+Sepolia testnet ETH (gas) and USDC: captcha-free faucets were unreachable at
+the time of writing, so per the directive's §10 the work stopped and reported
+instead of simulating a burn or fabricating hashes. The second is the
+router-binding decision: the live `gate_claim` accepts burns only from the
+exact `burn_router` address bound at initialization, and that bound value is
+not in the manifest and not readable from this sandbox, so the router must
+land at that address (original deployer's key and nonce) or a fresh
+`gate_claim` must be bound to the router we deploy first. Both options are
+documented in `gate2/evm/script/DeploySepolia.s.sol`, and the choice belongs to
+the operator who holds the deploy key. Everything that does not need those
+inputs has been built and proven anyway, which is why the claim path, the
+campaign, the console, the Battery and Ticket contracts and the negative
+probes are done while the burn lane honestly is not.
 
 
 ## License

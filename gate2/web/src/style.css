@@ -187,28 +187,29 @@ header.top {
 .hero-panel .lead { margin: 12px auto 0; }
 .hero-panel .cta { margin-top: 18px; justify-content: center; pointer-events: auto; }
 
-/* Gate switch lives only here. Same compact pills on 1.0 and 2.0. */
+/* Same 1.0/2.0 pills on both gates — original track-tag size, never stacked. */
 .track-row {
   display: flex; justify-content: center; align-items: center; gap: 8px;
-  width: auto; margin: 0 auto 14px;
+  width: max-content; max-width: 100%; margin: 0 auto 14px;
   pointer-events: auto;
 }
-.track-box {
-  appearance: none;
+.track-split { display: block; width: 1px; height: 12px; background: rgba(255,255,255,0.35); flex: none; pointer-events: none; }
+.track-box, a.track-box, button.track-box {
+  appearance: none; -webkit-appearance: none;
   display: inline-flex; align-items: center; justify-content: center;
-  min-height: 0; min-width: 0; padding: 3px 10px;
-  font-family: var(--mono); font-size: 0.6875rem; font-weight: 600;
-  letter-spacing: 0.1em; line-height: 1.4;
+  box-sizing: border-box;
+  height: 22px; min-height: 22px; max-height: 22px;
+  min-width: 0; width: auto; padding: 0 8px; margin: 0;
+  font-family: var(--mono); font-size: 11px; font-weight: 600;
+  letter-spacing: 0.1em; line-height: 22px;
   background: rgba(6, 7, 5, 0.9);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 999px; text-decoration: none; color: var(--muted);
-  cursor: pointer;
-  transition: border-color var(--dur) var(--ease), color var(--dur) var(--ease), background var(--dur) var(--ease);
+  cursor: pointer; box-shadow: none;
 }
-.track-box:hover { border-color: rgba(255, 255, 255, 0.4); color: var(--ink); background: rgba(10, 11, 9, 0.98); }
+.track-box:hover { border-color: rgba(255, 255, 255, 0.4); color: var(--ink); }
 .track-box.selected, .track-box[aria-current="true"] {
   color: #000; background: rgba(255, 255, 255, 0.92); border-color: transparent;
-  box-shadow: none;
 }
 
 .card, .band, .trust-grid, .row-strip, .strip, footer {

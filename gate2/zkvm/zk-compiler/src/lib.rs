@@ -613,7 +613,21 @@ mod tests {
 
     #[test]
     fn test_verify_merkle_proof_constant_path_ok() {
-        // Path must be a compile-time constant address that fits in i32.
+        // This test used to assert that a constant i32 path *compiles*. It no
+        // longer can, and that is the point of the change rather than a
+        // regression: `VerifyMerkle` is now experimental at the ISA level,
+        // because the 64-depth path verification behind it is unfinished
+        // upstream (the Z-B gate). With the `experimental` feature off — the
+        // default, and how this workspace builds — codegen refuses to emit it.
+        //
+        // The operand rule the test was written for (constant i32 accepted,
+        // dynamic expression rejected) is unchanged and still covered by
+        // `test_verify_merkle_proof_rejects_dynamic_path` below, which asserts
+        // a refusal and so is unaffected by the gate.
+        //
+        // What is verified here now is the gate itself: a well-formed,
+        // constant-path VerifyMerkle program is refused, and refused for the
+        // experimental reason rather than by accident.
         let source = r#"
             contract MerklePathOk {
                 pub fn main() {
@@ -625,9 +639,8 @@ mod tests {
 
         let res = compile(source, IsaProfile::Production);
         assert!(
-            res.is_ok(),
-            "constant i32 path should compile: {:?}",
-            res.err()
+            matches!(res, Err(CompileError::ExperimentalOpcodeDisabled(_))),
+            "VerifyMerkle must be refused while Z-B is open, got {res:?}"
         );
     }
 

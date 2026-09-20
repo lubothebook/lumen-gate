@@ -113,6 +113,70 @@
       "public_key": "GDML46BD7KOLEB57D4GW4FNPML6UZKOKSPXAVFG5KTGKQO6E3OI53V5U",
       "funded_by": "friendbot (stellar keys generate --fund), testnet XLM only",
       "key_storage": "private key lives ONLY in the sandbox at ~/.config/stellar/identity/gate2-deployer.toml; never committed, never referenced by the repo"
+    },
+    "gate_battery_testnet": {
+      "id": "CCU3242HDFXVJCHD6MU6YA5MJF62OX6EVGIVQ7I4LKKEJ2Y6HNJDNBJG",
+      "deploy_tx": "3bc76f4caae411a06d98b9e13890f979c842cdfa2616cf313491dad2410b5778",
+      "initialize_tx": "371197f2265930f5d3d1b3274a7b98c1fa16ac37dd5d0e2996c48081c24d4bb8",
+      "initialized_with": {
+        "usdc": "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA"
+      },
+      "deployer": "GCXY2QUBCVBP4J7V3O6HMTCLWJ4YOMEDAWFTLTSYQ5SHOY2L4UVKLAS2",
+      "source": "gate2/soroban/gate_battery — 11/11 tests green",
+      "verified_live": {
+        "balance_of(deployer)": "0"
+      },
+      "note": "Deployed 2026-09-20 from a session-generated testnet key. The secret is not in this repo and never was; only the public key is recorded."
+    },
+    "gate_ticket_testnet": {
+      "id": "CAAZBV6QTKAPOWEHWF7B7Z7Z7ABBIDPEE434IFIORZ3WRROKASEPDPN7",
+      "deploy_tx": "a62496496e1084d486b6a60d1aa677607f19399066efe9c0405c8d155c9c7aea",
+      "initialize_tx": "1048d5f1c340e5062cc50e703c98b0b7c2b0181781da3a2726f9eb1eba10819c",
+      "initialized_with": {
+        "usdc": "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA",
+        "battery": "CCU3242HDFXVJCHD6MU6YA5MJF62OX6EVGIVQ7I4LKKEJ2Y6HNJDNBJG"
+      },
+      "deployer": "GCXY2QUBCVBP4J7V3O6HMTCLWJ4YOMEDAWFTLTSYQ5SHOY2L4UVKLAS2",
+      "source": "gate2/soroban/gate_ticket — 12/12 tests green",
+      "verified_live": {
+        "live_total": "0",
+        "vault_balance": "0",
+        "tickets_of(deployer)": "[]"
+      },
+      "minter_not_set": true,
+      "note": "init_minter has NOT been called: no minter contract exists on testnet yet, so mint_ticket cannot be driven. Reads are live; minting is honestly closed."
+    },
+    "gate2_session_deployer": {
+      "public_key": "GCXY2QUBCVBP4J7V3O6HMTCLWJ4YOMEDAWFTLTSYQ5SHOY2L4UVKLAS2",
+      "funded_by": "Friendbot testnet",
+      "used_for": [
+        "gate_battery_testnet",
+        "gate_ticket_testnet"
+      ],
+      "secret_location": "not in this repository, by design"
+    },
+    "gate2_f5_f6_write_path_proof": {
+      "why": "The live Battery/Ticket pair is initialised against Circle's real testnet USDC, which cannot be obtained without a reCAPTCHA faucet. So the WRITE path was proved on a throwaway asset instead of being left unproven.",
+      "test_asset": {
+        "code": "TUSDC",
+        "issuer": "GAXENLHATMPWVRXEM33U77FPBHJZ36672KD4EO5ZJNAWVEWNUT566QOJ",
+        "sac": "CC6STK22F22IAL7NW3KIWTBCFPHU2UOSEUZPI7C7XKZEWODYR6EBWA7F",
+        "note": "Session-local test asset. NOT USDC, not wired to anything the app shows."
+      },
+      "probe_battery": "CBQGHRFGXHDXMPRNARTW3FQ52QXRDEWITA4GL6L5TOFVVBBCYWCL23OM",
+      "probe_ticket": "CDNITYCJGPWEKEJAS4MTOETTITVOA3B42HDROL2LSXQN42ZG2Y6VCGTT",
+      "measured_on_chain": {
+        "battery.deposit(25 TUSDC)": "accepted; SAC transfer + deposit events emitted",
+        "battery.balance_of after deposit": "25000000",
+        "battery.withdraw(10 TUSDC)": "accepted; balance fell to 15000000",
+        "battery.withdraw(999 TUSDC)": "REFUSED with Error(Contract, #5) — the overdraw guard fires on chain, not just in unit tests",
+        "ticket.mint_ticket(50 TUSDC, domain 0, 'polaris')": "minted id 0",
+        "ticket.tickets_of(owner)": "[0]",
+        "ticket.value_of(owner)": "50000000",
+        "ticket.live_total == ticket.vault_balance": "50000000 == 50000000 — the solvency invariant holds live"
+      },
+      "app_code_reads_these": "gate2/scripts/check-battery-tickets.mjs drives the shipped readContract() against these ids and agrees with every number above.",
+      "not_claimed": "These probe contracts are scaffolding for the proof. The app points at the USDC-backed pair only."
     }
   },
   "spikes": [
@@ -253,7 +317,8 @@
     "F6 harness: puppeteer real-mouse clicks get swallowed when auto-scroll puts a button under the position:sticky header (hit-test lies because it runs pre-scroll); drive handlers with element.click() via page.$eval instead.",
     "F6-vercel: vercel.json and frontend/index.html are Gate 1.0 frozen territory under DIRECTIVE 2.0; the operator explicitly ordered the Vercel app to cover both gates ('vercel app de de tum front end dizayni bu ikisine uygun olsun'), which lifts the freeze for exactly these touches: build pipeline, SPA rewrite exclusion, header link, 2.0 track-box text. Nothing else in 1.0 was edited; check-live-page still green (31 controls).",
     "F6-vercel: a subpath Vite app must use base=/gate2/ in dev as well as in build, otherwise the 1.0 dev proxy serves its index.html but the asset URLs point at the 1.0 app's /src/* and the page silently loads the wrong modules.",
-    "F6-vercel: the sandbox has ~2GB RAM; with the five dev servers running, rustc gets SIGKILLed (OOM) while compiling stellar-xdr with the arbitrary feature in the test profile. The regression gate must run with -j 1 and the servers stopped, or the kill looks like a mysterious stellar-xdr compile error."
+    "F6-vercel: the sandbox has ~2GB RAM; with the five dev servers running, rustc gets SIGKILLed (OOM) while compiling stellar-xdr with the arbitrary feature in the test profile. The regression gate must run with -j 1 and the servers stopped, or the kill looks like a mysterious stellar-xdr compile error.",
+    "router-binding (F4 pre-deploy gate): the canonical gate_claim (CDQ3PA5L...) was one-shot initialized with a bound `burn_router` BytesN<32> (init tx 21c53dfe, ledger 4770385), but that value is NOT recorded in this manifest and the contract exposes no getter for it (instance storage, read-only probes from the sandbox could not retrieve it: stellar CLI v28 supports only persistent/temporary durabilities, and the live Soroban RPC dropped getContractData/getLedgerEntry). Rule 9 of claim() requires messageSender == burn_router exactly, and a message's sender is the BurnRouter's EVM address - so the Sepolia BurnRouter MUST be deployed at the exact bound address, i.e. the deploy must replicate the original (deployer, nonce/salt) pair; that plan is not in the workspace either, and a CREATE2 salt CANNOT be searched for a given 160-bit target (2^160 space) - the binding must be reproduced, not brute-forced. RESOLUTION OPTIONS for the operator: (a) provide the original deployer key + the nonce/salt used at init time so the router lands at the bound address; or (b) redeploy a fresh gate_claim bound to a router address we deploy first (new contract id, new receipts; the CDQ3PA5L... receipt stays, never deleted). Until one of these lands, a Sepolia burn would revert at WrongMessageSender - the web Burn tab therefore stays closed by design, not by omission."
   ],
   "superseded": [
     {

@@ -139,14 +139,36 @@ mod tests {
 
     #[test]
     fn verify_merkle_is_refused_at_decode() {
+        // Refused twice over, and either refusal is correct here:
+        //   - the ISA now marks it experimental, so IsaProfile::Production
+        //     rejects it before this gate is consulted (Undecodable), and
+        //   - if that ISA gate were ever relaxed, the Gate closed set below
+        //     still catches it (ClosedOpcode).
+        // The test asserts the outcome that matters — it does not decode —
+        // rather than pinning which layer said no.
         let err = decode(word(Opcode::VerifyMerkle)).unwrap_err();
-        assert!(matches!(
-            err,
+        match err {
             GateIsaError::ClosedOpcode {
                 opcode: Opcode::VerifyMerkle,
                 ..
-            }
-        ));
+            } => {}
+            GateIsaError::Undecodable(ref e) => assert!(
+                e.contains("VerifyMerkle"),
+                "refused, but not for the expected reason: {e}"
+            ),
+            other => panic!("VerifyMerkle must be refused, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn verify_merkle_is_refused_by_the_isa_itself() {
+        // The ISA-level lock, asserted directly: this is what makes the
+        // refusal hold for every caller, not just the Gate path.
+        assert!(Opcode::VerifyMerkle.is_experimental());
+        assert!(
+            Instruction::decode_for_profile(word(Opcode::VerifyMerkle), IsaProfile::Production)
+                .is_err()
+        );
     }
 
     #[test]
