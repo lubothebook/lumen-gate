@@ -21,16 +21,16 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { ethers } from "ethers";
-import {
-  Contract as SorobanContract,
+import StellarSdk from "@stellar/stellar-sdk"; // CJS package: default import, then destructure
+const {
+  Contract: SorobanContract,
   SorobanRpc,
   Networks,
   TransactionBuilder,
   Keypair,
   StrKey,
-  nativeToScVal,
   timeout,
-} from "@stellar/stellar-sdk";
+} = StellarSdk;
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const STATE = path.join(HERE, ".spike-state.json");
