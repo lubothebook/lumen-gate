@@ -200,7 +200,7 @@ async function withButton(id, pendingText, work) {
   try {
     return await work();
   } catch (e) {
-    acctLog(`İşlem hatası: ${e?.message || e}`);
+    acctLog(`Action error: ${e?.message || e}`);
     return null;
   } finally {
     button.textContent = label;
