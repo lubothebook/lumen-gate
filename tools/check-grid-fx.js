@@ -6,15 +6,15 @@
 // The page background is the source chain: one cube per block, edge to edge,
 // every cube its own element on a coded grid - never a png wallpaper. Each cube
 // carries the submitted tile at the tile's own 60px, never resampled, and one
-// asset pixel is one screen pixel. A single overlay element draws the 4px white
-// inset frame on the block under the pointer.
+// asset pixel is one screen pixel. The cube under the pointer wears the 4px
+// white inset frame itself - the overlay experiment was retired.
 //
-// The frame is positioned by arithmetic, and that is a correction worth keeping:
-// it used to ask the document what was under the cursor and give up when the
-// answer was not a cube, so it vanished wherever a card, a strip or the header
-// sat on top. It now computes floor(x / cell), floor(y / cell) from the
-// pointer's own coordinates, which cannot care what is painted above it. This
-// check therefore asserts:
+// The frame has two halves and both are asserted here: the JS-painted .frame
+// (elementsFromPoint plus the blockers list, so the ring lands only where the
+// cube is actually visible - never on top of a strip or a card), and the
+// native :hover on a wall that sits at z-index 0 with pointer-events auto,
+// guarded affirmatively to hover-capable pointers. This check therefore
+// asserts:
 //
 //   1. the static contract: the tile's own cell is 60px and the frame's own
 //      border is 4px, the tile in frontend/public really is 60x60 and is the
@@ -95,7 +95,12 @@ expect(html.includes('<div class="cube-lattice" id="cubeLattice" aria-hidden="tr
 const wallRule = /\.cube-lattice\s*\{[^}]*\}/.exec(html);
 expect(Boolean(wallRule), '.cube-lattice rule missing');
 if (wallRule) {
-  expect(/z-index:\s*-\d+/.test(wallRule[0]), 'the wall must sit below every page surface');
+  // z-index 0 (Gate 2.0's wall), never negative again: a wall behind the page
+  // cannot be hovered, and the animation then died with the old negative
+  // hover guard. Above the wall, not below the page: the surfaces that cover
+  // it are lifted to z-index 1 (the lift list by the structure rules).
+  expect(/z-index:\s*0/.test(wallRule[0]), 'the wall must sit at z-index 0, hoverable, with the content surfaces lifted above it');
+  expect(/pointer-events:\s*auto/.test(wallRule[0]), 'the wall must take pointer events, or the cubes can never be hovered');
   expect(/position:\s*fixed/.test(wallRule[0]), 'the wall is fixed: it is a backdrop, not document flow');
   expect(/overflow:\s*hidden/.test(wallRule[0]), 'the wall must never create scrollbars');
 }
@@ -116,15 +121,21 @@ if (cubeRule) {
 // never climb on top of the content". The hit test is deliberate: pure
 // arithmetic would draw the ring over the text ribbons, and the blockers list
 // is the page's own map of the surfaces that really do cover the wall.
-const frameRule = /\.cube:hover, \.cube\.frame\s*\{[^}]*\}/.exec(html);
+const frameRule = /\.cube\.frame\s*\{[^}]*\}/.exec(html);
 expect(Boolean(frameRule), '.cube.frame rule missing: the pointer frame is the whole point');
 if (frameRule) {
   expect(/box-shadow:\s*inset 0 0 0 var\(--ring\) rgba\(255,\s*255,\s*255/.test(frameRule[0]), 'the frame must be an inset white border drawn from the --ring token (4px on a 1x display)');
 }
+// The native hover is a second, affirmative half (same as Gate 2.0): the wall
+// sits at z-index 0 so cubes are genuinely hoverable wherever they are the
+// top element, and the :hover frame is guarded to real pointers only.
+expect(/z-index:\s*0[^}]*pointer-events:\s*auto|pointer-events:\s*auto[^}]*z-index:\s*0/.test(html.replace(/\s+/g, ' ')), 'the wall must sit at z-index 0 with pointer-events auto, or the cubes can never be hovered at all');
+expect(/@media \(hover: hover\) and \(pointer: fine\)\s*\{\s*\.cube:hover\s*\{[^}]*box-shadow/.test(html), 'the native :hover frame must be guarded affirmatively to hover-capable pointers');
+expect(/pointerType === 'touch'/.test(app), 'the JS frame must ignore touch pointers');
+expect(!/\(hover: none\)[^}]*\.cube\.frame[^}]*box-shadow:\s*none/.test(html), 'no negative hover guard may kill the JS frame itself - that is how the animation once disappeared wholesale');
 expect(!/\.cube-frame\s*\{/.test(html), 'the overlay cell is retired: the frame must never paint above the content');
 expect(/LATTICE_BLOCKERS/.test(app), 'the blockers list is the contract that keeps the strip in front and the cubes behind');
 expect(/elementsFromPoint/.test(app), 'the frame must ask the document what covers the wall before it paints');
-expect(/@media \(hover: none\), \(pointer: coarse\)[^}]*box-shadow:\s*none/.test(html), 'touch devices must not get the pointer frame');
 expect(/prefers-reduced-motion: reduce[\s\S]{0,400}?transition-duration:\s*0\.01ms/.test(html), 'reduced motion must flatten every transition on the page, the frame included');
 
 // Drive initLatticeFrame() in a sandbox: on open lattice the cube under the
