@@ -1,23 +1,23 @@
-// Gate 1.0 cuzdan baglama kapisi.
+// Gate 1.0 wallet-connect gate.
 //
-// Onceden iki ayri sey bozuktu:
-//   1. connectWallet yalnizca `window`a bakiyordu. Son Freighter surumleri
-//      oraya hicbir sey enjekte etmiyor, npm modulu uzerinden postMessage ile
-//      konusuyor - yani kurulu bir cuzdan "yuklu degil" diye reddediliyordu.
-//   2. Baglanti kurulsa bile bakiye okuma cokuyordu: Horizon 404 disinda bir
-//      hata dondugunde (400, 429, 504) cevapta `balances` yok, ve
-//      account.balances.find(...) "Cannot read properties of undefined" ile
-//      patliyordu. Kullanici gecerli bir cuzdanla TypeError goruyordu.
+// Two separate things were broken before:
+//   1. connectWallet only ever looked at `window`. Recent Freighter versions
+//      inject nothing there and speak over postMessage through the npm module -
+//      so an installed wallet was refused as "not installed".
+//   2. Even once connected, the balance read crashed: when Horizon answers with
+//      anything other than a 404 (400, 429, 504) the response carries no
+//      `balances`, and account.balances.find(...) blew up with "Cannot read
+//      properties of undefined". The reader saw a TypeError on a valid wallet.
 //
-// Bu kapi ucunu de suruyor: enjekte edilmis cuzdan, hic cuzdan olmamasi ve
-// Horizon'un reddi. Hicbirinde sayfa hatasi olmamali ve hicbirinde "undefined"
-// bir adres ya da ham TypeError gorunmemeli.
+// This gate drives all three cases: an injected wallet, no wallet at all, and a
+// Horizon refusal. In none of them may the page raise an error, and in none of
+// them may an "undefined" address or a raw TypeError appear.
 import puppeteer from "puppeteer";
 
 const BASE = process.env.GATE1_WEB_URL || "http://127.0.0.1:5175/";
-// Friendbot ile fonlanmis gercek bir testnet hesabi; sadece okunur.
+// A real testnet account funded through Friendbot; read-only.
 const FUNDED = process.env.GATE1_TEST_ACCOUNT || "GCL7DKN5H5YJPDROZ3EVIVOFP4CKQEGBNPP5CLITRQ2T4YMNAKR7CTNL";
-const BAD = "GDMLNFBXQ3W6AVQWXKLM2DUOU44ZEVPWRSVBMS4ZDFGKAWTMLNS5I53V"; // Horizon buna 400 der
+const BAD = "GDMLNFBXQ3W6AVQWXKLM2DUOU44ZEVPWRSVBMS4ZDFGKAWTMLNS5I53V"; // Horizon answers 400 for this one
 
 const fails = [], oks = [];
 const check = (n, c, d = "") => (c ? oks : fails).push(`${n}${d ? ` — ${d}` : ""}`);
@@ -69,7 +69,7 @@ const inject = (addr) => {
   };
 };
 
-// 1 - gercek, fonlanmis hesap: baglanmali ve gercek bakiyeyi okumali
+// 1 - a real, funded account: it must connect and read the real balance
 const good = await session({ fn: inject, arg: FUNDED });
 check("an injected wallet connects", good.chip.startsWith(FUNDED.slice(0, 6)), good.chip);
 check("it reports itself connected", /connected/i.test(good.kind), good.kind);
@@ -77,9 +77,9 @@ check("real balances are read from Horizon", /XLM/.test(good.kv) && /\d/.test(go
 check("the reserve is accounted for", /Spendable/i.test(good.kv));
 check("no page error while connecting", good.errors.length === 0, good.errors[0] || "");
 
-// 2 - SADECE npm modulu: `window`da hicbir sey yok, cuzdan content-script
-// uzerinden konusuyor. Eski kod buna "Freighter yuklu degil" diyordu; bu
-// kontrol o regresyonu geri gelirse yakalar.
+// 2 - the npm module ALONE: nothing on `window`, the wallet speaks through its
+// content script. The old code called this "Freighter is not installed"; this
+// check catches that regression if it ever comes back.
 const official = await session({
   fn: (addr) => {
     window.addEventListener("message", (e) => {
@@ -104,13 +104,13 @@ check(
 );
 check("no page error on the official path", official.errors.length === 0, official.errors[0] || "");
 
-// 3 - Horizon reddi: duzgun cumle, cig TypeError degil
+// 3 - a Horizon refusal: a proper sentence, not a raw TypeError
 const bad = await session({ fn: inject, arg: BAD });
 check("a Horizon refusal is explained, not thrown", !/undefined|TypeError/i.test(bad.note), bad.note.slice(0, 80));
 check("the refusal names Horizon's own reason", /Horizon|invalid|balances/i.test(bad.note), bad.note.slice(0, 80));
 check("no page error on a refused balance read", bad.errors.length === 0, bad.errors[0] || "");
 
-// 4 - hic cuzdan yok: durust ve suclayici olmayan mesaj
+// 4 - no wallet at all: an honest message that does not blame the reader
 const none = await session(null);
 check("no wallet leaves the chip untouched", /not connected/i.test(none.chip), none.chip);
 // With no extension at all the official module's postMessage is never
@@ -122,15 +122,15 @@ check("a press with no wallet says what it is waiting on",
 check("receiving is still described as keyless", /receiv/i.test(none.note));
 check("no page error without a wallet", none.errors.length === 0, none.errors[0] || "");
 
-// 4b - GESTURE VE YAVAS CUZDAN. Bildirilen hatanin asil sebebi buydu:
-// tiklama ile requestAccess arasinda await varsa tarayici kullanici hareketini
-// harcanmis sayar ve cuzdan popup'ini ENGELLER - tusa basilir, hicbir sey
-// olmaz. Ayrica isConnected() yavas ya da sessizse kurulu cuzdan "kurulu
-// degil" sayiliyordu.
+// 4b - THE GESTURE AND A SLOW WALLET. This was the real cause of the reported
+// fault: with an await between the click and requestAccess the browser counts
+// the user activation as already spent and BLOCKS the wallet popup - the button
+// is pressed and nothing happens at all. On top of that, a slow or silent
+// isConnected() made an installed wallet count as "not installed".
 //
-// Iki senaryo da gercek bir fare tiklamasiyla surulur ve olculen sey niyet
-// degil davranistir: requestAccess GERCEKTEN gonderildi mi, ve gonderildigi
-// anda navigator.userActivation hala aktif miydi.
+// Both scenarios are driven by a real mouse click, and what is measured is
+// behaviour rather than intent: was requestAccess ACTUALLY sent, and at the
+// moment it was sent, was navigator.userActivation still active.
 for (const [label, delay, payload] of [
   ["a silent content script", 0, null],
   ["a content script that answers in 4s", 4000, { isConnected: true }],
@@ -155,7 +155,7 @@ for (const [label, delay, payload] of [
 
   await page.goto(BASE, { waitUntil: "networkidle2", timeout: 40000 });
   await new Promise((r) => setTimeout(r, 2500));
-  await page.click("#connectBtn"); // gercek tiklama, sentetik degil
+  await page.click("#connectBtn"); // a real click, not a synthetic one
   await new Promise((r) => setTimeout(r, 9000));
 
   const probe = await page.evaluate(() => window.__probe);
@@ -170,17 +170,18 @@ for (const [label, delay, payload] of [
   await page.close();
 }
 
-// 5 - CERCEVE. Bu, konsolun onizlemede gercekten calistigi durum ve
-// "cuzdan baglanmiyor" sikayetinin asil sebebi: eklenti content script'leri
-// all_frames: false ile gelir, yani bir iframe'e HIC enjekte olmazlar. Kod ne
-// kadar dogru olursa olsun cerceve icinde baglanti mumkun degil. O yuzden
-// kontrol edilen sey "baglandi mi" degil, "cikis yolu sunuluyor mu".
+// 5 - THE FRAME. This is the situation the console really runs in during a
+// preview, and the real cause of the "the wallet will not connect" complaint:
+// extension content scripts ship with all_frames: false, so they are NEVER
+// injected into an iframe. However correct the code is, connecting from inside
+// a frame is impossible. So what this measures is not "did it connect" but
+// "is a way out offered".
 {
   const page = await browser.newPage();
   await page.setViewport({ width: 1400, height: 1000 });
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message.slice(0, 140)));
-  // Gercek eklenti davranisi: sadece ust cerceveye enjekte et.
+  // Real extension behaviour: inject into the top frame only.
   await page.evaluateOnNewDocument((addr) => {
     if (window.top === window.self) {
       window.freighterApi = {
@@ -205,7 +206,7 @@ for (const [label, delay, payload] of [
     const link = await frame.evaluate(() => Boolean(document.getElementById("walletTabLink")));
     const note = await frame.$eval("#walletNote", (n) => n.textContent.replace(/\s+/g, " "));
 
-    // Tiklamadan ONCE soylenmeli: tiklayip basarisiz olmayi beklemek degil.
+    // This has to be said BEFORE the click, not by clicking and waiting to fail.
     check("a framed console offers the tab before any click", /tab/i.test(label), label);
     check("a clickable link is present as a popup-blocker fallback", link);
     check("the note explains frames, not a missing wallet",
