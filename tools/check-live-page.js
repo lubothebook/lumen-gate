@@ -229,10 +229,8 @@ async function main() {
     });
     expect(walletReach.top < walletReach.vh, `the wallet must start within the first screen, it starts at ${walletReach.top}px of ${walletReach.vh}`);
 
-    // The wall is fixed behind the whole page, chrome included, and detection
-    // is arithmetic now: the header no longer eats the pointer.
     const onHeader = await hold(720, 40);
-    expect(onHeader.count === 1, `the frame follows the pointer over the chrome too, got ${onHeader.count}`);
+    expect(onHeader.count === 0, `the header must hide the frame, got ${onHeader.count}`);
 
     const stripAndGap = await page.evaluate(() => {
       const kids = [...document.querySelectorAll('#how > .shell > *')];
@@ -244,16 +242,15 @@ async function main() {
       return { stripY: Math.round(a2.bottom - 14), gapY: Math.round((a2.bottom + b2.top) / 2) };
     });
     const onStrip = await hold(720, stripAndGap.stripY);
-    expect(onStrip.count === 1, `a visual in front must not stop detection: the strip cell still frames, got ${onStrip.count}`);
+    expect(onStrip.count === 0, `a text strip must hide the frame - the frame never climbs on top of content, got ${onStrip.count}`);
     const inGap = await hold(720, stripAndGap.gapY);
     expect(inGap.count === 1, `the gap between two strips must frame the cube under the pointer, got ${inGap.count}`);
 
-    // and it closes only when the pointer leaves the window: moving across
-    // the page keeps exactly one cell framed the whole way
+    // and it closes: over covered content, and when the pointer leaves
     await hold(60, 560);
     await page.mouse.move(700, 300, { steps: 2 });
     await new Promise((r) => setTimeout(r, 200));
-    expect((await page.evaluate(() => document.querySelectorAll('.cube.frame').length)) === 1, 'moving across the page must keep exactly one cell framed');
+    expect((await page.evaluate(() => document.querySelectorAll('.cube.frame').length)) === 0, 'moving onto covered content must close the frame');
     await page.mouse.move(60, 560, { steps: 2 });
     await new Promise((r) => setTimeout(r, 200));
     await page.evaluate(() => window.dispatchEvent(new PointerEvent('pointerleave')));
@@ -303,7 +300,7 @@ async function main() {
 
     console.log(
       `live page: ${layout.rows.length} strips full-bleed with ${layout.gapProbe}px of open lattice between them, ` +
-        `frame follows the pointer everywhere, one cell at a time, ` +
+        `frame follows the pointer in the gaps and nowhere else, ` +
         `banner ${banner ? banner.natural.join('x') : '?'} drawn ${banner ? banner.box.join('x') : '?'}, ` +
         `${console_.count} controls all reachable, ${failed.length} failing requests`
     );
