@@ -1,0 +1,177 @@
+{
+  "schema": "lumen-gate/hardening-2.0/v1",
+  "opened": "2026-09-20",
+  "authority": "HARDENING-2.0.md (operator annex Ek A, 2026-09-20); statuses here are per-item with evidence or an explicit not-started; NOTHING here is checked without a linked artifact",
+  "leak_triage": {
+    "tool": "gitleaks 8.x (local run + .gitleaks.toml fingerprint allowlist)",
+    "commits_scanned": 113,
+    "leaks_found": 15,
+    "real_secrets_found": 0,
+    "verdict": "all 15 triaged as public identifiers matched by the generic key=value rule: domain_key (Ed25519 domain verification keys, public by design), signing_key (a G-address, not an S-seed), tokenId/message_transmitter/token_messenger fields (contract ids, strkeys), EVM address constants in gate2 files; one hit lives in HISTORY only (deployments/tr-cashout.json, file removed in a 1.0-era cleanup)",
+    "fingerprints": {
+      "3e58d0bb3a0d3b54bb49c29e727bb96aa05302ed:deployments/testnet-2.0.json:generic-api-key:24": {
+        "file": "deployments/testnet-2.0.json",
+        "rule": "generic-api-key"
+      },
+      "3e58d0bb3a0d3b54bb49c29e727bb96aa05302ed:deployments/testnet-2.0.json:generic-api-key:30": {
+        "file": "deployments/testnet-2.0.json",
+        "rule": "generic-api-key"
+      },
+      "69f000b31c63cc375706ade3c316d75389520559:gate2/scripts/spike-notes.md:generic-api-key:8": {
+        "file": "gate2/scripts/spike-notes.md",
+        "rule": "generic-api-key"
+      },
+      "3e58d0bb3a0d3b54bb49c29e727bb96aa05302ed:gate2/scripts/spike-s1.mjs:generic-api-key:43": {
+        "file": "gate2/scripts/spike-s1.mjs",
+        "rule": "generic-api-key"
+      },
+      "e44a50e0efa286daab659d34c08ac4581eb022bf:deployments/testnet.json:generic-api-key:249": {
+        "file": "deployments/testnet.json",
+        "rule": "generic-api-key"
+      },
+      "525caa3db92bf600b8a6fc5ec9d3e516af3d8634:deployments/gate-vm-lane.json:generic-api-key:10": {
+        "file": "deployments/gate-vm-lane.json",
+        "rule": "generic-api-key"
+      },
+      "525caa3db92bf600b8a6fc5ec9d3e516af3d8634:deployments/testnet.json:generic-api-key:249": {
+        "file": "deployments/testnet.json",
+        "rule": "generic-api-key"
+      },
+      "d4201cad7db23256e438400079fd560ef97bf17f:deployments/execution-lane.json:generic-api-key:10": {
+        "file": "deployments/execution-lane.json",
+        "rule": "generic-api-key"
+      },
+      "661b1265616b05078daf6fd842bf10c37f782f29:deployments/tr-cashout.json:generic-api-key:45": {
+        "file": "deployments/tr-cashout.json",
+        "rule": "generic-api-key"
+      },
+      "b7c6a1109f36366c8a63b5aef0b07edba6489889:deployments/cashout-live.json:generic-api-key:83": {
+        "file": "deployments/cashout-live.json",
+        "rule": "generic-api-key"
+      },
+      "69e8ff496398fdc28f0f132a9b11b87248abbef1:deployments/step-chain.json:generic-api-key:10": {
+        "file": "deployments/step-chain.json",
+        "rule": "generic-api-key"
+      },
+      "22345b82f7c494dba217b19bd21bb0146f782688:frontend/src/deployment.js:generic-api-key:14": {
+        "file": "frontend/src/deployment.js",
+        "rule": "generic-api-key"
+      },
+      "22345b82f7c494dba217b19bd21bb0146f782688:frontend/src/deployment.js:generic-api-key:15": {
+        "file": "frontend/src/deployment.js",
+        "rule": "generic-api-key"
+      },
+      "f5be0b4f9bbb865bac1e93e29c0de40e60c33eed:deployments/testnet.json:generic-api-key:87": {
+        "file": "deployments/testnet.json",
+        "rule": "generic-api-key"
+      },
+      "d8ea9c58822d415f3a669b1748b42c9d8725dfab:deployments/testnet.json:generic-api-key:42": {
+        "file": "deployments/testnet.json",
+        "rule": "generic-api-key"
+      }
+    },
+    "ci_posture": "gitleaks/gitleaks-action@v2 in .github/workflows/gate-hardening.yml; any NEW leak is red; allowlist pins per-fingerprint, not per-field, so the same field name with a new value re-alarms (HARDENING 8)"
+  },
+  "proof_lint": {
+    "script": "gate2/scripts/proof-lint.mjs",
+    "stance": "warning (PROOF_LINT_REQUIRED unset; flip to required is an operator call per Ek A 12)",
+    "run_2026_09_20": {
+      "warnings": 15,
+      "exempt_rule_mentions": 1,
+      "files_missing": [
+        "README.tr.md - intentionally absent by 1.0 rule, noted for Ek A 12's README/README.tr.md pair"
+      ]
+    },
+    "note": "the 15 remaining warnings are 1.0-era narrative lines ('live'/'gasless' used as common adjectives with evidence nearby but outside the +-2-line window, or in the two DIRECTIVE docs); they are recorded, not mass-waived: closing them is a README prose pass, deliberately NOT bundled into a tooling commit"
+  },
+  "panic_grep": {
+    "rule": "grep -rn 'unwrap()|expect(|panic!|assert!' gate2/soroban minus comments",
+    "first_run": "RED on spike_gate assert! (line 23)",
+    "fix": "Error::TransmitterRefused result-coding; rebuilt (1641-byte wasm) and redeployed; old deployment in deployments/testnet-2.0.json superseded[]",
+    "calibration_finding": "the naive rule then fired on a COMMENT line that described the rule itself - the workflow excludes comment lines but the tooling records that this filter must never be widened past ^\\s*// lines, or real prose-adjacent panics get hidden (wrong-reason-green, Bulgu #4 class)",
+    "status": "GREEN for gate2/soroban (code lines)"
+  },
+  "h_gates": {
+    "F0": {
+      "gate": "gitleaks wired+green",
+      "status": "closed-this-turn",
+      "evidence": "local run green with allowlist; workflow file committed; GitHub run status queried below"
+    },
+    "F1": {
+      "gate": "spike results re-runnable as post_deploy_checks[]",
+      "status": "wired",
+      "evidence": "deployments/testnet-2.0.json post_deploy_checks[] added with the exact re-run commands for the S2/S3/S6 chain reads"
+    },
+    "F2": {
+      "gate": "reentrancy/deadline/balance-delta tests",
+      "status": "not-started (no EVM contract exists yet - F2 is the manual claim phase; BurnRouter is F4)"
+    },
+    "F3": {
+      "gate": "TTL/bump negative + overflow tests",
+      "status": "not-started (GateClaim is F3)"
+    },
+    "F4": {
+      "gate": "slither/mythril/token-class fuzz",
+      "status": "not-started; note: foundry is NOT installed in this sandbox - F4 opens by installing it or by the operator choosing to run the suite elsewhere; recording the environment gap now instead of at the wall"
+    },
+    "F5": {
+      "gate": "threshold boundary tests",
+      "status": "not-started (campaign crate is a skeleton)"
+    },
+    "F6": {
+      "gate": "npm audit/CSP/SRI/attestation-wait UI",
+      "status": "not-started (no web app yet); the gate2/scripts/package-lock.json that DOES exist is pinned exact majors with a lockfile committed"
+    },
+    "F7": {
+      "gate": "mutation score in manifest",
+      "status": "not-started; cargo-mutants not installed - same environment note as F4"
+    },
+    "F8": {
+      "gate": "proof-lint required mode + anomaly watch in self-audit",
+      "status": "not-started; proof-lint exists and runs in warning stance now"
+    },
+    "F9": {
+      "gate": "freeze + fresh eyes + mainnet checklist filled",
+      "status": "not-started; mainnet_gate below is the living checklist"
+    }
+  },
+  "mainnet_gate": {
+    "all_unchecked_per_design": true,
+    "items": [
+      "F0-F9 acceptance + H gates proven",
+      "independent review completed",
+      "slither/mythril/mutation clean or accepted-with-reason",
+      "mainnet addresses separately verified",
+      "restricted mainnet deploy keys + two-person rule",
+      "canary end-to-end flow proven small first",
+      "SECURITY.md live with a real contact channel (file exists; the channel address awaits operator)",
+      "decision_record committed (who/when/on-what-proof)"
+    ]
+  },
+  "sections_checklist": {
+    "4.1": "deferred-to-F4-with-design-recorded",
+    "4.2": "deferred-to-F4 (the balance-delta rule is already the product design per DIRECTIVE 5.1; negative tests come with the contract)",
+    "4.3": "deferred-to-F4 (deadline + minOut==0 rejection are design notes captured here)",
+    "4.4": "deferred-to-F4; NOTE the driver spike-s1.mjs already builds hookData byte-exact per the circle page and validates strkey via SDK decode (the EVM-side CRC check in Solidity is the router's F4 job)",
+    "4.5": "deferred-to-F4 token-class matrix",
+    "4.6": "environment gap recorded (no foundry/slither in sandbox); clippy-style grep gate active NOW via workflow",
+    "4.7": "trust-model text owed at F8 (docs/GATE2_TRUST_MODEL.md), risk already voiced in README 2.0 paragraph and DIRECTIVE 6",
+    "5.1": "spike_gate fixed same-rule-same-turn; GateClaim inherits it from its first line",
+    "5.2": "post_deploy_checks[] wired (see h_gates F1)",
+    "5.3": "inherited-from-doc (checked_mul discipline recorded for F3)",
+    "5.4": "F3 tests + F8 sentinel owed; recorded",
+    "5.5": "F5 boundary tests owed; the downgrade question is now a finding (see testnet manifest)",
+    "6": "iris-outage UX owed at F6; freeze-scenario owed at F8 trust model; rescue-impossible probe is F7's list; address-verification step: F2/F4 deploy scripts must print the docs URL + the id side by side (design rule adopted)",
+    "7.1-7.5": "web-phase owed; double-validation rule already enforced by spike driver (SDK StrKey decode, not regex)",
+    "8": "gitleaks CI wired; least-privilege ALREADY true in practice (audit-probe deploys, runtime keys transact the spike - separate accounts); pre-commit hook: recorded-gap (the sandbox rebuilds cannot keep hooks; server-side check carries the rule)",
+    "9": "workflow committed: audit/clippy-grep/regression/proof-lint steps; cargo audit step will show first real output on GitHub side",
+    "10": "fuzz/mutation/chaos owed to F7/F8 with tools gap recorded",
+    "11": "SECURITY.md opened (channel address pending operator); additive-timestamped self-audit-2.0 format inherited from 1.0; bump sentinel owed F8",
+    "12": "proof-lint exists, runs in CI (warning stance), scan set documented",
+    "13": "H-gate table is this file; F9 accepted as a real phase by the branch plan",
+    "14": "mainnet_gate above, untouched",
+    "15": "this status column IS the checklist with statuses",
+    "16": "tools wired where the sandbox allows; where not (foundry/echidna/gambit), the gap is recorded next to the phase that will need it",
+    "17": "definition-of-done amendment acknowledged; nothing here claims 'done'"
+  }
+}
