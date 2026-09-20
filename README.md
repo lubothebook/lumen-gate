@@ -30,6 +30,62 @@ This is the proposal for the [Rise In x Stellar Pro Hackathon](https://www.risei
 - [Cryptographic paths](#cryptographic-paths)
 - [Part II — Gate 2.0](#part-ii--gate-20-pasaport--batarya--bilet-in-development)
 
+---
+
+> [!IMPORTANT]
+> **TL;DR for reviewers — 30 seconds to understand the whole repo:**
+> This is **not a token UI**. It is an **on-chain settlement boundary**: a Soroban Registry verifies BLS/Groth16 finality, a Gateway mints/burns the SAC asset, and every path is a receipt you can pull by transaction hash.
+
+## ✨ Highlights — Why this is different
+
+<table>
+<tr>
+<td width="50%">
+
+### 🔐 Machine approves, not humans
+**BLS12-381 + Groth16 verified inside Soroban** with native hosts (`bls12_381_*`, `bn254_multi_pairing_check`). No multisig, no off-chain oracle. The pairing equation `e(sig,G2)·e(-H,pubkey)=1` **is** the decision.
+
+</td>
+<td width="50%">
+
+### 🪙 Gasless — 0 XLM to receive
+User locks on source chain with `amount + fee`. Relayer pays XLM, is reimbursed from the locked amount. Recipient balance: **0.0000000 XLM spendable** before and after — proven on ledger.
+
+</td>
+</tr>
+<tr>
+<td>
+
+### 🧱 Battery & Ticket — Value as primitives
+**Battery**: on-chain USDC fee balance, user-owned (`forward` with `max_fee`/`nonce`/`expiry` cap). **Ticket**: transferable vault receipt `sum(tickets)==USDC.balance(vault)` — move value without trading NFTs.
+
+</td>
+<td>
+
+### 🔒 Renounced & Audited — Standing proof
+Both `finality_registry` + `settlement_gateway` **renounced on-chain** (verified every audit round). Self-audit loop re-proves 15 checks against *live* contracts — not a one-time test.
+
+</td>
+</tr>
+</table>
+
+> [!TIP]
+> **Two products, one evidence culture.** Jump straight to what you need:
+> - **Gate 1.0 (frozen)** → settlement boundary, live receipts, audit loop → [Part I](#part-i--gate-10-the-neutral-finality-layer-frozen)
+> - **Gate 2.0 (in dev)** → CCTP migration + Passport/Battery/Ticket → [Part II](#part-ii--gate-20-pasaport--batarya--bilet-in-development)
+> - **Try it now** → `Open the wallet` at `/` or `/gate2/` — reads live testnet, writes only with Freighter on testnet
+
+### 🗺️ Structure at a glance
+
+| Layer | What lives there | How it is proven |
+| :--- | :--- | :--- |
+| **Stellar (on-chain, real)** | `finality_registry` + `settlement_gateway` + `SAC wSRC` | Tx hashes in `deployments/testnet.json`, renounced, pairing-checked |
+| **Circuits (off-chain → on-chain)** | BLS / Groth16 / step-chain / execution-trace / gate-vm | `cargo test` + `node tools/*-tests.mjs` + live `deployments/*.json` |
+| **Off-chain (deterministic)** | `source_simulator` + `relayer` + `anchor` facade | Real BLS (RFC9380) + real RPC `getEvents` + Horizon re-derive |
+| **Web (Freighter)** | `frontend` (`/`) + `gate2/web` (`/gate2/`) | `tools/check-live-*.js` clicks every control in a real browser |
+
+
+
 
 
 ## What this is, in one minute
