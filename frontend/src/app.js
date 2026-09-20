@@ -881,7 +881,13 @@ function offerTopLevelTab() {
   btn.textContent = 'Open in a tab to connect';
   btn.title = 'Extensions cannot reach a framed page; this opens the console top-level where Freighter works.';
 
-  // The link is in the markup, hidden. Point it at this page and reveal it.
+  // The link is in the markup, hidden behind a placeholder href. Pointing it at
+  // this page and revealing it here - instead of building the node at runtime -
+  // is what keeps the static contract honest: tools/check-console.js walks the
+  // markup and insists every selector the module reaches for resolves, and a
+  // node the module creates is precisely the selector that walk cannot see. A
+  // page rendered with no module at all therefore shows no link rather than a
+  // dead one, because the placeholder href is never reachable while hidden.
   const link = $('walletTabLink');
   if (link) {
     link.href = window.location.href;
@@ -1422,31 +1428,80 @@ async function burn() {
   }
   if (!gateway || !targetDomain) return log('Deployment addresses are not loaded yet.', 'warn');
 
-  log(`Preparing a burn of ${amount} with unlock to ${short(recipient)}...`);
+  const assetLabel = state.status?.contracts?.asset || 'wSRC';
+  log(`Preparing a burn of ${formatUnits(amount)} ${assetLabel} with unlock to ${short(recipient)}...`);
   try {
     const module = await import('./soroban.ts');
+    // Simulating first is what makes the failure readable: the RPC answers with
+    // the host's own diagnostic log, and explainSimulation lifts the root cause
+    // out of it. Without this a perfectly ordinary state - an account with no
+    // trustline for the wrapped asset - arrived as a screen of escaped JSON and
+    // read as a broken button.
     const prepared = await module.buildBurnAndRelayTx(gateway, String(amount), recipient, targetDomain, state.wallet);
     const freighter = freighterProvider();
     if (!freighter || typeof freighter.signTransaction !== 'function') {
-      throw new Error('Freighter is not available to sign');
+      throw new Error('no wallet is available to sign; connect Freighter first');
     }
     if (!(await assertWalletTestnet(freighter))) return;
+    log('Freighter is showing you the transaction. Nothing reaches the network until you approve it there.');
     const signed = await freighter.signTransaction(prepared.toXDR(), { networkPassphrase: NETWORK_PASSPHRASE, address: state.wallet });
-    const xdr = typeof signed === 'string' ? signed : signed.signedTxXdr;
-    if (!xdr) throw new Error('Freighter returned no signed transaction');
+    const xdr = module.signedXdrFrom(signed);
     // The bytes that go to the network are the ones Freighter signed, never
     // the still-unsigned prepared transaction: sending `prepared` here would
     // be refused with tx_bad_auth and the burn would look like a wallet bug.
-    const submitted = await module.submitSoroban(xdr);
-    if (submitted && submitted.status && submitted.status !== 'PENDING' && submitted.status !== 'SUCCESS') {
-      throw new Error(`the RPC refused the submission: ${submitted.errorResult ? JSON.stringify(submitted.errorResult) : submitted.status}`);
+    //
+    // And the submission is waited for. `sendTransaction` only means the RPC
+    // accepted the transaction for inclusion; its status is PENDING at that
+    // moment. Announcing success there and reading the balances back
+    // immediately showed numbers that had not moved yet, which is indistinguishable
+    // from a button that does nothing.
+    const confirmed = await module.submitSorobanAndConfirm(xdr);
+    if (confirmed.timedOut) {
+      log(`Sent, but the ledger had not confirmed it within 90s. It may still land - look for ${confirmed.hash}`, 'warn');
+      log(`Explorer: ${EXPLORER_TX}${confirmed.hash}`, 'info');
+    } else {
+      log(`Burn confirmed in ledger ${confirmed.ledger}: ${confirmed.hash}`, 'ok');
+      log(`Explorer: ${EXPLORER_TX}${confirmed.hash}`, 'info');
     }
-    log(`Submitted: ${submitted.hash || JSON.stringify(submitted).slice(0, 300)}`, 'ok');
+    // Read the balances AFTER the ledger applied the transaction, not before.
     await refreshWallet();
   } catch (error) {
-    log(`Burn failed: ${error && error.message ? error.message : error}`, 'bad');
-    log('The outbound direction needs the gateway burn entrypoint signed by your own key. If Freighter is not installed, the README documents the CLI path.', 'warn');
+    const why = error && error.message ? error.message : String(error);
+    log(`Burn failed: ${why}`, 'bad');
+    if (error && error.hash) {
+      log(`It did reach the network and was refused there: ${EXPLORER_TX}${error.hash}`, 'warn');
+    }
+    log(burnHintFor(why, assetLabel), 'warn');
   }
+}
+
+/**
+ * What to do next, for the states a real burn actually hits.
+ *
+ * A refusal is only useful if it says which of the reader's own preconditions is
+ * missing. These are the causes the live testnet gateway reports, taken from a
+ * real simulation rather than guessed at: the wrapped asset is burned FROM the
+ * caller, so the caller needs the trustline and the balance before the gateway
+ * can do anything at all.
+ */
+function burnHintFor(why, assetLabel) {
+  const text = String(why).toLowerCase();
+  if (text.includes('trustline entry is missing') || text.includes('not authorized')) {
+    return `Your account holds no ${assetLabel}. The gateway burns ${assetLabel} from you, so it has to exist on your account first: add the ${assetLabel} trustline and hold a balance, then burn.`;
+  }
+  if (text.includes('balance') || text.includes('insufficient')) {
+    return `Not enough to burn: the amount has to be at most your ${assetLabel} balance, and the network fee comes out of your XLM.`;
+  }
+  if (text.includes('no wallet is available') || text.includes('not installed')) {
+    return 'Connect Freighter first: the outbound direction is signed by your own key and there is no other way to authorize it.';
+  }
+  if (text.includes('declined') || text.includes('returned no signed transaction')) {
+    return 'The signature was not made. Approve the transaction in Freighter and press the button again; nothing was sent.';
+  }
+  if (text.includes('tx_bad_seq') || text.includes('bad sequence')) {
+    return 'The sequence number moved under this transaction - usually a second submission from the same account. Refresh balances and try again.';
+  }
+  return 'The outbound direction needs the gateway burn entrypoint signed by your own key. If Freighter is not installed, the README documents the CLI path.';
 }
 
 // -------------------------------------------------------------- operator
@@ -1699,9 +1754,21 @@ async function cashoutAuthenticate() {
   if (!(await assertWalletTestnet(freighter))) return null;
   try {
     const module = await import('./soroban.ts');
+    // The anchor names the network its challenge is for, and Freighter refuses
+    // to sign for a passphrase that does not match the one it is pointed at.
+    // Signing with this console's own constant here would silently break any
+    // anchor on any other network, so the anchor's answer wins - and the reader
+    // is told when the two disagree rather than left to decode a wallet refusal.
+    const anchorPassphrase = challenge.payload.network_passphrase;
+    if (anchorPassphrase && anchorPassphrase !== NETWORK_PASSPHRASE) {
+      log(`This anchor authenticates on a different network than this console reads ("${anchorPassphrase}"). Freighter must be pointed at that network to sign the challenge.`, 'warn');
+    }
     // Pass the verified provider: with only the official module on the page
-    // there is no window global to fall back to.
-    const signed = await module.signAnchorChallenge(challenge.payload.transaction, state.wallet, freighter);
+    // there is no window global to fall back to. This used to look at `window`
+    // again from inside the module, which current Freighter builds do not
+    // populate - so a reader with a connected, unlocked wallet was told the
+    // wallet was not available, and the button looked dead.
+    const signed = await module.signAnchorChallenge(challenge.payload.transaction, state.wallet, freighter, anchorPassphrase || NETWORK_PASSPHRASE);
     const token = await cashoutApi('?action=token', { method: 'POST', body: { transaction: signed } });
     if (!token.ok) {
       log(`The anchor refused the signed challenge: ${failureText(token.payload)}`, 'bad');
@@ -1758,26 +1825,40 @@ async function cashoutPay() {
   }
   try {
     const module = await import('./soroban.ts');
+    // The asset the anchor named, not a hardcoded one: paying an anchor that
+    // exits something other than USDC in USDC is not a payment, it is a loss.
     const prepared = await module.buildAnchorPaymentTx(
       CASHOUT.instructions.treasury,
       CASHOUT.instructions.amount,
       CASHOUT.instructions.asset_issuer,
       CASHOUT.instructions.memo,
-      state.wallet
+      state.wallet,
+      CASHOUT.instructions.asset_code
     );
     const freighter = freighterProvider();
     if (!freighter || typeof freighter.signTransaction !== 'function') {
-      throw new Error('Freighter is not available to sign');
+      throw new Error('no wallet is available to sign; connect Freighter first');
     }
     if (!(await assertWalletTestnet(freighter))) return;
+    log(`Freighter is showing you a payment of ${CASHOUT.instructions.amount} ${CASHOUT.instructions.asset_code || 'USDC'} to ${short(CASHOUT.instructions.treasury, 8)} with memo ${CASHOUT.instructions.memo}.`);
     const signed = await freighter.signTransaction(prepared.toXDR(), { networkPassphrase: NETWORK_PASSPHRASE, address: state.wallet });
-    const xdr = typeof signed === 'string' ? signed : signed.signedTxXdr;
-    if (!xdr) throw new Error('Freighter returned no signed transaction');
+    const xdr = module.signedXdrFrom(signed);
+    // submitClassic now reports the ledger's own verdict. It used to return a
+    // hash unconditionally, and a hash exists for a FAILED transaction too, so a
+    // payment the network refused was announced as "Paid the anchor".
     const submitted = await module.submitClassic(xdr);
-    log(`Paid the anchor: ${submitted}. The anchor identifies the deposit by the memo, so it will now match this withdrawal.`, 'ok');
+    log(`Paid the anchor in ledger ${submitted.ledger}: ${submitted.hash}. The anchor identifies the deposit by the memo, so it will now match this withdrawal.`, 'ok');
+    log(`Explorer: ${EXPLORER_TX}${submitted.hash}`, 'info');
     await refreshWallet();
+    // The anchor has the money now, so its status is worth reading immediately
+    // rather than waiting for the reader to work out that the next step exists.
+    await cashoutStatus();
   } catch (error) {
-    log(`Payment failed: ${error && error.message ? error.message : error}`, 'bad');
+    const why = error && error.message ? error.message : String(error);
+    log(`Payment failed: ${why}`, 'bad');
+    if (error && error.hash) {
+      log(`It did reach the network and was refused there: ${EXPLORER_TX}${error.hash}`, 'warn');
+    }
   }
 }
 
