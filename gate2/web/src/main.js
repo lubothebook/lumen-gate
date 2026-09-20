@@ -115,7 +115,10 @@ async function connectWallet() {
           walletWritesAllowed = false;
           $("btn-tier-send").disabled = true;
           $("btn-burn").disabled = true;
-          setWalletActions(false);
+          setWalletActions(
+            false,
+            `Freighter is on ${name} — this console only signs on testnet. Switch the wallet to Stellar testnet.`
+          );
         }
       } catch {
         /* getNetwork is advisory; some builds refuse it until unlocked */
@@ -134,6 +137,10 @@ function onFreighter(f) {
   }
   if (!f) {
     setWalletState("Freighter not found. Install it, reload, then connect.", "muted");
+    setWalletActions(
+      false,
+      "No Freighter extension in this browser. Read-only actions (My Migration Proof, StrKey) work without a wallet; anything needing a signature stays closed."
+    );
     return;
   }
   setWalletState("Freighter ready — click to connect", "ok");
@@ -154,9 +161,28 @@ function acctLog(text, hash) {
   }
 }
 
-function setWalletActions(on) {
+function setWalletActions(on, reason) {
   for (const id of ["btn-fund", "btn-trust-open", "btn-bump", "btn-trust-open-burn", "btn-stamp"]) {
-    if ($(id)) $(id).disabled = !on;
+    const b = $(id);
+    if (!b) continue;
+    b.disabled = !on;
+    // A disabled control should say why it is disabled. Without this the
+    // buttons just look broken.
+    if (on) b.removeAttribute("title");
+    else b.title = reason || "Connect Freighter first — this action needs a wallet signature.";
+  }
+  const gate = $("walletGate");
+  if (gate) {
+    if (on) {
+      gate.classList.add("hidden");
+    } else {
+      gate.classList.remove("hidden");
+      gate.innerHTML = "";
+      gate.append(
+        reason ||
+          "The four buttons above unlock once you connect — each one needs a Freighter signature."
+      );
+    }
   }
 }
 

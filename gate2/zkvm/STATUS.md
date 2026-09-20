@@ -66,23 +66,59 @@ promised, and none exists.
 ## Closed opcodes
 
 `VerifyMerkle`, `SRead`, `SWrite` — refused at compile and decode on the Gate
-path by `parity/src/gate_profile.rs`. Opening any of them needs a human decision
-**and** the Z-B gate closing upstream.
+path. Opening any of them needs a human decision **and** the Z-B gate closing
+upstream.
 
-**Why a Gate-side gate rather than the ISA's own profile (finding z10).** The
-imported ISA was measured, not assumed:
+The two are closed at **different layers**, on purpose.
 
-| opcode | `IsaProfile::Production` | `MainnetActivation::default()` |
-|---|---|---|
-| `VerifyMerkle` | accepted | rejected |
-| `SRead` / `SWrite` | accepted | accepted |
+**`VerifyMerkle` — closed in the imported ISA itself.** `Opcode::is_experimental()`
+returns `true` for it, so the refusal happens before any Gate-side code runs and
+no activation bitmask can reach around it:
 
-`Opcode::is_experimental()` returns `false` for every opcode in this revision, so
-the Production profile on its own refuses nothing, and the mainnet gate is silent
-about storage. Flipping `is_experimental()` upstream-style would have turned
-imported prover and VM tests red for reasons unrelated to them — which the rules
-forbid working around. So the closure is enforced additively on the Gate path and
-the divergence is recorded rather than hidden.
+| layer | behaviour |
+|---|---|
+| `Opcode::is_experimental()` | `true` |
+| `decode_for_profile(_, Production)` | refused — `ExperimentalOpcodeDisabled` |
+| `decode_for_profile(_, Testing)` | decodes — **gated, not deleted** |
+| `MainnetActivation::default()` | refused |
+| `MainnetActivation::full()` | **still refused** — the profile gate outranks it |
+| `zk-compiler` codegen, default features | refused regardless of profile |
+| Gate closed set (`parity/src/gate_profile.rs`) | refused again, independently |
+
+At import this was a Gate-side gate only: the ISA accepted the opcode under
+`Production` and `MainnetActivation::full()` was enough to open it. That lock was
+too narrow — it covered the Gate path and the mainnet decode path, and left
+`decode_for_profile(_, Production)` accepting an opcode whose 64-depth soundness
+work is unfinished upstream. Five imported assertions encoded the old behaviour;
+they were **rewritten, not deleted**, and each one is listed in `superseded[]`
+with what replaced it.
+
+**`SRead` / `SWrite` — closed on the Gate profile only**, by
+`parity/src/gate_profile.rs`. They are deliberately *not* raised to the ISA
+layer: imported `zk-proof` and `zk-vm` suites legitimately use storage, and
+flipping the ISA flag would turn those red for reasons unrelated to them.
+Breaking working imported tests to make a Gate-side point is the same failure as
+green-washing, in the other direction. The Gate-path refusal is unconditional
+either way.
+
+`VerifyInference` was considered for the ISA list and **left out**: it has no
+verification circuit upstream and no Gate surface, so closing it there would be
+precautionary rather than justified.
+
+---
+
+## The proof half is quarantined, not deleted
+
+`zk-proof`, `zk-state`, `verifier-registry` and `note-packing` are in the tree
+and still compile, but nothing on the Gate path touches them. Each carries a
+header saying so in its own words: *not used on the Gate path, nothing claimed*.
+
+The boundary is **enforced, not just asserted**. `parity/tests/quarantine.rs`
+fails the build if any Gate-path crate names one of them in a manifest or a
+`use`, and also fails if one of them silently disappears. The gate was proved
+non-vacuous by deliberately violating it — a `zk-state` dependency was injected
+into `zk-vm/Cargo.toml`, the test failed naming the offender, and the manifest
+was restored.
 
 ---
 
@@ -133,6 +169,6 @@ opcode stays closed. Detail in PROVENANCE §2.2.
 
 ## Licence
 
-Code here derives from `budlum-xyz/budlum` @ `d8423b77`, licensed
-**PolyForm Shield 1.0.0** — *not* MIT, contrary to the annex's assumption. The
-file is vendored verbatim at [`LICENSE`](./LICENSE). See PROVENANCE §1.
+Code here derives from `budlum-xyz/budlum` @ `d8423b77` (PolyForm Shield 1.0.0);
+the licence file is vendored verbatim at [`LICENSE`](./LICENSE). Both
+repositories are this team's own. See PROVENANCE §1.

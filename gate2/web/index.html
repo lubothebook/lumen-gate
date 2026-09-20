@@ -95,11 +95,14 @@
                   </tbody>
                 </table>
                 <div class="btn-row" style="margin-top:16px">
-                  <button class="btn mini" id="btn-fund" type="button" disabled>Fund with Friendbot</button>
-                  <button class="btn mini" id="btn-trust-open" type="button" disabled>Open USDC trustline</button>
-                  <button class="btn mini" id="btn-bump" type="button" disabled>Extend TTL (bump)</button>
-                  <button class="btn primary small" id="btn-stamp" type="button" disabled>Stamp TESTNET</button>
+                  <button class="btn mini" id="btn-fund" type="button" disabled title="Connect Freighter first — this action needs a wallet signature.">Fund with Friendbot</button>
+                  <button class="btn mini" id="btn-trust-open" type="button" disabled title="Connect Freighter first — this action needs a wallet signature.">Open USDC trustline</button>
+                  <button class="btn mini" id="btn-bump" type="button" disabled title="Connect Freighter first — this action needs a wallet signature.">Extend TTL (bump)</button>
+                  <button class="btn primary small" id="btn-stamp" type="button" disabled title="Connect Freighter first — this action needs a wallet signature.">Stamp TESTNET</button>
                 </div>
+                <p class="note" id="walletGate" style="margin-top:10px; font-size:0.8125rem">
+                  The four buttons above unlock <strong>once you connect</strong> — each one needs a Freighter signature.
+                </p>
                 <p class="note" id="walletNote" style="margin-top:16px; font-size:0.8125rem">
                   Proof of Migration reads any G… address; a wallet is not required.
                   Friendbot, trustline, bump and the TESTNET stamp need a Freighter signature — the tx is visible on Stellar testnet.
@@ -154,7 +157,7 @@
                       </p>
                       <div class="row">
                         <button class="btn small" id="btn-tier-sim" type="button">Simulate tier</button>
-                        <button class="btn mini" id="btn-tier-send" type="button" disabled>Send claim_tier with Freighter</button>
+                        <button class="btn mini" id="btn-tier-send" type="button" disabled title="Connect Freighter first — claim_tier sends a signed transaction on chain.">Send claim_tier with Freighter</button>
                       </div>
                       <div id="res-tier"></div>
                     </div>
@@ -192,8 +195,8 @@
                       uses live Horizon data.
                     </p>
                     <div class="row">
-                      <button class="btn small" id="btn-trustline" type="button" disabled>Check trustline</button>
-                      <button class="btn primary small" id="btn-trust-open-burn" type="button" disabled>Open trustline with Freighter</button>
+                      <button class="btn small" id="btn-trustline" type="button" disabled title="Connect Freighter first — the address to check comes from the connected wallet.">Check trustline</button>
+                      <button class="btn primary small" id="btn-trust-open-burn" type="button" disabled title="Connect Freighter first — opening a trustline needs a signature.">Open trustline with Freighter</button>
                     </div>
                     <div id="res-trustline"></div>
                   </div>
@@ -206,7 +209,7 @@
                     </p>
                     <div class="row">
                       <input id="in-burnword" type="text" placeholder="BURN" spellcheck="false" autocomplete="off" />
-                      <button class="btn primary small" id="btn-burn" type="button" disabled>BURN</button>
+                      <button class="btn primary small" id="btn-burn" type="button" disabled title="BurnRouter is not deployed on Sepolia yet; you must also type BURN in the confirmation box.">BURN</button>
                     </div>
                     <div id="res-burn" class="muted">This button cannot enable until a router exists.</div>
                   </div>

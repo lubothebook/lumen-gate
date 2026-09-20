@@ -61,8 +61,20 @@ pub enum Opcode {
 }
 
 impl Opcode {
+    /// Opcodes refused outright by [`IsaProfile::Production`].
+    ///
+    /// `VerifyMerkle` is here because the 64-depth path verification behind it
+    /// is unfinished upstream (the Z-B gate). Until that closes, a production
+    /// decode must not accept the opcode at all — the `MainnetActivation` gate
+    /// below is a second, narrower lock, but it only applies on the mainnet
+    /// decode path, so on its own it leaves `decode_for_profile(_, Production)`
+    /// accepting an opcode whose soundness argument does not exist yet.
+    ///
+    /// `VerifyInference` stays out of this list deliberately: it is gated by
+    /// `MainnetActivation` for a different reason (no verification circuit),
+    /// and the imported prover exercises it under the Testing profile.
     pub fn is_experimental(&self) -> bool {
-        false
+        matches!(self, Opcode::VerifyMerkle)
     }
 
     /// Opcodes that require a separate mainnet
@@ -319,7 +331,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn verify_merkle_enabled_in_production() {
+    fn verify_merkle_refused_in_production_while_z_b_is_open() {
+        // Was `verify_merkle_enabled_in_production`, asserting the opposite.
+        // The opcode is now experimental because its 64-depth path
+        // verification is unfinished upstream, so a Production decode must
+        // refuse it outright rather than leaning on the mainnet gate alone.
         let raw = Instruction {
             opcode: Opcode::VerifyMerkle,
             rd: 1,
@@ -328,10 +344,30 @@ mod tests {
             imm: 0,
         }
         .encode();
-        let inst = Instruction::decode_for_profile(raw, IsaProfile::Production)
-            .expect("VerifyMerkle enabled in Production");
+        let err = Instruction::decode_for_profile(raw, IsaProfile::Production)
+            .expect_err("VerifyMerkle must be refused in Production");
+        assert!(matches!(
+            err,
+            DecodeError::ExperimentalOpcodeDisabled(Opcode::VerifyMerkle, IsaProfile::Production)
+        ));
+        assert!(Opcode::VerifyMerkle.is_experimental());
+    }
+
+    #[test]
+    fn verify_merkle_still_decodes_under_testing() {
+        // The opcode is gated, not deleted: the imported prover and VM
+        // exercise it under the Testing profile, and that must keep working.
+        let raw = Instruction {
+            opcode: Opcode::VerifyMerkle,
+            rd: 1,
+            rs1: 2,
+            rs2: 3,
+            imm: 0,
+        }
+        .encode();
+        let inst = Instruction::decode_for_profile(raw, IsaProfile::Testing)
+            .expect("VerifyMerkle decodes under Testing");
         assert_eq!(inst.opcode, Opcode::VerifyMerkle);
-        assert!(!Opcode::VerifyMerkle.is_experimental());
     }
 
     #[test]
@@ -344,11 +380,19 @@ mod tests {
             imm: 0,
         }
         .encode();
+        // decode_for_mainnet runs the Production profile check first, so with
+        // VerifyMerkle now experimental the refusal arrives one layer earlier.
+        // Either refusal satisfies the property this test guards: the opcode
+        // does not decode on mainnet by default.
         let err = Instruction::decode_for_mainnet(raw, MainnetActivation::default())
             .expect_err("VerifyMerkle blocked on mainnet by default");
         assert!(matches!(
             err,
             DecodeError::MainnetActivationRequired(Opcode::VerifyMerkle)
+                | DecodeError::ExperimentalOpcodeDisabled(
+                    Opcode::VerifyMerkle,
+                    IsaProfile::Production
+                )
         ));
     }
 
@@ -362,9 +406,17 @@ mod tests {
             imm: 0,
         }
         .encode();
-        let inst = Instruction::decode_for_mainnet(raw, MainnetActivation::full())
-            .expect("VerifyMerkle allowed with full mainnet activation");
-        assert_eq!(inst.opcode, Opcode::VerifyMerkle);
+        // MainnetActivation::full() opens the activation gate, but the
+        // Production profile check sits above it and VerifyMerkle is now
+        // experimental - so full activation alone is deliberately NOT enough.
+        // Opening the opcode takes a source change here plus Z-B closing
+        // upstream, which is exactly the human decision the gate exists for.
+        let err = Instruction::decode_for_mainnet(raw, MainnetActivation::full())
+            .expect_err("the experimental gate outranks full activation");
+        assert!(matches!(
+            err,
+            DecodeError::ExperimentalOpcodeDisabled(Opcode::VerifyMerkle, IsaProfile::Production)
+        ));
     }
 
     #[test]
@@ -514,9 +566,16 @@ mod tests {
             .encode();
             let err = Instruction::decode_for_mainnet(raw, MainnetActivation::default())
                 .expect_err("must stay blocked on mainnet by default");
+            // VerifyMerkle is now also experimental at the profile level, so it
+            // is refused one layer earlier than VerifyInference. Both are still
+            // refused, which is what this test guards.
             assert!(
-                matches!(err, DecodeError::MainnetActivationRequired(_)),
-                "{op:?} must require mainnet activation"
+                matches!(
+                    err,
+                    DecodeError::MainnetActivationRequired(_)
+                        | DecodeError::ExperimentalOpcodeDisabled(_, IsaProfile::Production)
+                ),
+                "{op:?} must stay closed on mainnet"
             );
         }
     }
