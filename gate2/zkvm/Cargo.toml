@@ -1,0 +1,37 @@
+# gate2/zkvm - internal zkVM stack (ISA, VM, prover, state, compiler, registry,
+# note packing). Deliberately a SEPARATE workspace from the repo root: its test
+# and lint profile must not perturb the Gate 1.0 regression floor, and the panic
+# gates below are prover-specific liveness rules (a verifier that dies on
+# malformed input is a outage waiting to happen, per the auditor's own policy
+# culture - the counts live in this workspace, not the root's).
+[workspace]
+members = [
+  "zk-isa",
+  "zk-vm",
+  "zk-proof",
+  "zk-state",
+  "zk-compiler",
+  "verifier-registry",
+  "note-packing",
+]
+resolver = "2"
+
+# Inherited by every member via `license.workspace = true` exactly as the code
+# arrived. The identifier is the real one carried by the imported crates -
+# recording it is accuracy, not attribution: no source project name appears
+# anywhere in this workspace.
+[workspace.package]
+license = "LicenseRef-PolyForm-Shield-1.0.0"
+
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+
+# Field arithmetic (Goldilocks) and trace index derivation must never wrap
+# silently in release: a wrong proof instead of a crash is the failure mode.
+[profile.release]
+overflow-checks = true
+panic = "abort"
+lto = true
+codegen-units = 1
+strip = true
