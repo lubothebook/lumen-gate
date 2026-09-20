@@ -1,217 +1,251 @@
 {
-  "product": "Gate 2.0 - Proof of Migration (CCTP)",
-  "generated_at": "2026-09-20",
-  "network": "testnet",
-  "contracts": {
-    "spike_gate_testnet": {
-      "id": "CCXJS5BBZJZ3L7IQ36EUNKRMNUZCBZA745XJ7OB3U57WKAT3OGW6T2Q6",
-      "deploy_tx": "46e7a8774da88f27a1057f076cc290cb2f78b9d9854927a59c6ab50cd8be7bbc",
-      "ledger": 4769225,
-      "fee_stroops": 32673,
-      "wasm_bytes": 1641,
-      "note": "error-coded rebuild; predecessor in superseded[]",
-      "source": "stellar contract build/deploy from gate2/soroban/spike_gate"
-    },
-    "circle_testnet_reference": {
-      "stellar_domain27": {
-        "token_messenger_minter": "CDNG7HXAPBWICI2E3AUBP3YZWZELJLYSB6F5CC7WLDTLTHVM74SLRTHP",
-        "message_transmitter": "CBJ6MTCKKZG73PMDZCJMSFRD7DQEMI4FKDH7CGDSV4W6FHCRBCQAVVJY",
-        "cctp_forwarder": "CA66Q2WFBND6V4UEB7RD4SAXSVIWMD6RA4X3U32ELVFGXV5PJK4T4VSZ"
-      },
-      "sepolia_domain0": {
-        "usdc": "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
-        "token_messenger_v2": "0x8FE6B999Dc680CcFDD5Bf7EB0974218be2542DAA",
-        "message_transmitter_v2": "0xE737e5cEBEEBa77EFE34D4aa090756590b1CE275"
-      },
-      "native_usdc_stellar_testnet": "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA",
-      "source": "developers.circle.com contract-addresses.md + stellar-contracts.md pages fetched 2026-09-20; the Stellar USDC id was read from TMM.get_local_token(0, sepoliaUsdc) on-chain, no page lists it"
-    },
-    "iris_api_testnet_base": "https://iris-api-sandbox.circle.com",
-    "burn_router_local": {
-      "state": "built+tested not deployed",
-      "size_runtime_bytes": 3716,
-      "tests": "23/23 local and CI (evm-tests job)",
-      "artifact_note": "gate2/evm/out is a build product, gitignored by design"
-    }
+ "product": "Gate 2.0 - Proof of Migration (CCTP)",
+ "generated_at": "2026-09-20",
+ "network": "testnet",
+ "contracts": {
+  "spike_gate_testnet": {
+   "id": "CCXJS5BBZJZ3L7IQ36EUNKRMNUZCBZA745XJ7OB3U57WKAT3OGW6T2Q6",
+   "deploy_tx": "46e7a8774da88f27a1057f076cc290cb2f78b9d9854927a59c6ab50cd8be7bbc",
+   "ledger": 4769225,
+   "fee_stroops": 32673,
+   "wasm_bytes": 1641,
+   "note": "error-coded rebuild; predecessor in superseded[]",
+   "source": "stellar contract build/deploy from gate2/soroban/spike_gate"
   },
-  "spikes": [
-    {
-      "id": "S2",
-      "question": "Sepolia->Stellar lane and Iris sandbox API live?",
-      "status": "open-partial (attestation API and both ends' contracts live and answering; the lane's ONE real transaction needs testnet funds - see findings)",
-      "answer": "iris /v2/publicKeys returns the attester set (200, no key); MT.get_local_domain=27, get_version=1, get_max_message_body_size=8192; TMM.get_message_body_version=1; TMM.paused=false; fee endpoint answers live",
-      "date": "2026-09-20",
-      "evidence": [
-        "GET https://iris-api-sandbox.circle.com/v2/publicKeys -> 200 JSON",
-        "simulates via stellar contract invoke --send=no on the deployed ids above",
-        "GET https://iris-api-sandbox.circle.com/v2/burn/USDC/fees/0/27 -> [{1000:1},{2000:0}]"
-      ]
-    },
-    {
-      "id": "S6",
-      "question": "Real fee and time for fast (1000) vs standard (2000)",
-      "status": "answered (fees live from Circle API; times from the official finality table)",
-      "answer": "route 0->27: FAST minimumFee 1 subunit (0.000001 USDC), STANDARD minimumFee 0; attestation time: fast ~2 blocks/~20s, standard ~65 blocks/15-19 min; Stellar destination mint ~1 ledger/~5s; TMM.get_min_fee(usdc)=0 on-chain floor",
-      "date": "2026-09-20",
-      "evidence": [
-        "/v2/burn/USDC/fees/0/27 response recorded in gate2/scripts/spike-notes.md",
-        "finality-and-block-confirmations.md rows for Ethereum"
-      ]
-    },
-    {
-      "id": "S3",
-      "question": "amount vs fee vs feeExecuted: what mints on Stellar",
-      "status": "open-partial (the conversion config is on-chain; the one-transaction ledger arithmetic needs the burn leg)",
-      "answer": "TMM.get_token_decimal_config -> {canonical_decimals:6, local_decimals:7}: the mint is message.amount minus executed fee, scaled x10, per the stellar.md worked example (123456 -> 1234560). The burned-on-arrival amount for a real transfer is only knowable from a real claim's balance - pending funds",
-      "date": "2026-09-20",
-      "evidence": [
-        "simulation transcript in spike-notes.md"
-      ]
-    },
-    {
-      "id": "S4",
-      "question": "does the destination CONTRACT need a USDC trustline for the mint?",
-      "status": "answered-by-mechanism + open-by-transaction (the mechanism: CCTP mints to CctpForwarder - a CONTRACT - on every inbound transfer today, so contract-side balance creation without a user-style trustline is the protocol's own happy path; whether an ARBITRARY contract (SpikeGate) needs anything extra is exactly what S1's claim will print)",
-      "answer": "user-side accounts DO need a trustline before burn (UI gate stays); contract-side: answered by the S1 claim's balance read",
-      "date": "2026-09-20",
-      "evidence": [
-        "spike-notes.md doc section; CctpForwarder flow description"
-      ]
-    },
-    {
-      "id": "S5",
-      "question": "soulbound NFT: standard or minimal bespoke",
-      "status": "answered (decision at F3, with a test, as promised)",
-      "answer": "minimal home-grown soulbound proof: the contract simply has no transfer, no approve, no burn_of; a transfer attempt is an unknown-function error. OpenZeppelin-Stellar was weighed and refused: pulling a transferable NFT base in and disabling parts of it would leave dead doors in the bytecode, while the directive asks for functions that are not there at all.",
-      "date": "2026-09-20",
-      "evidence": [
-        "cargo test -p gate_claim --lib test::the_proof_is_soulbound_because_there_is_nothing_to_call (try_invoke_contract of `transfer` returns Err)",
-        "owner_of/get_meta/get_proof read the same ids back from storage"
-      ]
-    },
-    {
-      "id": "S1",
-      "question": "GateClaim-as-mintRecipient+destinationCaller: can the transmitter route to it and can a CCTP mint land on it",
-      "status": "PENDING FUNDS - everything else is ready",
-      "answer": "driver gate2/scripts/spike-s1.mjs (burn/claim) + receiver contract deployed (contracts.spike_gate_testnet); the doc-side analysis narrowed the question: C-recipients are the protocol's normal mint target (forwarder flow), destinationCaller=GateClaim removes the race (receive_message require_auth on caller bytes); the residual unknown is SpikeGate's post-claim balance",
-      "date": "2026-09-20",
-      "evidence": [
-        "deploy tx fa5d6379b324c1ec1c432c1fe8cae609ae0015ce6a704667e51b69cdf02046fa ledger 4769073 (self-paid 3,995,983 stroops)",
-        "spike-s1.mjs status exits 3 with the funding address when empty"
-      ]
-    }
-  ],
-  "receipts": [],
-  "negative_probes": [],
-  "findings": [
-    "F0: repo-gate's 'exactly one directive file' rule matches DIRECTIVE-1.0.md too, so that single gate check now fails as a direct consequence of the mandated rename (scripts/repo-gate.sh is frozen Gate 1.0 territory and is not edited); the 2.0 regression gate is 'cargo test --workspace --lib' per DIRECTIVE 2.0 section 4.",
-    "F0: the directive cites 1.0 test counts as '12 / 11 / 3'; the crate suites in this repository measure differently (finality_registry carries 61 tests, gate_vm 17, and more after the 32-line sibling lane). Regression is pinned to the actual counts recorded in this phase's run output, not to the cited numbers; the discrepancy is written down instead of quietly reconciled.",
-    "F0: the sandbox that hosts this work has twice rebuilt from a snapshot between turns, dropping .git and the toolchain directories; everything durable lives in the pushed gate-2.0 branch, and local toolchains are treated as disposable.",
-    "F0 (parallel sibling pass, merged): the localised-text gate scans tracked file CONTENTS for Turkish letters, which is why the 2.0 directive is stored diacritic-free with wording intact; the re-tune of the frozen 1.0 gate rules is not F0's to perform.",
-    "F0 (parallel sibling pass, merged): an empty array in this manifest means NOT YET, never NOTHING FOUND - failed probes land in findings[]/negative_probes[] with their transcripts, and silence in this file is not evidence of absence of problems.",
-    "F0 (reconciliation): the sibling skeleton described GateClaim as a byte-for-byte relocation of the 1.0 claim crate at F1; DIRECTIVE 2.0 defines GateClaim as a new CCTP claim contract with F1 as the S1-S6 spike phase. The operator's verbatim text governs; the misreading is recorded instead of silently deleted.",
-    "F0 (environment): the round-23 audit run proved the sandbox toolchain is survivable but identities are not - the 1.0 demo signer secret was destroyed in a snapshot rebuild. For 2.0 this is a design lesson, not an accident: keys that gate a claim path must never be single-sandbox-local, and the F2 script that claims manually must generate its receiving keypair at run time, fund it via friendbot, and print nothing secret - the stranger flow of 1.0 is the template.",
-    "F0 (environment): deployments/testnet.json's finality_registry field still names the legacy v1 contract while rounds 21+ measure the v2 five-slot registry from deployments/registry-v2.json; any 2.0 spike script that reads 'the registry' from a manifest must read it from the v2 file explicitly. Recorded, not patched (frozen 1.0 file).",
-    "F1 (tooling): the CLI's BytesN<32> parser wants bare hex without the 0x prefix and without JSON quotes; two documented formats 400 first - recorded because F8's audit script parses the same types.",
-    "F1 (blocker, reported per directive section 10): the EVM funding leg needs testnet ETH + Circle faucet access. The captcha-less Circle faucet API is gone (now developer-console), and the public no-captcha Sepolia ETH faucets probed from this sandbox are down or unreachable. The F1 drivers are written, the receiver contract is deployed and live, and the spike will complete the first time the runtime address holds funds; `node gate2/scripts/spike-s1.mjs status` prints the address and re-checks. No simulated burn will substitute for the real one.",
-    "F1 (rebuild survival): this sandbox lost .git and parts of ~/.cargo for the third time mid-session; the durable record of F1 is this manifest + the gate-2.0 branch, and the recovery recipe is now recorded in gate2/scripts/spike-notes.md toolchain notes.",
-    "HARDENING annex received (2026-09-20): installed as HARDENING-2.0.md (transliterated like the 2.0 doc itself); its file list extends the 'new files allowed' set to root HARDENING-2.0.md/SECURITY.md/.gitleaks.toml/.github/workflows/gate-hardening.yml and deployments/hardening-2.0.json - read as the operator's own amendment, recorded rather than silently expanded.",
-    "HARDENING 5.5 open design question, recorded verbatim for F5: if MigrationSummary could ever decrease (a future 'undo'), should tiers downgrade? The 2.0 doc says upgrade-only is free; downgrade policy is undefined. Not decided here; not forgotten.",
-    {
-      "id": "s14",
-      "text": "slither reentrancy-balance on BurnRouter (5 sites): REFUTED with evidence - the flagged pattern (balance read around external calls) is annex 4.2s required delta measurement; the function is nonReentrant-guarded in OZ pattern and the refusal is proven by the attacking token itself; no suppression flag added",
-      "at": "2026-09-20T02:55:03Z"
-    },
-    {
-      "id": "s15",
-      "text": "slither timestamp + unused-return on BurnRouter: REFUTED - deadline comparison IS the 4.3 mechanism; ignoring the venue return value IS the trust-no-claim rule (measurement in its place)",
-      "at": "2026-09-20T02:55:03Z"
-    },
-    {
-      "id": "s16",
-      "text": "forge-std clone at CI yields old string-API stdJson; the ABI-reading surface test was replaced by a dispatch-level experiment (10 privileged selectors must miss; no fallback/receive; entry points reach past dispatch) - stronger and API-drift-free",
-      "at": "2026-09-20T02:55:03Z"
-    },
-    {
-      "id": "s17",
-      "text": "foundryup new-build XDG path vs old path broke the first evm-tests CI run (exit 127) while local stayed green - here-green-there-red caught by real CI; workflow exports both paths",
-      "at": "2026-09-20T02:55:03Z"
-    },
-    {
-      "id": "s18",
-      "text": "gate2/zkvm benches carry unwrap/expect under their own deny gates (upstream-scoped clippy to lib+test); CI mirrors that scope and records the divergence rather than silently patching bench code or silently widening lints",
-      "at": "2026-09-20T03:12:08Z"
-    },
-    "F3 (tooling): soroban-sdk 28 gates Address<->bytes32 introspection behind the hazmat-address feature; gate_claim enables it for the single purpose of comparing CCTP wire addresses, and says so at the top of the file instead of hiding it.",
-    "F3 (tooling): the sandbox killed stellar-xdr's compile at -j default (SIGKILL, OOM); the workspace suite now runs at -j 2 with debug info off. Recorded so the next rebuild does not rediscover it as a mystery failure.",
-    "F3 (tooling): persistent TTL is only readable from inside a contract context in tests (env.as_contract); the bump test measures through it rather than pretending the host storage is public."
-  ],
-  "superseded": [
-    {
-      "artifact": "spike_gate deployment CAKZ636NMQ3ZPWM5C2KQBM42WGO5RZ2QDFNQ4YKLJQ4XBWNVXTKHQ2JL",
-      "deploy_tx": "fa5d6379b324c1ec1c432c1fe8cae609ae0015ce6a704667e51b69cdf02046fa",
-      "superseded_by": "CCXJS5BBZJZ3L7IQ36EUNKRMNUZCBZA745XJ7OB3U57WKAT3OGW6T2Q6",
-      "reason": "HARDENING-2.0.md section 5.1 adopted before any claim ran: refusals return error codes (Error::TransmitterRefused) so probes learn WHICH check failed, not a bare assert trap. The old contract was live and functional - retired for policy, not malfunction; S1 never ran against it, no evidence orphaned.",
-      "date": "2026-09-20"
-    }
-  ],
-  "post_deploy_checks": [
-    {
-      "check": "transmitter domain is 27",
-      "re": "stellar contract invoke --id CBJ6MTCKKZG73PMDZCJMSFRD7DQEMI4FKDH7CGDSV4W6FHCRBCQAVVJY --network testnet --source <any-funded-id> --send=no -- get_local_domain",
-      "expect": "27",
-      "last_run": "2026-09-20",
-      "last_result": "27"
-    },
-    {
-      "check": "messenger not paused / min fee / cap",
-      "re": "same pattern on CDNG7HXA...: paused -> false; get_min_fee --burn_token CBIELTK6... -> 0; get_max_burn_amount_per_message -> 10000000000000",
-      "expect": "false / 0 / 10000000000000",
-      "last_run": "2026-09-20",
-      "last_result": "all three matched"
-    },
-    {
-      "check": "decimal bridge still {6,7}",
-      "re": "TMM get_token_decimal_config --local_token CBIELTK6...",
-      "expect": "canonical 6 local 7",
-      "last_run": "2026-09-20",
-      "last_result": "{\"canonical_decimals\":6,\"local_decimals\":7}"
-    },
-    {
-      "check": "iris sandbox alive",
-      "re": "curl -s https://iris-api-sandbox.circle.com/v2/publicKeys",
-      "expect": "publicKeys array",
-      "last_run": "2026-09-20",
-      "last_result": "HTTP 200 with keys"
-    },
-    {
-      "check": "route fee table",
-      "re": "curl -s https://iris-api-sandbox.circle.com/v2/burn/USDC/fees/0/27",
-      "expect": "[{1000,1},{2000,0}]",
-      "last_run": "2026-09-20",
-      "last_result": "matched"
-    },
-    {
-      "check": "receiver contract liveness",
-      "re": "stellar contract invoke --id CCXJS5BBZJZ3L7IQ36EUNKRMNUZCBZA745XJ7OB3U57WKAT3OGW6T2Q6 --network testnet --source <id> --send=no -- last_balance",
-      "expect": "null (fresh) - answers without error = deployed+callable",
-      "last_run": "pending first call",
-      "last_result": null
-    }
-  ],
-  "phases": [
-    {
-      "id": "F3-code",
-      "status": "code and unit proofs green; testnet receipts still gated on F2 funds",
-      "done": [
-        "GateClaim implemented per section 5.2: parse+verify, receive_message hand-off, measured 6->7 decimal forward, soulbound NFT mint, MigrationSummary, get_migration/has_migrated_at_least/get_proof/get_meta/owner_of/proofs_of/bump",
-        "seven unit proofs: happy path forwards everything and holds nothing, replay refused by stored message hash, corrupted attestation traps inside receive_message with zero movement, wrong destinationCaller/mintRecipient/source domain/destination domain/burn token each refused with its own error code, broken hook refused before anything moves, bump lifts an aged persistent record and needs no auth",
-        "gate_campaign_example implemented per 5.3 and tested against the REAL GateClaim in one env: Bronze/Silver upgrade path and NoMigration/BelowBronze refusals"
-      ],
-      "evidence": [
-        "cargo test --workspace --lib (2026-09-20): gate_claim 7/7, gate_campaign_example 2/2, 1.0 suites unchanged at 61/17/11/20/28"
-      ],
-      "not_claimed": "no testnet claim receipt exists yet; NFT metadata from a live chain read belongs to F3's acceptance and waits on the F2 burn, which waits on Sepolia funds"
-    }
-  ]
+  "circle_testnet_reference": {
+   "stellar_domain27": {
+    "token_messenger_minter": "CDNG7HXAPBWICI2E3AUBP3YZWZELJLYSB6F5CC7WLDTLTHVM74SLRTHP",
+    "message_transmitter": "CBJ6MTCKKZG73PMDZCJMSFRD7DQEMI4FKDH7CGDSV4W6FHCRBCQAVVJY",
+    "cctp_forwarder": "CA66Q2WFBND6V4UEB7RD4SAXSVIWMD6RA4X3U32ELVFGXV5PJK4T4VSZ"
+   },
+   "sepolia_domain0": {
+    "usdc": "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
+    "token_messenger_v2": "0x8FE6B999Dc680CcFDD5Bf7EB0974218be2542DAA",
+    "message_transmitter_v2": "0xE737e5cEBEEBa77EFE34D4aa090756590b1CE275"
+   },
+   "native_usdc_stellar_testnet": "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA",
+   "source": "developers.circle.com contract-addresses.md + stellar-contracts.md pages fetched 2026-09-20; the Stellar USDC id was read from TMM.get_local_token(0, sepoliaUsdc) on-chain, no page lists it"
+  },
+  "iris_api_testnet_base": "https://iris-api-sandbox.circle.com",
+  "burn_router_local": {
+   "state": "built+tested not deployed",
+   "size_runtime_bytes": 3716,
+   "tests": "23/23 local and CI (evm-tests job)",
+   "artifact_note": "gate2/evm/out is a build product, gitignored by design"
+  },
+  "gate_claim_testnet": {
+   "id": "CDQ3PA5LBLIS22VXJSHXLOPFDD2ZDWPQWODIBLA5KPBOTKIXKOUZI4K2",
+   "wasm_build": "stellar contract build (v28 CLI), env-meta ok",
+   "deploy_tx": "aa42150122ad56b066c7ee23fa2a10f3cbcf5ff9886a1fbb52f22dedc36e2a33",
+   "deploy_ledger": 4770371,
+   "deploy_fee_stroops": 22313653,
+   "init_tx": "21c53dfec579d4e61a5bde4e5bb30d726f3acb4d4c69f4ca577186cc3a1113e8",
+   "init_ledger": 4770385,
+   "init_fee_stroops": 71847,
+   "config": {
+    "mt": "CBJ6MTCKKZG73PMDZCJMSFRD7DQEMI4FKDH7CGDSV4W6FHCRBCQAVVJY",
+    "usdc": "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA",
+    "burn_token": "0000000000000000000000001c7d4b196cb0c7b01d743fbc6116a902379c7238",
+    "allowed": [
+     0,
+     1
+    ]
+   },
+   "onchain_negatives": [
+    "claim(junk) -> HostError Error(Contract, #3) MessageTooShort (error code, no panic; funds state untouched)",
+    "initialize(twice) -> Error(Contract, #1) AlreadyInitialized (the one-shot deployer window closed for good)"
+   ],
+   "deployer_note": "funded via audit-probe only (least-privilege pattern continues); no funds held: the contract forwards everything it mints within the same call (balance-delta rule)"
+  }
+ },
+ "spikes": [
+  {
+   "id": "S2",
+   "question": "Sepolia->Stellar lane and Iris sandbox API live?",
+   "status": "open-partial (attestation API and both ends' contracts live and answering; the lane's ONE real transaction needs testnet funds - see findings)",
+   "answer": "iris /v2/publicKeys returns the attester set (200, no key); MT.get_local_domain=27, get_version=1, get_max_message_body_size=8192; TMM.get_message_body_version=1; TMM.paused=false; fee endpoint answers live",
+   "date": "2026-09-20",
+   "evidence": [
+    "GET https://iris-api-sandbox.circle.com/v2/publicKeys -> 200 JSON",
+    "simulates via stellar contract invoke --send=no on the deployed ids above",
+    "GET https://iris-api-sandbox.circle.com/v2/burn/USDC/fees/0/27 -> [{1000:1},{2000:0}]"
+   ]
+  },
+  {
+   "id": "S6",
+   "question": "Real fee and time for fast (1000) vs standard (2000)",
+   "status": "answered (fees live from Circle API; times from the official finality table)",
+   "answer": "route 0->27: FAST minimumFee 1 subunit (0.000001 USDC), STANDARD minimumFee 0; attestation time: fast ~2 blocks/~20s, standard ~65 blocks/15-19 min; Stellar destination mint ~1 ledger/~5s; TMM.get_min_fee(usdc)=0 on-chain floor",
+   "date": "2026-09-20",
+   "evidence": [
+    "/v2/burn/USDC/fees/0/27 response recorded in gate2/scripts/spike-notes.md",
+    "finality-and-block-confirmations.md rows for Ethereum"
+   ]
+  },
+  {
+   "id": "S3",
+   "question": "amount vs fee vs feeExecuted: what mints on Stellar",
+   "status": "open-partial (the conversion config is on-chain; the one-transaction ledger arithmetic needs the burn leg)",
+   "answer": "TMM.get_token_decimal_config -> {canonical_decimals:6, local_decimals:7}: the mint is message.amount minus executed fee, scaled x10, per the stellar.md worked example (123456 -> 1234560). The burned-on-arrival amount for a real transfer is only knowable from a real claim's balance - pending funds",
+   "date": "2026-09-20",
+   "evidence": [
+    "simulation transcript in spike-notes.md"
+   ]
+  },
+  {
+   "id": "S4",
+   "question": "does the destination CONTRACT need a USDC trustline for the mint?",
+   "status": "answered-by-mechanism + open-by-transaction (the mechanism: CCTP mints to CctpForwarder - a CONTRACT - on every inbound transfer today, so contract-side balance creation without a user-style trustline is the protocol's own happy path; whether an ARBITRARY contract (SpikeGate) needs anything extra is exactly what S1's claim will print)",
+   "answer": "user-side accounts DO need a trustline before burn (UI gate stays); contract-side: answered by the S1 claim's balance read",
+   "date": "2026-09-20",
+   "evidence": [
+    "spike-notes.md doc section; CctpForwarder flow description"
+   ]
+  },
+  {
+   "id": "S5",
+   "question": "soulbound NFT: standard or minimal bespoke",
+   "status": "answered (decision at F3, with a test, as promised)",
+   "answer": "minimal home-grown soulbound proof: the contract simply has no transfer, no approve, no burn_of; a transfer attempt is an unknown-function error. OpenZeppelin-Stellar was weighed and refused: pulling a transferable NFT base in and disabling parts of it would leave dead doors in the bytecode, while the directive asks for functions that are not there at all.",
+   "date": "2026-09-20",
+   "evidence": [
+    "cargo test -p gate_claim --lib test::the_proof_is_soulbound_because_there_is_nothing_to_call (try_invoke_contract of `transfer` returns Err)",
+    "owner_of/get_meta/get_proof read the same ids back from storage"
+   ]
+  },
+  {
+   "id": "S1",
+   "question": "GateClaim-as-mintRecipient+destinationCaller: can the transmitter route to it and can a CCTP mint land on it",
+   "status": "PENDING FUNDS - everything else is ready",
+   "answer": "driver gate2/scripts/spike-s1.mjs (burn/claim) + receiver contract deployed (contracts.spike_gate_testnet); the doc-side analysis narrowed the question: C-recipients are the protocol's normal mint target (forwarder flow), destinationCaller=GateClaim removes the race (receive_message require_auth on caller bytes); the residual unknown is SpikeGate's post-claim balance",
+   "date": "2026-09-20",
+   "evidence": [
+    "deploy tx fa5d6379b324c1ec1c432c1fe8cae609ae0015ce6a704667e51b69cdf02046fa ledger 4769073 (self-paid 3,995,983 stroops)",
+    "spike-s1.mjs status exits 3 with the funding address when empty"
+   ]
+  }
+ ],
+ "receipts": [],
+ "negative_probes": [],
+ "findings": [
+  "F0: repo-gate's 'exactly one directive file' rule matches DIRECTIVE-1.0.md too, so that single gate check now fails as a direct consequence of the mandated rename (scripts/repo-gate.sh is frozen Gate 1.0 territory and is not edited); the 2.0 regression gate is 'cargo test --workspace --lib' per DIRECTIVE 2.0 section 4.",
+  "F0: the directive cites 1.0 test counts as '12 / 11 / 3'; the crate suites in this repository measure differently (finality_registry carries 61 tests, gate_vm 17, and more after the 32-line sibling lane). Regression is pinned to the actual counts recorded in this phase's run output, not to the cited numbers; the discrepancy is written down instead of quietly reconciled.",
+  "F0: the sandbox that hosts this work has twice rebuilt from a snapshot between turns, dropping .git and the toolchain directories; everything durable lives in the pushed gate-2.0 branch, and local toolchains are treated as disposable.",
+  "F0 (parallel sibling pass, merged): the localised-text gate scans tracked file CONTENTS for Turkish letters, which is why the 2.0 directive is stored diacritic-free with wording intact; the re-tune of the frozen 1.0 gate rules is not F0's to perform.",
+  "F0 (parallel sibling pass, merged): an empty array in this manifest means NOT YET, never NOTHING FOUND - failed probes land in findings[]/negative_probes[] with their transcripts, and silence in this file is not evidence of absence of problems.",
+  "F0 (reconciliation): the sibling skeleton described GateClaim as a byte-for-byte relocation of the 1.0 claim crate at F1; DIRECTIVE 2.0 defines GateClaim as a new CCTP claim contract with F1 as the S1-S6 spike phase. The operator's verbatim text governs; the misreading is recorded instead of silently deleted.",
+  "F0 (environment): the round-23 audit run proved the sandbox toolchain is survivable but identities are not - the 1.0 demo signer secret was destroyed in a snapshot rebuild. For 2.0 this is a design lesson, not an accident: keys that gate a claim path must never be single-sandbox-local, and the F2 script that claims manually must generate its receiving keypair at run time, fund it via friendbot, and print nothing secret - the stranger flow of 1.0 is the template.",
+  "F0 (environment): deployments/testnet.json's finality_registry field still names the legacy v1 contract while rounds 21+ measure the v2 five-slot registry from deployments/registry-v2.json; any 2.0 spike script that reads 'the registry' from a manifest must read it from the v2 file explicitly. Recorded, not patched (frozen 1.0 file).",
+  "F1 (tooling): the CLI's BytesN<32> parser wants bare hex without the 0x prefix and without JSON quotes; two documented formats 400 first - recorded because F8's audit script parses the same types.",
+  "F1 (blocker, reported per directive section 10): the EVM funding leg needs testnet ETH + Circle faucet access. The captcha-less Circle faucet API is gone (now developer-console), and the public no-captcha Sepolia ETH faucets probed from this sandbox are down or unreachable. The F1 drivers are written, the receiver contract is deployed and live, and the spike will complete the first time the runtime address holds funds; `node gate2/scripts/spike-s1.mjs status` prints the address and re-checks. No simulated burn will substitute for the real one.",
+  "F1 (rebuild survival): this sandbox lost .git and parts of ~/.cargo for the third time mid-session; the durable record of F1 is this manifest + the gate-2.0 branch, and the recovery recipe is now recorded in gate2/scripts/spike-notes.md toolchain notes.",
+  "HARDENING annex received (2026-09-20): installed as HARDENING-2.0.md (transliterated like the 2.0 doc itself); its file list extends the 'new files allowed' set to root HARDENING-2.0.md/SECURITY.md/.gitleaks.toml/.github/workflows/gate-hardening.yml and deployments/hardening-2.0.json - read as the operator's own amendment, recorded rather than silently expanded.",
+  "HARDENING 5.5 open design question, recorded verbatim for F5: if MigrationSummary could ever decrease (a future 'undo'), should tiers downgrade? The 2.0 doc says upgrade-only is free; downgrade policy is undefined. Not decided here; not forgotten.",
+  {
+   "id": "s14",
+   "text": "slither reentrancy-balance on BurnRouter (5 sites): REFUTED with evidence - the flagged pattern (balance read around external calls) is annex 4.2s required delta measurement; the function is nonReentrant-guarded in OZ pattern and the refusal is proven by the attacking token itself; no suppression flag added",
+   "at": "2026-09-20T02:55:03Z"
+  },
+  {
+   "id": "s15",
+   "text": "slither timestamp + unused-return on BurnRouter: REFUTED - deadline comparison IS the 4.3 mechanism; ignoring the venue return value IS the trust-no-claim rule (measurement in its place)",
+   "at": "2026-09-20T02:55:03Z"
+  },
+  {
+   "id": "s16",
+   "text": "forge-std clone at CI yields old string-API stdJson; the ABI-reading surface test was replaced by a dispatch-level experiment (10 privileged selectors must miss; no fallback/receive; entry points reach past dispatch) - stronger and API-drift-free",
+   "at": "2026-09-20T02:55:03Z"
+  },
+  {
+   "id": "s17",
+   "text": "foundryup new-build XDG path vs old path broke the first evm-tests CI run (exit 127) while local stayed green - here-green-there-red caught by real CI; workflow exports both paths",
+   "at": "2026-09-20T02:55:03Z"
+  },
+  {
+   "id": "s18",
+   "text": "gate2/zkvm benches carry unwrap/expect under their own deny gates (upstream-scoped clippy to lib+test); CI mirrors that scope and records the divergence rather than silently patching bench code or silently widening lints",
+   "at": "2026-09-20T03:12:08Z"
+  },
+  "F3 (tooling): soroban-sdk 28 gates Address<->bytes32 introspection behind the hazmat-address feature; gate_claim enables it for the single purpose of comparing CCTP wire addresses, and says so at the top of the file instead of hiding it.",
+  "F3 (tooling): the sandbox killed stellar-xdr's compile at -j default (SIGKILL, OOM); the workspace suite now runs at -j 2 with debug info off. Recorded so the next rebuild does not rediscover it as a mystery failure.",
+  "F3 (tooling): persistent TTL is only readable from inside a contract context in tests (env.as_contract); the bump test measures through it rather than pretending the host storage is public.",
+  {
+   "id": "s19",
+   "text": "CLI trap recorded: `stellar contract deploy ... -- initialize ...` on v28 silently SKIPS constructor args unless the wasm defines __constructor - the deploy \"succeeded\" with an UNINITIALIZED contract (proven by claim returning #2 NotInitialized); the fix is a separate real init transaction, and the double-call refusal (#1 AlreadyInitialized) is now the receipt that the window closed exactly once",
+   "at": "2026-09-20T03:39:21Z"
+  },
+  {
+   "id": "s20",
+   "text": "hardening applied to the sibling-authored gate_claim (build-upon, no redesign): all byte-slice unwraps became bounds-checked Result helpers (5.1), addr32 expect -> AddrForm error, Seq increment checked (5.3), summary totals checked_add, bump unwrap_or; its unit tests MOVED from src/ to tests/ so the CI grep exempts the convention dir while src carries zero panic forms - the exemption is one --exclude-dir flag and one added --tests flag, both visible in the workflow diff",
+   "at": "2026-09-20T03:39:21Z"
+  }
+ ],
+ "superseded": [
+  {
+   "artifact": "spike_gate deployment CAKZ636NMQ3ZPWM5C2KQBM42WGO5RZ2QDFNQ4YKLJQ4XBWNVXTKHQ2JL",
+   "deploy_tx": "fa5d6379b324c1ec1c432c1fe8cae609ae0015ce6a704667e51b69cdf02046fa",
+   "superseded_by": "CCXJS5BBZJZ3L7IQ36EUNKRMNUZCBZA745XJ7OB3U57WKAT3OGW6T2Q6",
+   "reason": "HARDENING-2.0.md section 5.1 adopted before any claim ran: refusals return error codes (Error::TransmitterRefused) so probes learn WHICH check failed, not a bare assert trap. The old contract was live and functional - retired for policy, not malfunction; S1 never ran against it, no evidence orphaned.",
+   "date": "2026-09-20"
+  }
+ ],
+ "post_deploy_checks": [
+  {
+   "check": "transmitter domain is 27",
+   "re": "stellar contract invoke --id CBJ6MTCKKZG73PMDZCJMSFRD7DQEMI4FKDH7CGDSV4W6FHCRBCQAVVJY --network testnet --source <any-funded-id> --send=no -- get_local_domain",
+   "expect": "27",
+   "last_run": "2026-09-20",
+   "last_result": "27"
+  },
+  {
+   "check": "messenger not paused / min fee / cap",
+   "re": "same pattern on CDNG7HXA...: paused -> false; get_min_fee --burn_token CBIELTK6... -> 0; get_max_burn_amount_per_message -> 10000000000000",
+   "expect": "false / 0 / 10000000000000",
+   "last_run": "2026-09-20",
+   "last_result": "all three matched"
+  },
+  {
+   "check": "decimal bridge still {6,7}",
+   "re": "TMM get_token_decimal_config --local_token CBIELTK6...",
+   "expect": "canonical 6 local 7",
+   "last_run": "2026-09-20",
+   "last_result": "{\"canonical_decimals\":6,\"local_decimals\":7}"
+  },
+  {
+   "check": "iris sandbox alive",
+   "re": "curl -s https://iris-api-sandbox.circle.com/v2/publicKeys",
+   "expect": "publicKeys array",
+   "last_run": "2026-09-20",
+   "last_result": "HTTP 200 with keys"
+  },
+  {
+   "check": "route fee table",
+   "re": "curl -s https://iris-api-sandbox.circle.com/v2/burn/USDC/fees/0/27",
+   "expect": "[{1000,1},{2000,0}]",
+   "last_run": "2026-09-20",
+   "last_result": "matched"
+  },
+  {
+   "check": "receiver contract liveness",
+   "re": "stellar contract invoke --id CCXJS5BBZJZ3L7IQ36EUNKRMNUZCBZA745XJ7OB3U57WKAT3OGW6T2Q6 --network testnet --source <id> --send=no -- last_balance",
+   "expect": "null (fresh) - answers without error = deployed+callable",
+   "last_run": "pending first call",
+   "last_result": null
+  }
+ ],
+ "phases": [
+  {
+   "id": "F3-code",
+   "status": "code and unit proofs green; testnet receipts still gated on F2 funds",
+   "done": [
+    "GateClaim implemented per section 5.2: parse+verify, receive_message hand-off, measured 6->7 decimal forward, soulbound NFT mint, MigrationSummary, get_migration/has_migrated_at_least/get_proof/get_meta/owner_of/proofs_of/bump",
+    "seven unit proofs: happy path forwards everything and holds nothing, replay refused by stored message hash, corrupted attestation traps inside receive_message with zero movement, wrong destinationCaller/mintRecipient/source domain/destination domain/burn token each refused with its own error code, broken hook refused before anything moves, bump lifts an aged persistent record and needs no auth",
+    "gate_campaign_example implemented per 5.3 and tested against the REAL GateClaim in one env: Bronze/Silver upgrade path and NoMigration/BelowBronze refusals"
+   ],
+   "evidence": [
+    "cargo test --workspace --lib (2026-09-20): gate_claim 7/7, gate_campaign_example 2/2, 1.0 suites unchanged at 61/17/11/20/28"
+   ],
+   "not_claimed": "no testnet claim receipt exists yet; NFT metadata from a live chain read belongs to F3's acceptance and waits on the F2 burn, which waits on Sepolia funds"
+  }
+ ]
 }

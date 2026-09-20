@@ -109,8 +109,8 @@
    "status": "F4-BurnRouter: conformance suite 23/23 local+CI, slither triaged with evidence, NOT deployed yet (deployment belongs after the F2 lane); F2: acceptance = funded manual burn, still awaiting operator funds - the only missing input"
   },
   "F3": {
-   "gate": "TTL/bump negative + overflow tests",
-   "status": "not-started (GateClaim is F3)"
+   "status": "code landed by sibling session; hardening applied same day (zero panic forms, checked totals); local suites 7+2 green; ON-CHAIN: deployed with real init tx, both security-relevant negatives return error CODES live (#3 MessageTooShort, #1 AlreadyInitialized); tier boundary test suite (9.999999/10.000000 both directions) is the remaining F3 item before closure",
+   "ci": "gate-hardening regression job extended to --tests so the relocated suites run in CI"
   },
   "F4": {
    "gate": "slither/mythril/token-class fuzz",
