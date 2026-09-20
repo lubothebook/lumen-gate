@@ -77,6 +77,10 @@ function setWalletState(text, cls = "muted") {
 function onFreighter(f) {
   if (!f) {
     setWalletState("Freighter bulunamadı (geç yüklenirse tekrar denenecek)", "muted");
+    setWalletActions(
+      false,
+      "Bu tarayıcıda Freighter eklentisi yok. Okuma (Taşıma Kanıtım, StrKey) cüzdansız çalışır; imza isteyen düğmeler kapalı."
+    );
     return;
   }
   setWalletState("Freighter hazır — bağlanmak için tıkla", "ok");
@@ -100,7 +104,10 @@ function onFreighter(f) {
             setWalletState(`Bağlı ama Freighter ${name} üzerinde. Mainnet’te işlem düğmeleri kapalı.`, "error");
             $("btn-tier-send").disabled = true;
             $("btn-burn").disabled = true;
-            setWalletActions(false);
+            setWalletActions(
+              false,
+              `Freighter ${name} ağında — bu konsol yalnızca testnet’te işlem imzalar. Cüzdanı Stellar testnet’e al.`
+            );
           }
         } catch {
           /* getNetwork is advisory; some builds refuse it until unlocked */
@@ -127,9 +134,28 @@ function acctLog(text, hash) {
   }
 }
 
-function setWalletActions(on) {
+function setWalletActions(on, reason) {
   for (const id of ["btn-fund", "btn-trust-open", "btn-bump", "btn-trust-open-burn", "btn-stamp"]) {
-    if ($(id)) $(id).disabled = !on;
+    const b = $(id);
+    if (!b) continue;
+    b.disabled = !on;
+    // A disabled control should say why it is disabled. Without this the
+    // buttons just look broken.
+    if (on) b.removeAttribute("title");
+    else b.title = reason || "Önce Freighter ile bağlan — bu işlem imza ister.";
+  }
+  const gate = $("walletGate");
+  if (gate) {
+    if (on) {
+      gate.classList.add("hidden");
+    } else {
+      gate.classList.remove("hidden");
+      gate.innerHTML = "";
+      gate.append(
+        reason ||
+          "Yukarıdaki dört düğme bağlanınca açılır — hepsi Freighter imzası ister."
+      );
+    }
   }
 }
 

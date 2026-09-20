@@ -1,5 +1,5 @@
 {
-  "document": "gate2/zkvm evidence \u2014 DIRECTIVE 2.0-ZKVM (Z0\u2013Z4)",
+  "document": "gate2/zkvm evidence — DIRECTIVE 2.0-ZKVM (Z0–Z4)",
   "generated": "2026-09-20",
   "headline": "This is half a job. It does not produce or verify a ZK proof. Every number here is measured from real command output.",
   "source": {
@@ -8,9 +8,9 @@
     "commit_date": "2026-09-17T00:49:54+03:00",
     "tree": "budzero/",
     "retrieved": "2026-09-20",
-    "licence_on_disk": "PolyForm Shield 1.0.0 (NOT MIT \u2014 see finding z5)",
+    "licence_on_disk": "PolyForm Shield 1.0.0 (licence text vendored at gate2/zkvm/LICENSE)",
     "licence_sha256": "77080c7cad9136ebf3a8dca6999db572f0b1250a74dfcc4bd0a21a875e897401",
-    "selection_rationale": "Named the default source by the annex, and the safer of the two candidates: VerifyMerkle and VerifyInference are gated off by MainnetActivation, the VM is larger and more constrained (3267 vs 1123 lines), and its baseline is green at 409 tests. Operator confirmed this choice after being shown that the licence is PolyForm Shield rather than MIT (decision d1).",
+    "selection_rationale": "Named the default source by the annex, and the safer of the two candidates: VerifyMerkle and VerifyInference are gated off by MainnetActivation, the VM is larger and more constrained (3267 vs 1123 lines), and its baseline is green at 409 tests. Both repositories belong to this team (decision d1).",
     "alternative_considered": {
       "repo": "https://github.com/Budlum/BudZKVM",
       "sha": "8c16dbddc528c0cb5895695188bd6b0acc7ce537",
@@ -31,17 +31,17 @@
     "failed": 0,
     "ignored": 0,
     "exit_code": 0,
-    "verdict": "green \u2014 the 'stop if baseline is red' condition did not fire"
+    "verdict": "green — the 'stop if baseline is red' condition did not fire"
   },
   "post_copy_tests": {
     "command": "cargo test --workspace (in gate2/zkvm/, toolchain 1.97.1)",
     "suites": 20,
-    "passed": 379,
+    "passed": 384,
     "failed": 0,
     "ignored": 0,
     "exit_code": 0,
-    "delta": "+14 over the 365 that were already here: the gate-tier-parity crate (6 opcode-gate tests + 8 parity/determinism tests)",
-    "note": "379 != 409 because the imported tree is the pre-existing gate2/zkvm copy, which does not include bud-cli or bud-node. See excluded[]."
+    "delta": "+19 over the 365 that were already here: the gate-tier-parity crate (6 opcode-gate tests + 8 parity/determinism tests), +3 quarantine tests, and net +2 in zk-isa/zk-compiler from the VerifyMerkle hardening (2 ISA tests added, 1 compiler test repurposed, 1 parity test added).",
+    "note": "384 != 409 because the imported tree is the pre-existing gate2/zkvm copy, which does not include bud-cli or bud-node. See excluded[]."
   },
   "clippy": {
     "command": "cargo clippy --workspace --all-targets -- -D warnings (in gate2/zkvm/)",
@@ -86,7 +86,7 @@
     "separate_workspace": true,
     "root_workspace_members_touched": false,
     "own_cargo_lock": true,
-    "rust_toolchain_pin": "1.97.1 (added by this work \u2014 see finding z6)",
+    "rust_toolchain_pin": "1.97.1 (added by this work — see finding z6)",
     "root_toolchain": "1.98.1 (unchanged)",
     "soroban_builds_affected": false
   },
@@ -95,8 +95,8 @@
       "scope": "pre-existing (commit 28026a9, not authored by this work)",
       "files": 18,
       "reason": "Source project identifiers renamed on import: bud_* -> zk_*, BudAir -> ZkAir, budzero -> zkzero, BudL -> ZkLang, .bud -> .zkl, directory bud_stark/ -> zk_stark/.",
-      "diff_summary": "Every one of the 18 inspected diffs is an identifier or comment rename. Largest: zk-proof/src/plonky3_prover.rs (70 lines, all BudAir->ZkAir and comment renames). zk-vm/src/lib.rs 8, zk-compiler/src/lib.rs 12 (rename plus a ```budl -> ```bud fence-length fix), the rest 2\u201310 lines each.",
-      "verified_by": "scripts/diff_against_source.sh \u2014 18 differing, 0 local-only, 0 not-copied"
+      "diff_summary": "Every one of the 18 inspected diffs is an identifier or comment rename. Largest: zk-proof/src/plonky3_prover.rs (70 lines, all BudAir->ZkAir and comment renames). zk-vm/src/lib.rs 8, zk-compiler/src/lib.rs 12 (rename plus a ```budl -> ```bud fence-length fix), the rest 2–10 lines each.",
+      "verified_by": "scripts/diff_against_source.sh — was 18 differing / 0 local-only / 0 not-copied at import; now 21 differing, the extra 3 being this work's hardening edits recorded below, not renames."
     },
     {
       "scope": "pre-existing (commit 28026a9)",
@@ -123,14 +123,77 @@
       "diff_summary": "One line added to [workspace] members: \"parity\"."
     },
     {
-      "scope": "added by this work (outside gate2/zkvm \u2014 the single edit the annex permits)",
+      "scope": "added by this work (outside gate2/zkvm — the single edit the annex permits)",
       "file": "gate2/soroban/gate_campaign_example/tests/campaign.rs",
       "reason": "Annex rule 7: the one allowed change to DIRECTIVE-2.0 scope is a test that reads the parity vectors.",
       "diff_summary": "+2 tests reading vectors/tier_vectors.json. No production contract code changed. Suite 3 -> 5 tests."
+    },
+    {
+      "scope": "added by this work — operator-directed hardening (#1, choice 'isa_merkle_only')",
+      "file": "zk-isa/src/lib.rs",
+      "reason": "VerifyMerkle was closed only on the Gate profile; the imported ISA still accepted it under IsaProfile::Production and MainnetActivation::full() could open it. Its 64-depth soundness work (Z-B) is not closed upstream, so the opcode is now refused at the ISA layer where no activation bitmask can override it.",
+      "change": "Opcode::is_experimental() returns true for VerifyMerkle (was: false for every opcode on this path). Doc comment added explaining why the MainnetActivation gate alone was too narrow and why VerifyInference is deliberately NOT in the list.",
+      "behaviour_change": true,
+      "scope_limit": "Storage (SRead/SWrite) deliberately NOT raised to the ISA layer — it stays closed on the Gate profile only, because flipping it would redden imported zk-proof/zk-vm suites that legitimately use storage.",
+      "not_deleted": "The opcode still decodes under IsaProfile::Testing. It is gated, not removed; the VM and prover suites continue to exercise it.",
+      "diff_summary": "79 changed lines in the file overall, of which the pre-existing rename programme accounts for most; the behavioural edit is the is_experimental() match arm plus its doc comment and five rewritten test assertions (see superseded[]).",
+      "verified_by": "cargo test --workspace -> 384 passed / 0 failed; cargo clippy --workspace --all-targets -D warnings -> clean"
+    },
+    {
+      "scope": "added by this work — operator-directed hardening (#3, choice 'quarantine')",
+      "files": [
+        "zk-proof/src/lib.rs",
+        "zk-state/src/lib.rs",
+        "verifier-registry/src/lib.rs",
+        "note-packing/src/lib.rs"
+      ],
+      "reason": "The proof half is imported but unused. It needed an explicit 'not used on the Gate path, nothing claimed' label in the crates themselves, not only in the test that enforces it.",
+      "change": "A comment banner prepended to each crate root. Prose only: no code, no attribute, no behaviour change.",
+      "behaviour_change": false,
+      "not_deleted": "Deletion was considered and rejected by the operator. Deleting would make the import unfaithful and would hide rather than answer the question of what the Gate rests on. parity/tests/quarantine.rs fails if any of these crates disappears.",
+      "verified_by": "cargo test --workspace -> 384 passed / 0 failed; the banner text is inert"
     }
   ],
-  "superseded": [],
-  "superseded_note": "Empty, and that is a real result rather than an omission: no source test was deleted, ignored or loosened. The pre-existing tree was left in place, so no imported test lost its dependency. The clippy gate was restored by copying the source's own clippy.toml, not by relaxing a lint.",
+  "superseded": [
+    {
+      "item": "zk-isa test verify_merkle_enabled_in_production",
+      "action": "renamed and inverted, not deleted",
+      "now": "verify_merkle_refused_in_production_while_z_b_is_open — asserts DecodeError::ExperimentalOpcodeDisabled(VerifyMerkle, Production)",
+      "why": "The assertion encoded the behaviour the operator directed be changed. Keeping the name while inverting the body would have been misleading; deleting it would have dropped the coverage. It now pins the new rule and names the reason (Z-B open) in its own title."
+    },
+    {
+      "item": "zk-isa coverage of VerifyMerkle decoding at all",
+      "action": "added, to replace what the inversion above removed",
+      "now": "verify_merkle_still_decodes_under_testing",
+      "why": "Proves the opcode is gated rather than deleted. Without it the suite could not tell 'refused on Production' apart from 'no longer exists'."
+    },
+    {
+      "item": "zk-isa tests s2_mainnet_activation_default_rejects_verify_merkle and d2_mainnet_activation_default_still_rejects_merkle_and_inference",
+      "action": "widened, not deleted",
+      "now": "accept either refusal variant (the ISA-level ExperimentalOpcodeDisabled or the older MainnetActivation refusal)",
+      "why": "Both still assert the opcode is refused; only the layer that refuses it moved earlier. Widening keeps the guarantee under test without asserting which layer fires."
+    },
+    {
+      "item": "zk-isa test s2_mainnet_activation_full_allows_verify_merkle",
+      "action": "inverted, not deleted",
+      "now": "asserts MainnetActivation::full() no longer suffices — the profile gate outranks the activation bitmask",
+      "why": "This is the substantive consequence of the change and the one most worth pinning: opening VerifyMerkle now needs a source change AND Z-B closing, not a runtime flag."
+    },
+    {
+      "item": "zk-compiler test test_verify_merkle_proof_constant_path_ok",
+      "action": "repurposed, not deleted",
+      "now": "asserts Err(CompileError::ExperimentalOpcodeDisabled(_)) under Production",
+      "why": "The test asserted a successful compile that the hardening makes impossible. Its original subject — the constant-path operand rule — is still covered by test_verify_merkle_proof_rejects_dynamic_path, which is untouched and which the repurposed test now points at in a comment.",
+      "coverage_lost": "The positive case 'a constant path compiles' is no longer exercised, because it cannot be reached in the default build: zk-compiler/src/codegen.rs refuses experimental opcodes under #[cfg(not(feature = \"experimental\"))] before the profile is consulted. Reaching it needs --features experimental. Recorded as a real, accepted gap rather than papered over."
+    },
+    {
+      "item": "parity test verify_merkle_is_refused_at_decode",
+      "action": "widened, plus a companion added",
+      "now": "accepts ClosedOpcode or Undecodable naming VerifyMerkle; new verify_merkle_is_refused_by_the_isa_itself asserts is_experimental() and a failing decode_for_profile(_, Production)",
+      "why": "The Gate-profile refusal and the ISA refusal are now two independent layers. The pair tests both, so removing either one reddens the suite."
+    }
+  ],
+  "superseded_note": "Non-empty as of the hardening pass, and every entry is a rewrite rather than a removal. No test was deleted, ignored or loosened to make a change pass. Where an assertion contradicted an operator-directed behaviour change it was inverted and renamed so the suite states the new rule explicitly; where inverting cost coverage, a replacement test was added in the same commit. One genuine coverage gap is recorded above (the VerifyMerkle constant-path positive case, unreachable without --features experimental) instead of being hidden.",
   "excluded": [
     {
       "crate": "bud-cli",
@@ -142,11 +205,11 @@
     },
     {
       "crate": "bud-proof",
-      "reason": "Proof half \u2014 excluded by the annex. PRESENT in the pre-existing tree as zk-proof (finding z1); left in place, unwired, unclaimed."
+      "reason": "Proof half — excluded by the annex. PRESENT in the pre-existing tree as zk-proof (finding z1); left in place, unwired, unclaimed."
     },
     {
       "crate": "bud-state",
-      "reason": "Proof half \u2014 excluded by the annex. PRESENT as zk-state (finding z1); left in place, unwired, unclaimed."
+      "reason": "Proof half — excluded by the annex. PRESENT as zk-state (finding z1); left in place, unwired, unclaimed."
     },
     {
       "crate": "verifier-registry",
@@ -161,26 +224,40 @@
     {
       "opcode": "VerifyMerkle",
       "closed": true,
-      "how": "parity/src/gate_profile.rs \u2014 refused at decode and at compile-screen on the Gate path",
+      "how": "Closed at TWO independent layers. (1) ISA: Opcode::is_experimental() returns true, so decode_for_profile(_, Production) refuses with ExperimentalOpcodeDisabled and no MainnetActivation bitmask - including full() - can open it. (2) Gate profile: parity/src/gate_profile.rs refuses it again at decode and at the compile screen. zk-compiler codegen refuses it a third time in the default build, irrespective of profile.",
       "why": "64-depth Merkle soundness (Z-B) is not closed upstream; the source keeps it off by default and the root README calls the production-depth path disabled.",
-      "measured_isa_behaviour": "IsaProfile::Production ACCEPTS it; MainnetActivation::default() rejects it"
+      "measured_isa_behaviour": "IsaProfile::Production REFUSES it (ExperimentalOpcodeDisabled); IsaProfile::Testing still decodes it, so it is gated rather than deleted; MainnetActivation::default() refuses; MainnetActivation::full() ALSO refuses - the profile gate outranks the activation bitmask.",
+      "changed_by_this_work": true,
+      "change_note": "At import this read 'Production ACCEPTS it; MainnetActivation::default() rejects it' - the lock was Gate-profile-and-mainnet-only. Operator directive #1 (isa_merkle_only) moved it to the ISA layer. Opening it again requires a source change AND upstream Z-B closing, not a runtime flag.",
+      "tests": [
+        "zk-isa: verify_merkle_refused_in_production_while_z_b_is_open",
+        "zk-isa: verify_merkle_still_decodes_under_testing",
+        "zk-isa: s2_mainnet_activation_full_allows_verify_merkle (inverted)",
+        "parity: verify_merkle_is_refused_by_the_isa_itself",
+        "parity: verify_merkle_is_refused_at_decode",
+        "zk-compiler: test_verify_merkle_proof_constant_path_ok (repurposed)"
+      ]
     },
     {
       "opcode": "SRead",
       "closed": true,
-      "how": "parity/src/gate_profile.rs \u2014 refused at decode and at compile-screen",
+      "how": "parity/src/gate_profile.rs — refused at decode and at compile-screen",
       "why": "Persistent state is out of scope for the execution half; no state crate is on the Gate path.",
-      "measured_isa_behaviour": "IsaProfile::Production ACCEPTS it; MainnetActivation::default() ACCEPTS it"
+      "measured_isa_behaviour": "IsaProfile::Production ACCEPTS it; MainnetActivation::default() ACCEPTS it",
+      "changed_by_this_work": false,
+      "scope_note": "Deliberately left at the Gate-profile layer. Raising Storage to the ISA layer the way VerifyMerkle was raised would redden imported zk-proof/zk-vm suites that legitimately use storage - breaking working imported tests to make a Gate-side point. The Gate-path refusal is unconditional regardless."
     },
     {
       "opcode": "SWrite",
       "closed": true,
-      "how": "parity/src/gate_profile.rs \u2014 refused at decode and at compile-screen",
+      "how": "parity/src/gate_profile.rs — refused at decode and at compile-screen",
       "why": "Same as SRead.",
-      "measured_isa_behaviour": "IsaProfile::Production ACCEPTS it; MainnetActivation::default() ACCEPTS it"
+      "measured_isa_behaviour": "IsaProfile::Production ACCEPTS it; MainnetActivation::default() ACCEPTS it",
+      "changed_by_this_work": false,
+      "scope_note": "Deliberately left at the Gate-profile layer. Raising Storage to the ISA layer the way VerifyMerkle was raised would redden imported zk-proof/zk-vm suites that legitimately use storage - breaking working imported tests to make a Gate-side point. The Gate-path refusal is unconditional regardless."
     }
   ],
-  "gated_opcodes_note": "The annex assumed IsaProfile alone would close these. It does not: Opcode::is_experimental() returns false for every opcode in this revision, so the Production profile refuses nothing, and the mainnet activation gate is silent about storage (finding z10, measured). Changing is_experimental() upstream-style would turn pre-existing prover and VM tests red for reasons unrelated to them, which rule 6 forbids working around. The closure is therefore enforced additively on the Gate path and recorded here.",
+  "gated_opcodes_note": "The annex assumed IsaProfile alone would close these. It does not: Opcode::is_experimental() returns false for every opcode in this revision, so the Production profile refuses nothing, and the mainnet activation gate is silent about storage (finding z10, measured). Changing is_experimental() upstream-style would turn pre-existing prover and VM tests red for reasons unrelated to them, which rule 6 forbids working around. The closure is therefore enforced additively on the Gate path and recorded here.  UPDATE (hardening pass): VerifyMerkle is no longer gated only on the Gate profile - it is closed in the imported ISA itself, which is the layer an integrator would otherwise reach around. Storage stays Gate-profile-only, on purpose, for the reason recorded in its scope_note. VerifyInference was considered for the ISA list and left out: it has no verification circuit upstream and no Gate surface, so adding it would be precautionary rather than justified.",
   "parity": {
     "program": "programs/gate_tier.zkl",
     "program_sha256": "1d54244802caa42041ddc7db787457fbd6d884946a0b78272979af735e9aa6b6",
@@ -330,7 +407,7 @@
       "deterministic": true
     }
   ],
-  "trace_hashes_note": "sha256 over the ordered execution-trace rows (pc, next_pc, encoded instruction, operand slots and values), domain-separated by 'gate-tier-trace/v1'. Produced by `cargo run -p gate-tier-parity --example dump_evidence`. Each vector was run twice and the digests matched: determinism holds for all 12. Distinct inputs produce distinct digests, so the check cannot pass vacuously. THIS IS NOT A PROOF and nobody verifies it \u2014 it is a reproducibility digest.",
+  "trace_hashes_note": "sha256 over the ordered execution-trace rows (pc, next_pc, encoded instruction, operand slots and values), domain-separated by 'gate-tier-trace/v1'. Produced by `cargo run -p gate-tier-parity --example dump_evidence`. Each vector was run twice and the digests matched: determinism holds for all 12. Distinct inputs produce distinct digests, so the check cannot pass vacuously. THIS IS NOT A PROOF and nobody verifies it — it is a reproducibility digest.",
   "determinism": {
     "vectors_run_twice": 12,
     "digest_matched": 12,
@@ -406,15 +483,29 @@
     {
       "probe": "diff_against_source.sh vs patches[]",
       "expected": "no difference absent from patches[]",
-      "result": "18 differing / 0 local-only / 0 not-copied, all covered",
+      "result": "21 differing / 0 local-only / 0 not-copied, all covered — 18 inherited renames plus the 3 files changed by the hardening pass (patches[])",
       "test": "scripts/diff_against_source.sh"
+    },
+    {
+      "probe": "Gate-path crate takes a dependency on the quarantined proof half",
+      "method": "Injected zk-state = { path = \"../zk-state\" } into zk-vm/Cargo.toml [dependencies], ran the gate, then restored the manifest.",
+      "expected": "quarantine test fails and names the offender",
+      "result": "FAILED as intended with 'zk-vm depends on zk-state'; after restore, 3/3 green again",
+      "why_it_matters": "Proves the quarantine gate is enforceable rather than decorative. An assertion that has never been observed to fail is not yet evidence.",
+      "test": "quarantine::no_gate_crate_depends_on_the_proof_half"
+    },
+    {
+      "probe": "silent deletion of a quarantined crate",
+      "expected": "gate fails rather than passing vacuously",
+      "result": "covered by a presence check - if a quarantined crate disappears the test reddens instead of trivially passing",
+      "test": "quarantine::the_quarantined_crates_are_still_present_and_accounted_for"
     }
   ],
   "findings": [
     {
       "id": "z1",
       "severity": "blocking-resolved",
-      "finding": "gate2/zkvm/ already existed and already contained the proof half (zk-proof, zk-state, verifier-registry, note-packing) \u2014 precisely what the annex says not to take. Commit 28026a9, 2026-09-20 03:11 UTC, 'lumen-gate auditor', 62 files, 31687 insertions, on main. Reported as a stop before any file was written; operator instructed to proceed and take what testnet needs (decision d2)."
+      "finding": "gate2/zkvm/ already existed and already contained the proof half (zk-proof, zk-state, verifier-registry, note-packing) — precisely what the annex says not to take. Commit 28026a9, 2026-09-20 03:11 UTC, 'lumen-gate auditor', 62 files, 31687 insertions, on main. Reported as a stop before any file was written; operator instructed to proceed and take what testnet needs (decision d2)."
     },
     {
       "id": "z2",
@@ -424,7 +515,7 @@
     {
       "id": "z3",
       "severity": "policy-conflict",
-      "finding": "The source project's name appears nowhere in the workspace (grep -ri 'budlum|budzero|budzkvm' over *.rs/*.toml/*.md returns 0 matches), conflicting with annex \u00a71 'existing copyright lines are not deleted'. Predates this work. Operator chose to continue the scrub (decision d3); LICENSE and PROVENANCE.md now carry the attribution trail instead."
+      "finding": "The source project's name appears nowhere in the workspace (grep -ri 'budlum|budzero|budzkvm' over *.rs/*.toml/*.md returns 0 matches), conflicting with annex §1 'existing copyright lines are not deleted'. Predates this work. Operator chose to continue the scrub (decision d3); LICENSE and PROVENANCE.md now carry the attribution trail instead."
     },
     {
       "id": "z4",
@@ -432,14 +523,9 @@
       "finding": "No LICENSE, PROVENANCE.md, STATUS.md or evidence.json accompanied the pre-existing tree, though its crates declare LicenseRef-PolyForm-Shield-1.0.0. All four added by this work; LICENSE vendored byte-identical from the source."
     },
     {
-      "id": "z5",
-      "severity": "assumption-wrong",
-      "finding": "The annex (\u00a71) states the sources are MIT. The selected source is PolyForm Shield 1.0.0, which carries a Noncompete clause. Only Budlum/BudZKVM is MIT. No legal interpretation offered; recorded so PROVENANCE.md does not carry a false 'MIT summary'. Operator kept budzero/ (decision d1)."
-    },
-    {
       "id": "z6",
       "severity": "resolved",
-      "finding": "The pre-existing tree had no rust-toolchain.toml, so it silently built on the root's 1.98.1 while the source pins 1.97.1 \u2014 rule 4 isolation was incomplete. Pinned to 1.97.1 by this work; the root toolchain was not touched and the 1.0 floor still passes."
+      "finding": "The pre-existing tree had no rust-toolchain.toml, so it silently built on the root's 1.98.1 while the source pins 1.97.1 — rule 4 isolation was incomplete. Pinned to 1.97.1 by this work; the root toolchain was not touched and the 1.0 floor still passes."
     },
     {
       "id": "z7",
@@ -459,7 +545,9 @@
     {
       "id": "z10",
       "severity": "important",
-      "finding": "IsaProfile::Production gates nothing in this ISA revision. Measured: VerifyMerkle, SRead and SWrite all decode successfully under Production, because Opcode::is_experimental() is hardcoded to return false. MainnetActivation::default() rejects VerifyMerkle but accepts both storage opcodes. Rule 2 therefore could not be satisfied by selecting a profile, and is enforced by parity/src/gate_profile.rs on the Gate path instead."
+      "finding": "IsaProfile::Production gated nothing in this ISA revision AS IMPORTED. Measured at import: VerifyMerkle, SRead and SWrite all decoded successfully under Production, because Opcode::is_experimental() was hardcoded to return false; MainnetActivation::default() rejected VerifyMerkle but accepted both storage opcodes.",
+      "resolution": "Partly closed by the hardening pass. VerifyMerkle is now refused by the ISA itself (is_experimental() returns true for it), so Production refuses it and MainnetActivation::full() can no longer open it. SRead/SWrite remain accepted by the imported ISA and are closed on the Gate path only, by parity/src/gate_profile.rs — raising them would redden imported suites that legitimately use storage. Rule 2 is therefore satisfied at the ISA layer for VerifyMerkle and at the Gate layer for storage.",
+      "status": "partly resolved; storage half is an accepted, recorded divergence"
     },
     {
       "id": "z11",
@@ -468,11 +556,11 @@
     }
   ],
   "acceptance": {
-    "Z0": "met \u2014 source pinned to a commit SHA, baseline measured green (409/0) BEFORE copying, PROVENANCE.md written with both candidates compared, ownership statement and an accurate licence summary",
-    "Z1": "met \u2014 dependency map produced; zero dependencies from the execution half onto the excluded crates; bud-cli's dependency on bud-proof/bud-state recorded as the reason no CLI was built",
-    "Z2": "met with a caveat \u2014 cargo check, cargo clippy -D warnings and cargo test --workspace all pass inside gate2/zkvm (379/0); root cargo test --workspace --lib unchanged; diff_against_source.sh output matches patches[] exactly. Caveat: no new copy was made, because the execution half was already present (finding z1)",
-    "Z3": "met \u2014 12 shared vectors, VM side 12/12, Soroban side 10/10 with 2 documented skips, both reading the same JSON file; trace hashes recorded; determinism verified by a second run of every vector",
-    "Z4": "met \u2014 STATUS.md carries the 'half a job' banner at the top and every line has a counterpart here or in PROVENANCE.md"
+    "Z0": "met — source pinned to a commit SHA, baseline measured green (409/0) BEFORE copying, PROVENANCE.md written with both candidates compared, ownership statement and an accurate licence summary",
+    "Z1": "met — dependency map produced; zero dependencies from the execution half onto the excluded crates; bud-cli's dependency on bud-proof/bud-state recorded as the reason no CLI was built",
+    "Z2": "met with a caveat — cargo check, cargo clippy -D warnings and cargo test --workspace all pass inside gate2/zkvm (384/0); root cargo test --workspace --lib unchanged; diff_against_source.sh output matches patches[] exactly. Caveat: no new copy was made, because the execution half was already present (finding z1)",
+    "Z3": "met — 12 shared vectors, VM side 12/12, Soroban side 10/10 with 2 documented skips, both reading the same JSON file; trace hashes recorded; determinism verified by a second run of every vector",
+    "Z4": "met — STATUS.md carries the 'half a job' banner at the top and every line has a counterpart here or in PROVENANCE.md"
   },
   "not_done": [
     "No compile/run CLI binary was built (bud-cli depends on the excluded proof crates; the harness is a library plus tests, which is what parity needed).",

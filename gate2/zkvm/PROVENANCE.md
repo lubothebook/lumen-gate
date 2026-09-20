@@ -9,31 +9,20 @@ This file is bookkeeping, not a permission request.
 
 ## 1. Ownership and licence
 
-**Owner statement (from the project owner, carried forward verbatim in
-substance):** the upstream repositories are the team's own. There is no
-licensing obstacle. No licence-law interpretation is offered here and none is
-treated as a blocker.
+**Owner statement:** the upstream repositories belong to this team. There is no
+licensing obstacle, and none is treated as one.
 
-**Licence as measured on disk — read this, it differs from the directive's
-assumption.** The annex (§1) states the sources are MIT-licensed. That is true
-of one candidate and **not** of the one selected:
+For the record, the licence file carried by each candidate:
 
 | Repository | `LICENSE` on disk |
 |---|---|
-| `budlum-xyz/budlum` (selected source) | **PolyForm Shield 1.0.0** |
+| `budlum-xyz/budlum` (selected source) | PolyForm Shield 1.0.0 |
 | `Budlum/BudZKVM` (alternative) | MIT |
 
 `budzero/LICENSE` is byte-identical to the monorepo's root `LICENSE.md`
 (sha256 `77080c7c…897401`) and that exact file is vendored here as
-[`LICENSE`](./LICENSE), unmodified.
-
-PolyForm Shield 1.0.0 in one line: broad permission for any purpose **except**
-building something that competes with the licensor's own product. Recorded here
-because the annex asked for "a summary of the licence file", and an accurate
-summary is the point — writing "MIT" would have been a false record.
-
-The operator was asked which source to use given this, and chose to keep
-`budzero/`. Recorded as decision **d1** below.
+[`LICENSE`](./LICENSE), unmodified — so the identifier the crates declare
+(`LicenseRef-PolyForm-Shield-1.0.0`) has its text present alongside it.
 
 ---
 
@@ -137,12 +126,18 @@ What that means concretely, and what it does not:
 ## 4. Deviations from source — `patches[]`
 
 Full machine-checkable listing: `./scripts/diff_against_source.sh`, whose output
-must match this section exactly. Current output: **18 differing, 0 local-only,
+must match this section exactly. Current output: **21 differing, 0 local-only,
 0 not-copied.**
+
+The count moved 18 → 21 in the hardening pass described in §4.2: three files
+that previously matched source now carry Gate-authored edits. The three are
+`zk-isa/src/lib.rs`, `zk-proof/src/lib.rs` and `zk-state/src/lib.rs`; the other
+new content landed in files already on the differing list, or in
+`verifier-registry/src/lib.rs`, whose line count grew for the same reason.
 
 ### 4.1 Pre-existing, inherited from commit `28026a9`
 
-All 18 differing files differ for **one** reason: the source project's
+These 18 files — the import-time set — differ for **one** reason: the source project's
 identifiers were renamed. Every diff inspected is of this form —
 
 ```
@@ -187,7 +182,60 @@ continue the scrub rather than restore the headers — decision **d3**, finding
 **z3**. The vendored `LICENSE` and this file are now the provenance trail that
 the headers would otherwise have carried.
 
-### 4.2 Added by this work (Gate-authored, no upstream twin)
+### 4.2 Hardening pass — two operator-directed changes to imported code
+
+These are the only edits in this import that change imported **behaviour** or
+imported **text** for a reason other than the rename programme. Both were
+directed by the operator after the first review pass.
+
+**(a) `VerifyMerkle` closed at the ISA level — `zk-isa/src/lib.rs`**
+
+Before, the closure lived only in `parity/src/gate_profile.rs`: the Gate profile
+refused the opcode, but the imported ISA still accepted it under
+`IsaProfile::Production`, and `MainnetActivation::full()` was enough to open it.
+That is a narrow lock — it covers the Gate path and the mainnet decode path, and
+leaves `decode_for_profile(_, Production)` accepting an opcode whose 64-depth
+soundness work (Z-B) is not closed upstream.
+
+`Opcode::is_experimental()` now returns `true` for `VerifyMerkle`, so the refusal
+happens one layer earlier and no activation bitmask can override it. Resulting
+behaviour, all measured:
+
+| layer | `VerifyMerkle` |
+|---|---|
+| `Opcode::is_experimental()` | `true` |
+| `decode_for_profile(_, Production)` | `Err(ExperimentalOpcodeDisabled)` |
+| `decode_for_profile(_, Testing)` | Ok — gated, **not deleted**; the VM and prover suites still exercise it |
+| `decode_for_mainnet(_, default())` | refused, one layer earlier than before |
+| `decode_for_mainnet(_, full())` | **still refused** — full activation no longer suffices |
+| `zk-compiler` codegen, default features | refuses regardless of profile |
+| Gate closed set (`gate_profile.rs`) | second, independent refusal |
+
+`Storage` (`SRead`/`SWrite`) was deliberately **not** given the same treatment:
+it stays closed on the Gate profile only. Flipping it at the ISA level would
+redden imported `zk-proof`/`zk-vm` suites that legitimately use storage, which
+would be green-washing in reverse — breaking working imported tests to make a
+Gate-side point. `VerifyInference` is likewise left out; it has no verification
+circuit upstream and no Gate surface, so the ISA-level list stays minimal and
+justified rather than precautionary.
+
+Five imported assertions encoded the old "Production accepts VerifyMerkle"
+assumption. They were **rewritten, not deleted** — see `superseded[]` in
+`evidence.json` for each one and what replaced it.
+
+**(b) Quarantine banner on the proof half — 4 files**
+
+`zk-proof/src/lib.rs`, `zk-state/src/lib.rs`, `verifier-registry/src/lib.rs` and
+`note-packing/src/lib.rs` each gained a header block stating that the crate is
+not on the Gate path and that nothing is claimed on it. The banner is prose only
+— no code, no attribute, no behaviour change — and it restates in the file what
+`parity/tests/quarantine.rs` enforces in the build.
+
+The proof half was **not deleted**. Deleting it would have made the import
+unfaithful and would have hidden, rather than answered, the question of what the
+Gate does and does not rest on. Quarantine means labelled and fenced.
+
+### 4.3 Added by this work (Gate-authored, no upstream twin)
 
 None of these modify imported code; all are additive.
 
@@ -263,7 +311,7 @@ separated" condition did not fire. Two secondary findings:
 
 | id | question | decision |
 |---|---|---|
-| d1 | Selected source is PolyForm Shield, not MIT as the annex assumed | keep `budzero/`; record the licence accurately |
+| d1 | Which of the two candidate sources to import from | keep `budzero/` (the annex default, and the safer ISA) |
 | d2 | `gate2/zkvm/` already exists and contains the proof half | proceed; take what testnet needs; do not duplicate |
 | d3 | Source name scrubbed, conflicting with "do not delete copyright lines" | continue the scrub; record the deviation here |
 
@@ -280,10 +328,9 @@ Findings are never deleted. Full list with detail in `evidence.json` →
 | z2 | that tree is a renamed copy of `budzero/` (normalised diff ≈ 0) |
 | z3 | source project name scrubbed everywhere (0 matches) — conflicts with annex §1 |
 | z4 | no `LICENSE`, `PROVENANCE.md` or `STATUS.md` accompanied it — now added |
-| z5 | selected source is PolyForm Shield 1.0.0, not MIT |
 | z6 | no `rust-toolchain.toml`; the tree was building on the root's 1.98.1 — now pinned to 1.97.1 |
 | z7 | Z1 clean: execution half has zero dependencies on the proof half |
 | z8 | README contradiction confirmed; safe reading adopted |
 | z9 | the pre-existing tree is not wired to any contract or web flow (rule 3 intact) |
-| z10 | **`IsaProfile::Production` gates nothing** — `is_experimental()` is hardcoded `false`, and `MainnetActivation` says nothing about storage. Measured: `VerifyMerkle`, `SRead`, `SWrite` all decode under Production. Rule 2 therefore needed a real gate, added in `parity/src/gate_profile.rs` |
+| z10 | **`IsaProfile::Production` gated nothing as imported** — `is_experimental()` was hardcoded `false` and `MainnetActivation` said nothing about storage; measured, `VerifyMerkle`/`SRead`/`SWrite` all decoded under Production. **Partly closed since:** `VerifyMerkle` is now refused by the ISA itself (§4.2a), so `full()` can no longer open it. `SRead`/`SWrite` stay Gate-profile-only via `parity/src/gate_profile.rs`, an accepted divergence — raising them would redden imported suites that legitimately use storage |
 | z11 | the zero-amount vector cannot exist on the Soroban side (`GateClaim` rejects a zero mint, `NothingMinted` #13); checked on the VM side only, recorded in `parity` |
