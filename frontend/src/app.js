@@ -186,56 +186,56 @@ function sizeLattice() {
 // no strip, so the lattice shows through and the frame can land under the
 // hero's own text. A surface belongs here only if it really does cover the
 // wall.
-const LATTICE_BLOCKERS = [
-  'header.top',
-  'footer',
-  'nav.foot-nav',
-  'dialog',
-  '.boundary',
-  '.band',
-  '.card',
-  '.win',
-  '.steps',
-  '.stats',
-  '.trust-grid',
-  '.lane',
-  '.log-wrap',
-  '.row-strip',
-  // the hero banner is opaque artwork: a cube behind it is not a visible cube,
-  // so the pointer over the banner must not frame anything
-  '.hero-banner',
-];
-
-function cubeUnderPointer(stack) {
-  const at = stack.findIndex((node) => node.classList && node.classList.contains('cube'));
-  if (at === -1) return null;
-  const hidden = stack
-    .slice(0, at)
-    .some((node) => node.matches && LATTICE_BLOCKERS.some((selector) => node.matches(selector)));
-  return hidden ? null : stack[at];
-}
-
+// The operator's rule, taken literally after watching the pointer die at
+// every picture on the page: the pointer is over the wall wherever it is, so
+// visuals in front must not stop detection. The cell is arithmetic - pointer
+// divided by cell size - the cube under it wears the ring, and a fixed
+// overlay cell paints the same ring above whatever the page floats over the
+// wall, because a ring behind a card is a ring nobody sees. Nothing is asked
+// what covers the cube any more; the old blockers list is retired with the
+// hit test that used to read it.
 function initLatticeFrame() {
   const wall = $('cubeLattice');
-  if (!wall || typeof document.elementsFromPoint !== 'function') return;
+  // Page furniture must never take the app down with it: two harnesses boot
+  // this module against a stub DOM that models markup and events but has no
+  // body to append the overlay to, and a frame that crashes the wallet is
+  // worse than no frame.
+  if (!wall) return;
+  if (typeof document.createElement !== 'function' || !document.body || typeof document.body.append !== 'function') return;
+  const overlay = document.createElement('div');
+  overlay.className = 'cube-frame';
+  overlay.setAttribute('aria-hidden', 'true');
+  document.body.append(overlay);
   let framed = null;
   let queued = false;
   let x = 0;
   let y = 0;
   let seen = false;
   const clear = () => {
-    if (!framed) return;
-    framed.classList.remove('frame');
-    framed = null;
+    seen = false;
+    overlay.classList.remove('on');
+    if (framed) {
+      framed.classList.remove('frame');
+      framed = null;
+    }
   };
   const paint = () => {
     queued = false;
     if (!seen) return;
-    const cube = cubeUnderPointer(document.elementsFromPoint(x, y));
-    if (cube === framed) return;
-    clear();
-    if (cube) {
-      cube.classList.add('frame');
+    const cubes = wall.children;
+    if (!cubes.length) return;
+    const first = cubes[0];
+    const cell = first && typeof first.getBoundingClientRect === 'function' ? first.getBoundingClientRect().width : 0;
+    if (!cell) return;
+    const cols = Math.max(1, Math.floor(window.innerWidth / cell));
+    const col = Math.min(cols - 1, Math.max(0, Math.floor(x / cell)));
+    const row = Math.max(0, Math.floor(y / cell));
+    const cube = cubes[row * cols + col] || null;
+    overlay.style.transform = `translate(${col * cell}px, ${row * cell}px)`;
+    overlay.classList.add('on');
+    if (cube !== framed) {
+      if (framed) framed.classList.remove('frame');
+      if (cube) cube.classList.add('frame');
       framed = cube;
     }
   };
@@ -257,11 +257,10 @@ function initLatticeFrame() {
   );
   window.addEventListener('pointerleave', clear);
   window.addEventListener('blur', clear);
-  // Scrolling moves the page under the fixed wall, so the cube under a still
-  // pointer changes: the frame is re-asked rather than left on a cube that is
-  // no longer there. Before the first move there is nothing to re-ask.
+  // Scrolling moves the page under the fixed wall, so the cell under a still
+  // pointer is repainted rather than left where the pointer no longer is.
   window.addEventListener('scroll', () => { if (seen) schedule(); }, { passive: true });
-  window.addEventListener('resize', clear, { passive: true });
+  window.addEventListener('resize', () => { if (seen) schedule(); }, { passive: true });
 }
 
 function buildLattice() {
@@ -593,7 +592,6 @@ async function loadStatus() {
 
   setStat('statRegistry', 'statRegistrySub', payload.contracts?.registry || '-', `read live at ledger ${payload.chain?.latest_ledger ?? '?'}`, true);
   setStat('statAudit', 'statAuditSub', payload.audit?.result || '-', payload.audit ? `${payload.audit.rounds_recorded} round(s) recorded` : 'no record');
-  setStat('statFindings', 'statFindingsSub', String(payload.honesty?.findings_recorded ?? '-'), 'recorded in the deployment manifest');
 
   renderDeployment(payload);
   renderHonesty(payload);
@@ -743,11 +741,57 @@ async function requestWalletAddress(freighter) {
   return { address: null, via: null, attempts };
 }
 
+// Freighter reaches a page in three shapes depending on its version: the old
+// window.freighter, the bundled window.freighterApi, and the SEP-43 registry
+// at window.stellar.freighter. An embedded frame gets none of them, because
+// extensions inject only into top-level tabs - so saying "not installed" to a
+// reader who is holding the wallet inside a preview frame would blame them
+// for the frame. The note names the frame instead, and a watcher catches the
+// extension when it injects after the page has booted.
+function freighterProvider() {
+  if (window.freighterApi) return window.freighterApi;
+  if (window.freighter) return window.freighter;
+  if (window.stellar && (window.stellar.freighter || window.stellar.Freighter)) {
+    return window.stellar.freighter || window.stellar.Freighter;
+  }
+  return null;
+}
+function embeddedFrame() {
+  try { return window.top !== window.self; } catch (error) { return true; }
+}
+function walletAbsenceNote() {
+  if (embeddedFrame()) {
+    return 'Freighter is not installed or cannot reach this frame: extensions inject only into a top-level tab, and this console is running embedded. Open the page in its own tab to connect; receiving needs no wallet at all.';
+  }
+  return 'Freighter is not installed in this browser. Receiving does not need a wallet at all; only burning your own tokens does.';
+}
+let freighterWatch = null;
+function watchForFreighter() {
+  if (freighterWatch || freighterProvider()) return;
+  let tries = 0;
+  freighterWatch = setInterval(() => {
+    tries += 1;
+    if (freighterProvider()) {
+      clearInterval(freighterWatch);
+      freighterWatch = null;
+      log('Freighter appeared after the page booted: Connect is ready now.', 'ok');
+      $('walletNote').textContent = 'Freighter detected. Connect to read your own balances and to burn.';
+    } else if (tries > 24) {
+      clearInterval(freighterWatch);
+      freighterWatch = null;
+    }
+  }, 500);
+  // node harnesses boot this module against stubs; a watcher must not hold
+  // their event loop open for its whole twelve seconds
+  if (freighterWatch && typeof freighterWatch.unref === 'function') freighterWatch.unref();
+}
+
 async function connectWallet() {
-  const freighter = window.freighterApi || window.freighter;
+  const freighter = freighterProvider();
   if (!freighter) {
-    $('walletNote').textContent = 'Freighter is not installed in this browser. Receiving does not need a wallet at all; only burning your own tokens does.';
-    log('Freighter is not available in this browser. The inbound direction needs no wallet.', 'warn');
+    $('walletNote').textContent = walletAbsenceNote();
+    log(walletAbsenceNote(), 'warn');
+    watchForFreighter();
     return null;
   }
   try {
@@ -1083,7 +1127,6 @@ const DISABLED_REASONS = [
   { control: 'settleBtn', note: 'settleNote' },
   { control: 'cashoutPayBtn', note: 'cashoutActionNote' },
   { control: 'cashoutStatusBtn', note: 'cashoutActionNote' },
-  { control: 'versionTwoBtn', note: 'versionNote' },
 ];
 
 function paintDisabledReasons() {
@@ -1343,12 +1386,6 @@ function wire() {
   // "the thing below" - it marks itself and goes to the wallet. 2.0 is disabled
   // with its reason stated; when its design lands it becomes a real switch
   // rather than being quietly enabled.
-  $('versionOneBtn').addEventListener('click', () => {
-    $('versionOneBtn').setAttribute('aria-pressed', 'true');
-    $('versionTwoBtn').setAttribute('aria-pressed', 'false');
-    log('1.0: the settlement boundary below is this repository\'s system - registry, relayer, wallet and receipts.');
-    $('console').scrollIntoView({ behavior: 'smooth', block: 'start' });
-  });
   $('operatorHintBtn').addEventListener('click', operatorDialog);
   window.addEventListener('resize', queueLattice);
   wireAmounts();
@@ -1366,6 +1403,7 @@ function wire() {
     if (pub) $('lockRecipient').value = pub;
   }));
   $('connectBtn').addEventListener('click', () => withBusy($('connectBtn'), () => connectWallet()));
+  watchForFreighter();
   // Connecting needs the Freighter extension; this does not. The deployment
   // manifest names the gasless demo account, so the card can show that account's
   // live balances to anyone, signed by nobody. It is read-only and says so: the

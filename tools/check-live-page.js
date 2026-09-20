@@ -158,7 +158,23 @@ async function main() {
       };
     });
 
-    expect(layout.rows.length >= 8, `the page should carry the ribbons of every text row, found ${layout.rows.length}`);
+    // The count is a floor, not a trophy: the operator deleted the roadmap
+    // section, so the page carries five ribbons now. The contract that stays
+    // is coverage - no naked text child in any strip section.
+    expect(layout.rows.length >= 5, `the page should carry the ribbons of every text row, found ${layout.rows.length}`);
+    const naked = await page.evaluate(() => {
+      const bad = [];
+      for (const section of document.querySelectorAll('main > section.strip')) {
+        for (const kid of section.querySelectorAll(':scope > .shell > *')) {
+          const isStrip = kid.classList.contains('row-strip');
+          const isBox = kid.matches('.stats, .steps, .trust-grid, .card, .win') ||
+            Boolean(kid.querySelector('.card, .win, .stat, .step, .lane, .trust-grid'));
+          if (!isStrip && !isBox) bad.push(kid.className || kid.tagName);
+        }
+      }
+      return bad;
+    });
+    expect(naked.length === 0, `every shell child of a strip section is either a ribbon or a box surface, found naked: ${JSON.stringify(naked)}`);
     expect(layout.unribbonedHeads === 0, `every section head is a text row and must carry a ribbon, ${layout.unribbonedHeads} do not`);
     for (const row of layout.rows) {
       expect(row.left <= 1 && row.right >= layout.vw - 1, `#${row.id}: a text row must run edge to edge, got [${row.left},${row.right}] of ${layout.vw}`);
@@ -213,8 +229,10 @@ async function main() {
     });
     expect(walletReach.top < walletReach.vh, `the wallet must start within the first screen, it starts at ${walletReach.top}px of ${walletReach.vh}`);
 
+    // The wall is fixed behind the whole page, chrome included, and detection
+    // is arithmetic now: the header no longer eats the pointer.
     const onHeader = await hold(720, 40);
-    expect(onHeader.count === 0, `the header must hide the frame, got ${onHeader.count}`);
+    expect(onHeader.count === 1, `the frame follows the pointer over the chrome too, got ${onHeader.count}`);
 
     const stripAndGap = await page.evaluate(() => {
       const kids = [...document.querySelectorAll('#how > .shell > *')];
@@ -226,15 +244,16 @@ async function main() {
       return { stripY: Math.round(a2.bottom - 14), gapY: Math.round((a2.bottom + b2.top) / 2) };
     });
     const onStrip = await hold(720, stripAndGap.stripY);
-    expect(onStrip.count === 0, `a text strip must hide the frame, got ${onStrip.count}`);
+    expect(onStrip.count === 1, `a visual in front must not stop detection: the strip cell still frames, got ${onStrip.count}`);
     const inGap = await hold(720, stripAndGap.gapY);
     expect(inGap.count === 1, `the gap between two strips must frame the cube under the pointer, got ${inGap.count}`);
 
-    // and it closes: on the panel, and when the pointer leaves the window
+    // and it closes only when the pointer leaves the window: moving across
+    // the page keeps exactly one cell framed the whole way
     await hold(60, 560);
     await page.mouse.move(700, 300, { steps: 2 });
     await new Promise((r) => setTimeout(r, 200));
-    expect((await page.evaluate(() => document.querySelectorAll('.cube.frame').length)) === 0, 'moving off the lattice must close the frame');
+    expect((await page.evaluate(() => document.querySelectorAll('.cube.frame').length)) === 1, 'moving across the page must keep exactly one cell framed');
     await page.mouse.move(60, 560, { steps: 2 });
     await new Promise((r) => setTimeout(r, 200));
     await page.evaluate(() => window.dispatchEvent(new PointerEvent('pointerleave')));
@@ -284,7 +303,7 @@ async function main() {
 
     console.log(
       `live page: ${layout.rows.length} strips full-bleed with ${layout.gapProbe}px of open lattice between them, ` +
-        `frame follows the pointer in the gaps and nowhere else, ` +
+        `frame follows the pointer everywhere, one cell at a time, ` +
         `banner ${banner ? banner.natural.join('x') : '?'} drawn ${banner ? banner.box.join('x') : '?'}, ` +
         `${console_.count} controls all reachable, ${failed.length} failing requests`
     );

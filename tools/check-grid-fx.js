@@ -109,25 +109,33 @@ if (cubeRule) {
   expect(/width:\s*var\(--cell\);\s*height:\s*var\(--cell\)/.test(cubeRule[0]), 'every cube box is exactly one cell: the cubes are adjacent, with no gap between them');
   expect(/transition:\s*box-shadow/.test(cubeRule[0]), 'the frame on a cube fades in and out rather than popping');
 }
-// The frame is a state painted on the cube under the pointer, and it lands
-// only where the cube is actually visible: a strip, a card, a window or the
-// dock all hide it again, because the operator's rule is "the strip in front,
-// the cubes behind". The hit test is deliberate - pure arithmetic would draw
-// the ring on top of the text ribbons - and the blockers list is the page's
-// own map of the surfaces that really do cover the wall.
+// The frame follows the pointer across the whole wall, including over the
+// surfaces the page floats above it. The operator's correction, after watching
+// the pointer die at every picture: visuals in front must not stop detection.
+// So the cell is arithmetic (pointer divided by cell size), the cube under it
+// wears the ring, and a fixed overlay cell paints the same ring above whatever
+// covers the wall - a ring behind a card is a ring nobody sees. The old
+// blockers list and its hit test are retired, and the harness says so.
 const frameRule = /\.cube:hover, \.cube\.frame\s*\{[^}]*\}/.exec(html);
 expect(Boolean(frameRule), '.cube.frame rule missing: the pointer frame is the whole point');
 if (frameRule) {
   expect(/box-shadow:\s*inset 0 0 0 var\(--ring\) rgba\(255,\s*255,\s*255/.test(frameRule[0]), 'the frame must be an inset white border drawn from the --ring token (4px on a 1x display)');
 }
-expect(/LATTICE_BLOCKERS/.test(app), 'the blockers list is the contract that keeps the strip in front and the cubes behind');
-expect(/elementsFromPoint/.test(app), 'the frame must ask the document what covers the wall before it paints');
+const overlayRule = /\.cube-frame\s*\{[^}]*\}/.exec(html);
+expect(Boolean(overlayRule), '.cube-frame overlay rule missing: the ring must also paint above the surfaces that cover the wall');
+if (overlayRule) {
+  expect(/position:\s*fixed/.test(overlayRule[0]), 'the overlay cell must be fixed to the viewport like the wall');
+  expect(/pointer-events:\s*none/.test(overlayRule[0]), 'the overlay must never eat a click');
+  expect(/box-shadow:\s*inset 0 0 0 var\(--ring\)/.test(overlayRule[0]), 'the overlay ring is the same 4px white inset ring');
+}
+expect(!/LATTICE_BLOCKERS/.test(app), 'the blockers list is retired: visuals in front must not stop the frame any more');
 expect(/@media \(hover: none\), \(pointer: coarse\)[^}]*box-shadow:\s*none/.test(html), 'touch devices must not get the pointer frame');
+expect(/\.cube-frame\s*\{\s*opacity:\s*0;\s*\}/.test(html), 'touch devices must not get the overlay ring either');
 expect(/prefers-reduced-motion: reduce[\s\S]{0,400}?transition-duration:\s*0\.01ms/.test(html), 'reduced motion must flatten every transition on the page, the frame included');
 
-// Drive initLatticeFrame() in a sandbox: on open lattice the cube under the
-// pointer wears the frame, a covering surface hides it again, and leaving the
-// window closes it.
+// Drive initLatticeFrame() in a sandbox: the cell under the pointer wears the
+// frame whatever floats above it, the overlay snaps to that cell, and leaving
+// the window closes both.
 {
   const mkClassList = (initial) => {
     const names = [...initial];
@@ -137,36 +145,38 @@ expect(/prefers-reduced-motion: reduce[\s\S]{0,400}?transition-duration:\s*0\.01
       contains(n) { return names.includes(n); },
     };
   };
-  const cube = { classList: mkClassList(['cube']), matches: () => false };
-  const blocker = { classList: mkClassList(['card']), matches: (sel) => sel === '.card' };
-  let stack = [cube];
+  const cubes = [0, 1, 2, 3, 4, 5].map(() => ({
+    classList: mkClassList(['cube']),
+    getBoundingClientRect: () => ({ width: 60, height: 60 }),
+  }));
+  const overlay = { classList: mkClassList(['cube-frame']), style: {}, setAttribute: () => {} };
+  let created = null;
   const listeners = {};
   const sandbox = {
-    $: (id) => (id === 'cubeLattice' ? { id } : null),
-    document: { elementsFromPoint: () => stack },
-    window: { addEventListener: (name, fn) => { (listeners[name] = listeners[name] || []).push(fn); } },
+    $: (id) => (id === 'cubeLattice' ? { children: cubes } : null),
+    document: {
+      createElement: () => (created = overlay),
+      body: { append: () => {} },
+    },
+    window: { addEventListener: (name, fn) => { (listeners[name] = listeners[name] || []).push(fn); }, innerWidth: 360 },
     requestAnimationFrame: (fn) => { fn(); return 1; },
   };
   vm.createContext(sandbox);
   const frameFn = app.match(/function initLatticeFrame\(\) \{[\s\S]*?\n\}/);
   expect(Boolean(frameFn), 'initLatticeFrame() was not found in frontend/src/app.js');
-  const blockers = app.match(/const LATTICE_BLOCKERS = \[[\s\S]*?\];/);
-  const under = app.match(/function cubeUnderPointer\(stack\) \{[\s\S]*?\n\}/);
-  expect(Boolean(blockers) && Boolean(under), 'the blockers list and cubeUnderPointer() must exist in frontend/src/app.js');
-  vm.runInContext(`${blockers[0]}\n${under[0]}\n${frameFn[0]}\ninitLatticeFrame();`, sandbox, { filename: 'app.js#initLatticeFrame' });
+  vm.runInContext(`${frameFn[0]}\ninitLatticeFrame();`, sandbox, { filename: 'app.js#initLatticeFrame' });
+  expect(created === overlay && overlay.classList.contains('cube-frame'), 'initLatticeFrame must create the overlay cell');
   const move = (x, y) => (listeners.pointermove || []).forEach((fn) => fn({ clientX: x, clientY: y, pointerType: 'mouse' }));
-  move(10, 10);
-  expect(cube.classList.contains('frame'), 'the cube under the pointer must wear the frame on open lattice');
-  stack = [blocker, cube];
   move(70, 10);
-  expect(!cube.classList.contains('frame'), 'a surface that covers the wall must hide the frame again');
-  stack = [cube];
-  move(130, 65);
-  expect(cube.classList.contains('frame'), 'the frame must come back once the covering surface is gone');
+  expect(cubes[1].classList.contains('frame'), 'the cell under the pointer wears the frame, whatever floats above it');
+  expect(overlay.classList.contains('on'), 'the overlay cell must be lit while the pointer is on the wall');
+  expect(overlay.style.transform === 'translate(60px, 0px)', `the overlay must snap to the cell under the pointer, got ${overlay.style.transform}`);
+  move(10, 10);
+  expect(cubes[0].classList.contains('frame') && !cubes[1].classList.contains('frame'), 'the frame moves with the pointer, one cell at a time');
   (listeners.pointerleave || []).forEach((fn) => fn({}));
-  expect(!cube.classList.contains('frame'), 'the frame must close when the pointer leaves the window');
+  expect(!cubes.some((c) => c.classList.contains('frame')) && !overlay.classList.contains('on'), 'the frame must close when the pointer leaves the window');
   expect((listeners.blur || []).length === 1, 'the frame must close when the window loses focus');
-  expect((listeners.scroll || []).length === 1, 'scrolling moves the page under the fixed wall: the frame is re-asked');
+  expect((listeners.scroll || []).length === 1, 'scrolling moves the page under the fixed wall: the frame is repainted');
 }
 
 // ------------------------------------------------------- 4. the line strips
