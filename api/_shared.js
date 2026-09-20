@@ -120,8 +120,11 @@ function capabilities() {
       note: 'the relayer signs and spends fees, so the hosted console only forwards when an operator has configured both values',
     },
     source_chain: {
-      configured: Boolean((process.env.SOURCE_URL || '').trim()),
-      note: 'the source side of this deployment is a deterministic simulator; when SOURCE_URL is unset the console says so instead of pretending',
+      configured: true,
+      embedded: !Boolean((process.env.SOURCE_URL || '').trim()),
+      note: (process.env.SOURCE_URL || '').trim()
+        ? 'SOURCE_URL points at a source adapter'
+        : 'in-process simulator (api/_sim.js): lock and Merkle run here; BLS is not signed and nothing is submitted to the registry',
     },
   };
 }

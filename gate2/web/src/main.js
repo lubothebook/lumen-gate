@@ -101,8 +101,8 @@ async function connectWallet() {
     $("in-address").value = addr;
     $("in-strkey").value = addr;
     walletWritesAllowed = true;
-    $("btn-tier-send").disabled = false;
-    $("btn-trustline").disabled = false;
+    markAction($("btn-tier-send"), true);
+    markAction($("btn-trustline"), true);
     setWalletActions(true);
     await refreshBalances(addr);
     acctLog(`Connected. Expert: ${addr.slice(0, 8)}…`);
@@ -111,8 +111,8 @@ async function connectWallet() {
         const verdict = walletNetworkVerdict(await f.getNetwork());
         if (verdict !== "testnet") {
           walletWritesAllowed = false;
-          $("btn-tier-send").disabled = true;
-          $("btn-burn").disabled = true;
+          markAction($("btn-tier-send"), false);
+          markAction($("btn-burn"), false);
           setWalletActions(false, "This console only signs on Stellar testnet. Switch the wallet there and connect again.");
           setWalletState(
             verdict === "unknown"
@@ -165,13 +165,32 @@ function acctLog(text, hash) {
   while (box.children.length > 8) box.removeChild(box.firstChild); // a log, not a billboard: last 8 stay
 }
 
+// An unavailable action is a grey button that still answers, not a dead one.
+// A hard `disabled` swallows the click before any handler runs, so the control
+// can never say why it is grey; aria-disabled keeps it focusable and clickable,
+// and withButton answers the press with the reason. The title and the wallet
+// gate panel stay exactly as they were - this only un-silences the click.
+function markAction(button, available) {
+  if (!button) return;
+  if (available) {
+    button.removeAttribute("aria-disabled");
+    button.removeAttribute("disabled");
+  } else {
+    button.setAttribute("aria-disabled", "true");
+    button.removeAttribute("disabled");
+  }
+}
+
+function actionUnavailable(button) {
+  return Boolean(button) && (button.disabled === true || button.getAttribute("aria-disabled") === "true");
+}
+
 function setWalletActions(on, reason) {
   for (const id of ["btn-fund", "btn-trust-open", "btn-bump", "btn-trust-open-burn", "btn-stamp", "btn-battery-deposit", "btn-battery-withdraw"]) {
     const b = $(id);
     if (!b) continue;
-    b.disabled = !on;
-    // A disabled control should say why it is disabled. Without this the
-    // buttons just look broken.
+    markAction(b, on);
+    // An unavailable control says why. Without this the buttons just look broken.
     if (on) b.removeAttribute("title");
     else b.title = reason || "Connect Freighter first — this action needs a wallet signature.";
   }
@@ -193,11 +212,18 @@ function setWalletActions(on, reason) {
 async function withButton(id, pendingText, work) {
   const button = $(id);
 
-  if (!button || button.disabled) return;
+  if (!button) return;
+  if (button.getAttribute("aria-busy") === "true") return; // already running
+  if (actionUnavailable(button)) {
+    // The click is not swallowed: the control answers with its own stated
+    // reason, the same one its title and the wallet gate carry.
+    acctLog(button.title || "Connect Freighter first — this action needs a wallet signature.");
+    return;
+  }
 
   const label = button.textContent;
 
-  button.disabled = true;
+  button.setAttribute("aria-disabled", "true");
   button.setAttribute("aria-busy", "true");
   button.textContent = pendingText;
 
@@ -209,7 +235,9 @@ async function withButton(id, pendingText, work) {
   } finally {
     button.textContent = label;
     button.removeAttribute("aria-busy");
-    button.disabled = !walletWritesAllowed;
+    // Same availability the old code restored: wallet-gated actions follow
+    // the wallet's write state again once the run is over.
+    markAction(button, walletWritesAllowed);
   }
 }
 
@@ -504,10 +532,10 @@ $("btn-strkey").addEventListener("click", () => {
   const ok = StrKey.isValidEd25519PublicKey(g);
   box.appendChild(pill(ok ? "StrKey valid" : "StrKey invalid", ok ? "pill ok" : "pill bad"));
   if (ok) {
-    $("btn-trustline").disabled = false; // read-only Horizon check — no signature needed
+    markAction($("btn-trustline"), true); // read-only Horizon check — no signature needed
     // The write button opens only when the wallet is connected AND on testnet;
     // a valid typed address alone must never unlock signing on a mainnet wallet.
-    if (connectedAddress && walletWritesAllowed) $("btn-trust-open-burn").disabled = false;
+    if (connectedAddress && walletWritesAllowed) markAction($("btn-trust-open-burn"), true);
   }
 });
 
@@ -536,7 +564,10 @@ $("btn-fund")?.addEventListener(
   "click",
   () =>
     withButton("btn-fund", "Requesting XLM…", async () => {
-      if (!connectedAddress) return;
+      if (!connectedAddress) {
+        acctLog("Connect Freighter first — Friendbot funds the connected account.");
+        return;
+      }
       acctLog("Calling Friendbot…");
       const r = await friendbot(connectedAddress);
       if (r.ok) {
@@ -641,12 +672,19 @@ $("btn-trustline").addEventListener("click", async () => {
 // router exists. There is no router yet, so it can never enable — by design.
 $("in-burnword").addEventListener("input", (ev) => {
   const typed = ev.target.value.trim().toUpperCase() === "BURN";
-  $("btn-burn").disabled = !(typed && CONFIG.burnRouter);
+    markAction($("btn-burn"), typed && Boolean(CONFIG.burnRouter));
 });
 $("btn-burn").addEventListener("click", () => {
+  // The control is reachable on purpose: a hard `disabled` would swallow this
+  // press and the reader would learn nothing. The reason IS the answer.
   if (!CONFIG.burnRouter) {
-    $("res-burn").textContent = "No router — this button should never have enabled; that is a bug, please report it.";
+    $("res-burn").textContent =
+      "No burn happened: BurnRouter is not deployed on Sepolia yet (F2 is waiting on Sepolia testnet funds). " +
+      "This control does not fake a burn; when the router is deployed and recorded in the receipt, the word gate and the real burn flow open here.";
+    return;
   }
+  $("res-burn").textContent =
+    "The router is recorded in the receipt, but the burn flow (F2) is not wired yet; this press sent no transaction.";
 });
 
 // ---------- lattice (same wall as Gate 1.0; pointer frame only on visible cubes)

@@ -217,10 +217,10 @@
     display: inline-flex; align-items: center; justify-content: center; gap: 8px;
     transition: background var(--dur) var(--ease), transform var(--dur-fast) var(--ease), opacity 0.15s var(--ease);
   }
-  .btn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.17); }
-  .btn:active:not(:disabled) { transform: scale(0.962); }
+  .btn:hover:not(:disabled):not([aria-disabled="true"]) { background: rgba(255, 255, 255, 0.17); }
+  .btn:active:not(:disabled):not([aria-disabled="true"]) { transform: scale(0.962); }
   .btn.primary { background: #fff; color: #000; }
-  .btn.primary:hover:not(:disabled) { background: rgba(255, 255, 255, 0.9); }
+  .btn.primary:hover:not(:disabled):not([aria-disabled="true"]) { background: rgba(255, 255, 255, 0.9); }
   .btn.small { padding: 8px 16px; font-size: 0.875rem; }
   .btn.wide { width: 100%; }
   /* Three weights, so a reader can tell the demo path from the operator shelf:
@@ -232,11 +232,12 @@
     padding: 7px 13px; font-size: 0.8125rem; background: none; color: var(--muted);
     border: 1px solid var(--line-2);
   }
-  .btn.mini:hover:not(:disabled) { color: var(--ink); background: rgba(255, 255, 255, 0.06); }
+  .btn.mini:hover:not(:disabled):not([aria-disabled="true"]) { color: var(--ink); background: rgba(255, 255, 255, 0.06); }
   .btn.ghost { background: none; border: 1px solid var(--line-2); color: var(--muted); }
-  .btn.ghost:hover:not(:disabled) { color: var(--ink); border-color: rgba(255, 255, 255, 0.3); background: none; }
+  .btn.ghost:hover:not(:disabled):not([aria-disabled="true"]) { color: var(--ink); border-color: rgba(255, 255, 255, 0.3); background: none; }
   .btn.primary.wide { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.28), 0 10px 30px rgba(0, 0, 0, 0.45); }
-  .btn:disabled { opacity: 0.36; cursor: not-allowed; }
+  .btn:disabled,
+  .btn[aria-disabled="true"] { opacity: 0.36; cursor: not-allowed; }
   .btn-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
   .link-btn {
     appearance: none; background: none; border: 0; color: var(--muted); font: inherit; font-size: 0.875rem;
@@ -974,8 +975,8 @@
                 </div>
                 <div class="span-2">
                   <div class="btn-row">
-                    <button class="btn mini" id="cashoutPayBtn" type="button" aria-describedby="cashoutActionNote" disabled>Pay with Freighter</button>
-                    <button class="btn mini" id="cashoutStatusBtn" type="button" aria-describedby="cashoutActionNote" disabled>Check status</button>
+                    <button class="btn mini" id="cashoutPayBtn" type="button" aria-describedby="cashoutActionNote" aria-disabled="true">Pay with Freighter</button>
+                    <button class="btn mini" id="cashoutStatusBtn" type="button" aria-describedby="cashoutActionNote" aria-disabled="true">Check status</button>
                   </div>
                   <p class="note" id="cashoutActionNote" style="margin-top:14px; font-size:0.8125rem">
                     Read the anchor and open a withdrawal first: the payment address, the memo and the amount all come
@@ -1032,7 +1033,7 @@
 
           <div class="run-foot">
             <div class="btn-row">
-              <button class="btn primary" id="settleBtn" type="button" aria-describedby="settleNote" disabled>Ask the relayer to settle</button>
+              <button class="btn primary" id="settleBtn" type="button" aria-describedby="settleNote" aria-disabled="true">Ask the relayer to settle</button>
               <button class="btn mini" id="copyCmdBtn" type="button">Copy the command instead</button>
             </div>
             <p class="note" id="settleNote">Lock a block first; settlement runs one relayer pass at the height you locked.</p>
