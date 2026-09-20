@@ -83,20 +83,48 @@ module.exports = async function handler(req, res) {
 
   let body;
   if (isWrite) {
-    const chunks = [];
-    for await (const chunk of req) {
-      chunks.push(chunk);
-      if (chunks.reduce((total, part) => total + part.length, 0) > 64 * 1024) {
+    // Two hosts, two conventions. Vercel hands the handler an unread stream;
+    // tools/api-dev-server.js reads the body itself and leaves it on req.body
+    // so several handlers can share one parse. Reading the stream when it has
+    // already been drained yields "" - the request arrives at the facade with
+    // {} and comes back as "a signed challenge transaction is required", which
+    // reads like the caller forgot to sign rather than like the body was lost.
+    //
+    // So: take the pre-read body when the host supplies one, otherwise read
+    // the stream. Both paths end at the same JSON.parse and the same limit.
+    const preRead = req.body;
+    let raw;
+    if (typeof preRead === "string") {
+      raw = preRead;
+    } else if (preRead && typeof preRead === "object" && !Buffer.isBuffer(preRead)) {
+      // Already parsed upstream (some hosts do this when the content type is
+      // JSON): take it as-is rather than re-serialising and re-parsing.
+      body = preRead;
+      raw = null;
+    } else if (Buffer.isBuffer(preRead)) {
+      raw = preRead.toString("utf8");
+    } else {
+      const chunks = [];
+      for await (const chunk of req) {
+        chunks.push(chunk);
+        if (chunks.reduce((total, part) => total + part.length, 0) > 64 * 1024) {
+          sendError(res, 413, 'payload_too_large', 'the request body is larger than this endpoint accepts');
+          return;
+        }
+      }
+      raw = Buffer.concat(chunks).toString('utf8');
+    }
+    if (raw !== null) {
+      if (raw.length > 64 * 1024) {
         sendError(res, 413, 'payload_too_large', 'the request body is larger than this endpoint accepts');
         return;
       }
-    }
-    const raw = Buffer.concat(chunks).toString('utf8').trim() || '{}';
-    try {
-      body = JSON.parse(raw);
-    } catch {
-      sendError(res, 400, 'invalid_request', 'the request body must be JSON');
-      return;
+      try {
+        body = JSON.parse(raw.trim() || '{}');
+      } catch {
+        sendError(res, 400, 'invalid_request', 'the request body must be JSON');
+        return;
+      }
     }
   }
 
