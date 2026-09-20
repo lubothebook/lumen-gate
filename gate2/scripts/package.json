@@ -1,0 +1,11 @@
+{
+  "name": "lumen-gate-gate2-spikes",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Gate 2.0 spike drivers and end-to-end tests (DIRECTIVE 2.0 section 4). Evidence goes to deployments/testnet-2.0.json only - nothing here is part of the Gate 1.0 surface.",
+  "dependencies": {
+    "@stellar/stellar-sdk": "^13.3.0",
+    "ethers": "^6.17.0"
+  }
+}
