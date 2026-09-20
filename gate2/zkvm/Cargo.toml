@@ -13,6 +13,7 @@ members = [
   "zk-compiler",
   "verifier-registry",
   "note-packing",
+  "parity",
 ]
 resolver = "2"
 

@@ -323,6 +323,8 @@ The second circuit is the machine-shaped one. It is a **genuine N-step chained s
 
 **What the chain does and does not cover.** The circuit proves the internal consistency of the chain: given the published start root, the published length and the published event root, the steps link to exactly the published end root, and each active step carries a quorum. It does **not** verify approval signatures — a production chain replaces the approval bitmap with a signature gadget, and the circuit header says so. It does not yet bind the start root to a previously finalized root on-chain; today the start root is a public input that the registry binds to the evidence payload, so continuity across accepted chains is the registry's monotonic height rule rather than a proof. Both limits are listed in [What is still genuinely missing](#what-is-still-genuinely-missing).
 
+**Separately, [`gate2/zkvm/`](gate2/zkvm/) holds an imported instruction set, VM and compiler that perform deterministic execution and trace generation only — they produce and verify no proof, and nothing they output reaches a contract or a web flow.** It is deliberately half a job, its one point of contact with Gate is a tier-ladder parity test whose vectors the Soroban `gate_campaign_example` reads from the same file, and its scope, closed opcodes and known gaps are stated in [`gate2/zkvm/STATUS.md`](gate2/zkvm/STATUS.md).
+
 ## Product thesis
 
 An anchor that does not want to operate a separate bridge per source chain should be able to:

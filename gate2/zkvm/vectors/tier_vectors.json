@@ -1,0 +1,31 @@
+{
+  "schema": "gate-tier-parity/v1",
+  "purpose": "Shared parity vectors for the tier ladder. Read by BOTH the execution VM (gate2/zkvm parity harness) and the Soroban gate_campaign_example unit test. This file is a parity and determinism fixture, not a proof artifact.",
+  "units": "USDC, 6 decimals (1_000_000 = 1 USDC)",
+  "tiers": {
+    "0": "none (below Bronze)",
+    "1": "Bronze (>= 10 USDC)",
+    "2": "Silver (>= 100 USDC)",
+    "3": "Gold (>= 1000 USDC)"
+  },
+  "thresholds": {
+    "bronze": 10000000,
+    "silver": 100000000,
+    "gold": 1000000000
+  },
+  "note_on_large_value": "The VM operates in the Goldilocks field (P = 2^64 - 2^32 + 1), so values are kept well inside the range a real i128 migration total maps into. The largest vector below is the documented 'big value' case from the directive.",
+  "vectors": [
+    { "name": "zero",                    "total_usdc": 0,             "expected_tier": 0 },
+    { "name": "one_unit",                "total_usdc": 1,             "expected_tier": 0 },
+    { "name": "just_below_bronze",       "total_usdc": 9999999,       "expected_tier": 0 },
+    { "name": "exactly_bronze",          "total_usdc": 10000000,      "expected_tier": 1 },
+    { "name": "just_above_bronze",       "total_usdc": 10000001,      "expected_tier": 1 },
+    { "name": "just_below_silver",       "total_usdc": 99999999,      "expected_tier": 1 },
+    { "name": "exactly_silver",          "total_usdc": 100000000,     "expected_tier": 2 },
+    { "name": "just_above_silver",       "total_usdc": 100000001,     "expected_tier": 2 },
+    { "name": "just_below_gold",         "total_usdc": 999999999,     "expected_tier": 2 },
+    { "name": "exactly_gold",            "total_usdc": 1000000000,    "expected_tier": 3 },
+    { "name": "just_above_gold",         "total_usdc": 1000000001,    "expected_tier": 3 },
+    { "name": "large_value",             "total_usdc": 1000000000000, "expected_tier": 3 }
+  ]
+}

@@ -135,6 +135,109 @@ mod test {
     // on): the operator named it because the implementation's >= vs > choice
     // is the whole semantics at these lines. BRONZE is 10 USDC = 10_000_000
     // stroops; each tier is tested at exact-minus-one and exact, fresh world
+    // ---- Shared parity vectors (DIRECTIVE 2.0-ZKVM, Z3) -------------------
+    //
+    // The execution VM in gate2/zkvm runs the same ladder over the same file.
+    // Reading the file here - rather than restating its numbers - is the whole
+    // point: if either side's thresholds move, one of the two suites goes red.
+    //
+    // This is a parity check between two independent implementations. It is
+    // not a proof, and nothing about the zkVM side is trusted by this contract.
+    const TIER_VECTORS: &str = include_str!("../../../zkvm/vectors/tier_vectors.json");
+
+    /// Minimal reader for the vector file: pulls out (total_usdc, expected_tier)
+    /// for each entry. Deliberately dependency-free - a JSON crate in a Soroban
+    /// contract's dev-dependencies is not worth the supply-chain surface for
+    /// twelve integer pairs.
+    fn parity_vectors() -> std::vec::Vec<(u64, u32)> {
+        fn field_after(hay: &str, key: &str) -> Option<(u64, usize)> {
+            let at = hay.find(key)?;
+            let rest = &hay[at + key.len()..];
+            let start = rest.find(|c: char| c.is_ascii_digit())?;
+            let tail = &rest[start..];
+            let end = tail
+                .find(|c: char| !c.is_ascii_digit())
+                .unwrap_or(tail.len());
+            let val: u64 = tail[..end].parse().ok()?;
+            Some((val, at + key.len() + start + end))
+        }
+
+        let mut out = std::vec::Vec::new();
+        // Restrict to the "vectors" array so the "thresholds" block above it
+        // cannot be mistaken for an entry.
+        let arr_at = TIER_VECTORS
+            .find("\"vectors\"")
+            .expect("vector file has a vectors array");
+        let mut cursor = &TIER_VECTORS[arr_at..];
+        while let Some((total, used)) = field_after(cursor, "\"total_usdc\"") {
+            cursor = &cursor[used..];
+            let (tier, used2) =
+                field_after(cursor, "\"expected_tier\"").expect("every vector states a tier");
+            cursor = &cursor[used2..];
+            out.push((total, tier as u32));
+        }
+        out
+    }
+
+    #[test]
+    fn shared_parity_vectors_are_present_and_well_formed() {
+        let v = parity_vectors();
+        assert_eq!(v.len(), 12, "vector file should carry 12 entries");
+        // The boundary set the directive names must all be present.
+        for expected in [
+            0u64,
+            9_999_999,
+            10_000_000,
+            99_999_999,
+            100_000_000,
+            999_999_999,
+            1_000_000_000,
+            1_000_000_000_000,
+        ] {
+            assert!(
+                v.iter().any(|(t, _)| *t == expected),
+                "vector file is missing the {expected} boundary case"
+            );
+        }
+    }
+
+    #[test]
+    fn campaign_agrees_with_the_shared_parity_vectors() {
+        // Tier 0 in the vector file means "below Bronze", which this contract
+        // expresses as the BelowBronze error rather than a Tier value.
+        for (amount, expected) in parity_vectors() {
+            // Two vectors are VM-side only, and the reason is a real
+            // difference between the two machines rather than a convenience:
+            //
+            //  - amount 0: GateClaim refuses a zero mint (NothingMinted, #13),
+            //    so a zero-total migration record cannot exist on this side at
+            //    all. The VM still evaluates the rung, and it is 0 there.
+            //  - the 1_000_000 USDC vector: larger than this mocked CCTP
+            //    message carries. The rung above Gold is already pinned here by
+            //    the exact-Gold case.
+            //
+            // Both are recorded in evidence.json under `parity`.
+            if amount == 0 || amount > u64::from(u32::MAX) * 1_000 {
+                continue;
+            }
+            let w = world();
+            w.env.mock_all_auths();
+            migrate(&w, amount, 1);
+            let client = CampaignClient::new(&w.env, &w.camp);
+            match expected {
+                0 => assert_eq!(
+                    client.try_claim_tier(&w.owner),
+                    Err(Ok(CampError::BelowBronze)),
+                    "vector total={amount} expected below-Bronze"
+                ),
+                1 => assert_eq!(client.claim_tier(&w.owner), Tier::Bronze, "total={amount}"),
+                2 => assert_eq!(client.claim_tier(&w.owner), Tier::Silver, "total={amount}"),
+                3 => assert_eq!(client.claim_tier(&w.owner), Tier::Gold, "total={amount}"),
+                other => panic!("vector file names an unknown tier {other}"),
+            }
+        }
+    }
+
     // per probe so the gate's monotonically-increasing total cannot mask a
     // boundary by accumulation.
     #[test]
