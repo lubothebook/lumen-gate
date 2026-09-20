@@ -9,6 +9,7 @@
     "postbuild": "node -e \"const fs=require('fs'),p=require('path');fs.mkdirSync('dist/deployments',{recursive:true});for(const f of fs.readdirSync('../deployments'))if(f.endsWith('.json'))fs.copyFileSync(p.join('../deployments',f),p.join('dist/deployments',f));fs.mkdirSync('dist/anchor',{recursive:true});fs.copyFileSync('../anchor/stellar.toml','dist/anchor/stellar.toml');console.log('copied the deployment manifest and stellar.toml into dist')\""
   },
   "dependencies": {
+    "@stellar/freighter-api": "^6.0.1",
     "@stellar/stellar-sdk": "^12.1.0"
   },
   "devDependencies": {
