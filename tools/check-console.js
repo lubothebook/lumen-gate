@@ -78,12 +78,7 @@ try {
   problems.push(`frontend/src/app.js is not valid JavaScript: ${detail}`);
 }
 
-// ids the module creates itself at runtime do not have to exist in the
-// markup: the lookup that finds them is a "create if missing" probe (the
-// framed-mode escape hatch builds its own link).
-const runtimeIds = new Set(['walletTabLink']);
 for (const id of lookups) {
-  if (runtimeIds.has(id)) continue;
   if (!ids.has(id)) problems.push(`src/app.js looks up #${id}, which the markup does not define`);
 }
 if (navTargets.length === 0) problems.push('the page has no navigation entries at all');
