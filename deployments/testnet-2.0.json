@@ -135,6 +135,11 @@
    "id": "s17",
    "text": "foundryup new-build XDG path vs old path broke the first evm-tests CI run (exit 127) while local stayed green - here-green-there-red caught by real CI; workflow exports both paths",
    "at": "2026-09-20T02:55:03Z"
+  },
+  {
+   "id": "s18",
+   "text": "gate2/zkvm benches carry unwrap/expect under their own deny gates (upstream-scoped clippy to lib+test); CI mirrors that scope and records the divergence rather than silently patching bench code or silently widening lints",
+   "at": "2026-09-20T03:12:08Z"
   }
  ],
  "superseded": [

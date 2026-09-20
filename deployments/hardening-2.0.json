@@ -202,5 +202,13 @@
   "checked_at": "2026-09-20T02:55:03Z",
   "foundry": "1.8.3 installed via foundryup (stable, 2026-09-15 build); solc 0.8.30 via svm; slither via pip; the old no-foundry-in-sandbox note for F4/F7 is OBSOLETE - superseded by real runs, the gate flipped from excuse to execution the same day",
   "evm_ci": "evm-tests job green (23 tests) on gate-2.0; the first CI red for the job was the foundryup XDG path change - infra, recorded as finding"
+ },
+ "zkvm_lane": {
+  "at": "2026-09-20T03:12:08Z",
+  "scope": "gate2/zkvm independent cargo workspace (7 crates: isa, vm, proof/stark, state, compiler, verifier-registry, note-packing); ported from the operator-owned sibling monorepo per explicit instruction; renamed to neutral family BEFORE landing (word-boundary script + zero-residue asserts, both now CI-enforced)",
+  "tests": "cargo test --workspace: 365 passed, 0 failed (incl. 185-test prover soundness suite at ~5min); cargo build clean; clippy lib+test clean under the workspace deny(unwrap/expect) gates",
+  "finding": "clippy --all-targets additionally surfaces deny-gate violations in the two benches (upstream excluded benches from the gate deliberately); recorded NOT fixed: bench code is measurement scaffolding, not production; the CI job runs clippy on lib+test, matching upstream scope - the divergence is written here, not hidden",
+  "coupling_fix": "spec-example fence length was a hardcoded literal (any rename ate one char of every example); now derived from the fence string itself - a latent upstream trap caught by the port",
+  "domain_tags": "Fiat-Shamir domain-separator strings renamed consistently prover+verifier+tests in one pass; no deployed artifacts exist to conflict with the new tags"
  }
 }
