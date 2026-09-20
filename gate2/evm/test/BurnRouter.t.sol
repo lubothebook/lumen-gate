@@ -252,6 +252,33 @@ contract BurnRouterTest is Test {
         assertEq(usdc.allowance(address(router), address(messenger)), 0, "consumed allowance must rest at zero");
     }
 
+    // ---------- adminless proof at ABI level (Annex lesson #1, section 3) ----------
+
+    function test_AdminlessSurface_DispatchLevelProof() public {
+        // Annex lesson #1 (section 3): "no admin" is proven by EXPERIMENT at the
+        // dispatch boundary, not by prose. Every classic privileged selector must
+        // have no entry point: a plain call to the router must revert.
+        string[10] memory forbidden = [
+            "owner()", "admin()", "pause()", "unpause()", "upgrade(address)",
+            "setMessenger(address)", "setUsdc(address)", "withdraw(address,uint256)",
+            "rescue()", "setDefaultFee(uint256)"
+        ];
+        for (uint256 i; i < forbidden.length; ++i) {
+            (bool ok,) = address(router).call(abi.encodeWithSignature(forbidden[i]));
+            assertTrue(!ok, string.concat("privileged selector must NOT dispatch: ", forbidden[i]));
+        }
+        // no fallback, no receive: an unknown selector and raw value both die
+        (bool fb,) = address(router).call(hex"deadbeef");
+        assertTrue(!fb, "router must have no fallback");
+        (bool rec,) = address(router).call{value: 1}("");
+        assertTrue(!rec, "router must not accept ether");
+        assertEq(address(router).balance, 0, "zero native value, always");
+        // and the two entry points DO dispatch (burn here fails deeper than dispatch):
+        vm.prank(user);
+        vm.expectRevert(BurnRouter.ZeroMinOut.selector);
+        router.burn(address(token), 1, 0, uint64(block.timestamp + 1), 0, 1000, G_VALID);
+    }
+
     // ---------- fuzz invariants (4.6) ----------
 
     function testFuzz_RouterNeverGainsValue(uint96 rate, uint96 amountIn, uint96 minOut) public {
