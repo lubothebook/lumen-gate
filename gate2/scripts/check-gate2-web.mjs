@@ -66,6 +66,34 @@ await jsClick(page, "#tab-burn");
 const blocker = await page.$eval("#burn-blocker", (n) => n.textContent);
 check("burn blocker is honest (no router)", blocker.includes("not deployed") || blocker.includes("not on Sepolia"));
 
+// The read-only Horizon check needs an address and nothing else, so typing a
+// valid one must be enough to unlock it. Requiring a separate button press
+// first left a user with a correct address staring at a dead control.
+const trustlineOpen = () =>
+  page.$eval("#btn-trustline", (n) => !(n.disabled || n.getAttribute("aria-disabled") === "true"));
+const typeStrkey = async (v) => {
+  await page.$eval("#in-strkey", (n, val) => {
+    n.value = val;
+    n.dispatchEvent(new Event("input", { bubbles: true }));
+  }, v);
+};
+
+check("trustline check starts locked (no address yet)", (await trustlineOpen()) === false);
+
+await typeStrkey(DEPLOYER.slice(0, 20));
+check("half-typed address does not unlock the read", (await trustlineOpen()) === false);
+check(
+  "half-typed address is not called invalid yet",
+  !(await page.$eval("#res-strkey", (n) => n.textContent)).includes("invalid")
+);
+
+await typeStrkey(DEPLOYER);
+check("typing a valid address unlocks the read with no button press", (await trustlineOpen()) === true);
+
+await typeStrkey("GXXXINVALID");
+check("the read locks again when the address stops being valid", (await trustlineOpen()) === false);
+
+await page.$eval("#in-strkey", (n) => { n.value = ""; });
 await page.type("#in-strkey", "GABC");
 await jsClick(page, "#btn-strkey");
 let sk = await page.$eval("#res-strkey", (n) => n.textContent);

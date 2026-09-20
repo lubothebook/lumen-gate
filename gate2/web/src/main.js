@@ -525,19 +525,37 @@ $("btn-tier-send").addEventListener("click", () =>
 );
 
   // ---------- Burn-screen preconditions ----------
-$("btn-strkey").addEventListener("click", () => {
+/**
+ * Decide what a G… address in the burn box unlocks.
+ *
+ * `announce` is false while the user is still typing: the gating is applied
+ * but no red "StrKey invalid" pill is drawn, because a half-typed address is
+ * not a mistake yet. Pressing the button announces the verdict either way.
+ */
+function applyStrkeyVerdict(announce) {
   const g = $("in-strkey").value.trim();
-  const box = $("res-strkey");
-  box.innerHTML = "";
   const ok = StrKey.isValidEd25519PublicKey(g);
-  box.appendChild(pill(ok ? "StrKey valid" : "StrKey invalid", ok ? "pill ok" : "pill bad"));
-  if (ok) {
-    markAction($("btn-trustline"), true); // read-only Horizon check — no signature needed
-    // The write button opens only when the wallet is connected AND on testnet;
-    // a valid typed address alone must never unlock signing on a mainnet wallet.
-    if (connectedAddress && walletWritesAllowed) markAction($("btn-trust-open-burn"), true);
+  const box = $("res-strkey");
+  if (announce) {
+    box.innerHTML = "";
+    box.appendChild(pill(ok ? "StrKey valid" : "StrKey invalid", ok ? "pill ok" : "pill bad"));
+  } else if (!ok) {
+    // Clear a stale "valid" pill from a previous address rather than leave it
+    // contradicting the box it describes.
+    box.innerHTML = "";
   }
-});
+  // The read-only Horizon check needs an address and nothing else - no wallet,
+  // no signature. Gating it behind a separate button press meant a user who
+  // typed a perfectly good address saw a dead control and no way to learn why.
+  markAction($("btn-trustline"), ok);
+  // The write button opens only when the wallet is connected AND on testnet;
+  // a valid typed address alone must never unlock signing on a mainnet wallet.
+  if (ok && connectedAddress && walletWritesAllowed) markAction($("btn-trust-open-burn"), true);
+  return ok;
+}
+
+$("btn-strkey").addEventListener("click", () => applyStrkeyVerdict(true));
+$("in-strkey").addEventListener("input", () => applyStrkeyVerdict(false));
 
 async function runTrustOpen() {
   const f = getFreighter();
