@@ -29,6 +29,7 @@ const div6 = (v) => (Number(typeof v === "bigint" ? v : v ?? 0) / 1e6).toFixed(6
 
 let connectedAddress = null;
 let currentQueryAddress = null;
+let walletWritesAllowed = false;
 
 // ---------- tabs (1.0 Move-value pattern: one card, the pane below switches) ----------
 const TAB_NAMES = ["proof", "burn", "battery", "tickets"];
@@ -99,6 +100,7 @@ async function connectWallet() {
     setWalletState(`${addr.slice(0, 8)}…${addr.slice(-6)} bağlı`, "ok");
     $("in-address").value = addr;
     $("in-strkey").value = addr;
+    walletWritesAllowed = true;
     $("btn-tier-send").disabled = false;
     $("btn-trustline").disabled = false;
     setWalletActions(true);
@@ -110,6 +112,7 @@ async function connectWallet() {
         const name = typeof net === "string" ? net : net && (net.network || net.networkPassphrase);
         if (name && !/test/i.test(String(name))) {
           setWalletState(`Bağlı ama Freighter ${name} üzerinde. Mainnet’te işlem düğmeleri kapalı.`, "error");
+          walletWritesAllowed = false;
           $("btn-tier-send").disabled = true;
           $("btn-burn").disabled = true;
           setWalletActions(false);
@@ -154,6 +157,29 @@ function acctLog(text, hash) {
 function setWalletActions(on) {
   for (const id of ["btn-fund", "btn-trust-open", "btn-bump", "btn-trust-open-burn", "btn-stamp"]) {
     if ($(id)) $(id).disabled = !on;
+  }
+}
+
+async function withButton(id, pendingText, work) {
+  const button = $(id);
+
+  if (!button || button.disabled) return;
+
+  const label = button.textContent;
+
+  button.disabled = true;
+  button.setAttribute("aria-busy", "true");
+  button.textContent = pendingText;
+
+  try {
+    return await work();
+  } catch (e) {
+    acctLog(`İşlem hatası: ${e?.message || e}`);
+    return null;
+  } finally {
+    button.textContent = label;
+    button.removeAttribute("aria-busy");
+    button.disabled = !walletWritesAllowed;
   }
 }
 
@@ -390,20 +416,32 @@ async function runTrustOpen() {
   }
 }
 
-$("btn-fund")?.addEventListener("click", async () => {
-  if (!connectedAddress) return;
-  acctLog("Friendbot çağrılıyor…");
-  const r = await friendbot(connectedAddress);
-  if (r.ok) {
-    acctLog("Friendbot XLM gönderdi (testnet).", r.hash);
-    await refreshBalances(connectedAddress);
-  } else {
-    acctLog(`Friendbot: ${r.status} — hesap zaten dolu olabilir.`);
-    await refreshBalances(connectedAddress);
-  }
-});
-$("btn-trust-open")?.addEventListener("click", () => runTrustOpen());
-$("btn-trust-open-burn")?.addEventListener("click", () => runTrustOpen());
+$("btn-fund")?.addEventListener(
+  "click",
+  () =>
+    withButton("btn-fund", "XLM isteniyor…", async () => {
+      if (!connectedAddress) return;
+      acctLog("Friendbot çağrılıyor…");
+      const r = await friendbot(connectedAddress);
+      if (r.ok) {
+        acctLog("Friendbot XLM gönderdi (testnet).", r.hash);
+      } else {
+        const reason =
+          r.payload?.detail ||
+          r.payload?.error ||
+          r.payload?.raw ||
+          `HTTP ${r.status}`;
+        acctLog(`Friendbot reddetti: ${String(reason).slice(0, 180)}`);
+      }
+      await refreshBalances(connectedAddress);
+    })
+);
+$("btn-trust-open")?.addEventListener("click", () =>
+  withButton("btn-trust-open", "İmza bekleniyor…", runTrustOpen)
+);
+$("btn-trust-open-burn")?.addEventListener("click", () =>
+  withButton("btn-trust-open-burn", "İmza bekleniyor…", runTrustOpen)
+);
 $("btn-stamp")?.addEventListener("click", async () => {
   const f = getFreighter();
   if (!f || !connectedAddress) {
