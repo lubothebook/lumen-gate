@@ -117,7 +117,7 @@
      are the interactive surface: while the pointer is over one cube it wears a
      4px white inset frame; when the pointer leaves, the frame closes. */
   .cube-lattice {
-    position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: auto;
+    position: fixed; inset: 0; z-index: -1; overflow: hidden;
     display: grid; grid-template-columns: repeat(auto-fill, var(--cell));
     grid-auto-rows: var(--cell);
   }
@@ -249,6 +249,15 @@
   /* ------------------------------------------------------------ structure */
   .sec-head { display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-end; justify-content: space-between; }
   .sec-head > div { max-width: 62ch; }
+  /* The lattice is position:fixed with z-index:0, so anything that stays in the
+     default (auto) layer paints UNDER it: the wallet card was legible but sat
+     beneath the pattern and swallowed its own clicks, because elementFromPoint
+     landed on .cube instead of the card. Gate 2.0 already lifts its content
+     this way (gate2/web/src/style.css); 1.0 never got the same line. */
+  .card, .band, .trust-grid, .row-strip, .strip, footer {
+    position: relative; z-index: 1;
+  }
+
   .card {
     /* a dark base under the glass gradient: cards no longer sit on a strip, so
        the lattice behind them must not shine through the prose */
@@ -271,7 +280,7 @@
   /* ------------------------------------------------------------------ hero */
   /* The banner sits high and the wallet band starts right under it: the first
      screen is a wordmark, one sentence and two buttons, not a wall of prose. */
-  .hero { position: relative; z-index: 1; padding-top: clamp(108px, 10vw, 132px); padding-bottom: clamp(10px, 1.4vw, 18px); pointer-events: none; }
+  .hero { position: relative; z-index: 1; padding-top: clamp(100px, 9vw, 118px); padding-bottom: clamp(8px, 1.2vw, 14px); pointer-events: none; }
   .hero > .shell { position: relative; z-index: 1; pointer-events: none; }
   .hero-panel { pointer-events: none; }
   .hero-banner, .track-row, .hero-panel .cta, .hero-panel .eyebrow, .hero-panel h1, .hero-panel .lead { pointer-events: auto; }
@@ -284,7 +293,7 @@
     background: none; border: 0; border-radius: 0;
     padding: 0; box-shadow: none; text-align: center;
   }
-  .track-row { display: flex; justify-content: center; align-items: center; gap: 8px; width: max-content; max-width: 100%; margin: 0 auto 14px; pointer-events: auto; }
+  .track-row { display: flex; justify-content: center; align-items: center; gap: 8px; width: max-content; max-width: 100%; margin: 0 auto 12px; pointer-events: auto; }
   .track-split { display: block; width: 1px; height: 12px; background: rgba(255,255,255,0.35); flex: none; pointer-events: none; }
   .track-box, a.track-box, button.track-box {
     appearance: none; -webkit-appearance: none;
@@ -301,15 +310,15 @@
   }
   .track-box:hover { border-color: rgba(255, 255, 255, 0.4); color: var(--ink); }
   .track-box.selected, .track-box[aria-current="true"] { color: #000; background: rgba(255, 255, 255, 0.92); border-color: transparent; }
-  .hero-banner { display: block; width: min(560px, 82%); height: auto; margin: 0 auto 14px; }
+  .hero-banner { display: block; width: min(560px, 82%); height: auto; margin: 0 auto 12px; }
   /* The version switch. 1.0 is the settlement-boundary system this page
      proves; 2.0 (Proof of Migration) now has live testnet contracts and its
      own console at /gate2/, so its box links there and names the one honest
      blocker (Sepolia funds for the end-to-end burn lane) instead of saying
      "on the way". */
-  .hero-panel h1 { margin: 10px auto 0; }
-  .hero-panel .lead { margin: 12px auto 0; }
-  .hero-panel .cta { margin-top: 18px; justify-content: center; }
+  .hero-panel h1 { margin: 8px auto 0; }
+  .hero-panel .lead { margin: 10px auto 0; }
+  .hero-panel .cta { margin-top: 14px; justify-content: center; }
   /* The trust grid is a box, so it wears no strip: it carries its own surface
      and sits on the lattice like the stat shelf beside it. */
   .trust-grid {
@@ -639,7 +648,7 @@
   }
   .row-strip .note { color: var(--muted); }
   .console, .grid-3, .grid-2, .stats, .trust-lanes { align-items: start; }
-  .band { margin: clamp(44px, 5.5vw, 92px) 0; }
+  .band { margin: clamp(40px, 4.5vw, 68px) 0; }
   footer { margin-top: clamp(44px, 5.5vw, 92px); }
 
   .trust-lanes { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 22px; }
