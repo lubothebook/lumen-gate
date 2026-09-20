@@ -3,7 +3,7 @@
 // her iddia DOM'dan okunur.
 import puppeteer from "puppeteer";
 
-const BASE = process.env.GATE2_WEB_URL || "http://127.0.0.1:5174";
+const BASE = process.env.GATE2_WEB_URL || "http://127.0.0.1:5174/gate2/";
 const DEPLOYER = "GDML46BD7KOLEB57D4GW4FNPML6UZKOKSPXAVFG5KTGKQO6E3OI53V5U";
 
 const fails = [];

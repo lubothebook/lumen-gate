@@ -1,15 +1,20 @@
 # gate2/web — Burn Ekranı + Taşıma Kanıtım (F6)
 
 Gate 2.0’nın ayrı Vite uygulaması. `frontend/` ve `vercel.json` Gate 1.0
-bölgesidir; bu uygulama onlara dokunmaz, ayrı portta (5174) çalışır.
+bölgesidir; bu uygulama onlara dokunmaz. Üretimde tek Vercel dağıtımının
+`/gate2/` alt yolundan servis edilir (1.0 kökte, 2.0 `/gate2/`’de);
+geliştirmede ayrı portta (5174) çalışır ve 1.0 dev sunucusu `/gate2`’yi
+buraya proxy’ler — yani yerel deneyim Vercel’in birebir aynısıdır.
 
 ## Çalıştırma
 
 ```
 cd gate2/web
 npm install
-npm run dev        # http://localhost:5174
+npm run dev        # http://localhost:5174/gate2/
+                   # (1.0 konsolu açıksa: http://localhost:5173/gate2/)
 ```
+
 
 ## Dürüstlük kuralları (DIRECTIVE 2.0)
 

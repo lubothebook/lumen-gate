@@ -49,6 +49,15 @@ const sourceProxy = {
     target: process.env.VITE_API_ORIGIN || 'http://127.0.0.1:3001',
     changeOrigin: true,
   },
+  // Gate 2.0's console is a separate Vite app (gate2/web, port 5174) that on
+  // Vercel ships under /gate2/ of the same deployment. Proxying it here means
+  // the integrated experience is testable locally exactly as it is in
+  // production: one origin, two gates.
+  '/gate2': {
+    target: process.env.VITE_GATE2_ORIGIN || 'http://127.0.0.1:5174',
+    changeOrigin: true,
+    ws: false,
+  },
 };
 
 export default defineConfig({

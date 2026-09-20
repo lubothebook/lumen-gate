@@ -233,7 +233,10 @@
     "F3-deploy: stellar contract invoke parses Vec args only as JSON arrays ('--allowed 0' rejected, '--allowed \"[0]\"' works); a failed CLI parse sends no tx, so the rejected first initialize attempt had zero on-chain effect.",
     "F3-deploy merge: two live gate_claim deployments coexist on testnet (sibling hardened CDQ3PA5L... = canonical; pre-hardening CBKSNJ... = kept receipt, the campaign is wired to it); nothing deleted, both recorded.",
     "F6: @stellar/stellar-sdk v12 exports no addressToScVal; nativeToScVal(addr.toScAddress(), {type:'address'}) double-wraps and RPC rejects it ('cannot interpret value as ScVal'). Correct: new Address(g).toScVal().",
-    "F6 harness: puppeteer real-mouse clicks get swallowed when auto-scroll puts a button under the position:sticky header (hit-test lies because it runs pre-scroll); drive handlers with element.click() via page.$eval instead."
+    "F6 harness: puppeteer real-mouse clicks get swallowed when auto-scroll puts a button under the position:sticky header (hit-test lies because it runs pre-scroll); drive handlers with element.click() via page.$eval instead.",
+    "F6-vercel: vercel.json and frontend/index.html are Gate 1.0 frozen territory under DIRECTIVE 2.0; the operator explicitly ordered the Vercel app to cover both gates ('vercel app de de tum front end dizayni bu ikisine uygun olsun'), which lifts the freeze for exactly these touches: build pipeline, SPA rewrite exclusion, header link, 2.0 track-box text. Nothing else in 1.0 was edited; check-live-page still green (31 controls).",
+    "F6-vercel: a subpath Vite app must use base=/gate2/ in dev as well as in build, otherwise the 1.0 dev proxy serves its index.html but the asset URLs point at the 1.0 app's /src/* and the page silently loads the wrong modules.",
+    "F6-vercel: the sandbox has ~2GB RAM; with the five dev servers running, rustc gets SIGKILLed (OOM) while compiling stellar-xdr with the arbitrary feature in the test profile. The regression gate must run with -j 1 and the servers stopped, or the kill looks like a mysterious stellar-xdr compile error."
   ],
   "superseded": [
     {
@@ -345,6 +348,23 @@
         "check-gate2-web.mjs check 'claim_tier sim -> NoMigration refusal visible'"
       ],
       "not_claimed": "positive tier claim (Bronze/Silver) requires a minted badge, which requires a real Sepolia burn - still gated on funds"
+    },
+    {
+      "id": "F6-vercel",
+      "status": "complete - one Vercel deployment serves both gates; operator ordered the vercel.json/frontend touch explicitly",
+      "done": [
+        "vercel.json: installCommand/buildCommand now build frontend AND gate2/web (--base=/gate2/) and merge gate2/web/dist into frontend/dist/gate2; SPA rewrite excludes /gate2/ so its assets are served as files",
+        "frontend header: new 'Gate 2.0' button (/gate2/); hero 2.0 track-box now states the honest status (testnet contracts live, console open, burn lane waits on Sepolia funds) and links to the 2.0 console; stale 'does not exist yet' comment replaced",
+        "frontend dev server proxies /gate2 to the 2.0 dev server (5174), so the integrated one-origin experience is testable locally exactly as on Vercel",
+        "gate2/web: base=/gate2/ in dev too, back-link 'Gate 1.0 konsolu' -> /",
+        "verified three ways: merged production dist served statically (harness 10/10 at /gate2/, navigation / -> /gate2/ -> / works), dev proxy 5173/gate2/ (harness 10/10), check-live-page green with 31 controls (the new header link included), 0 failing requests"
+      ],
+      "evidence": [
+        "check-gate2-web.mjs ALL GREEN (10 checks) against http://127.0.0.1:4173/gate2/ (production dist) and http://127.0.0.1:5173/gate2/ (dev proxy)",
+        "tools/check-live-page.js: '31 controls all reachable, 0 failing requests'",
+        "puppeteer navigation test: header link lands on the 2.0 console, track-box link present, back-link returns to /"
+      ],
+      "not_claimed": "the Vercel deployment itself rebuilds on push; the merged-dist test here is byte-equivalent to the Vercel buildCommand but the live URL check belongs to the operator's next deploy"
     }
   ]
 }
