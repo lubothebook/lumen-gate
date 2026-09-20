@@ -41,3 +41,8 @@ deployments/sep6-transactions.json
 # imported phase-1 transcripts are gigabyte-class binaries: never committed,
 # they are re-fetched or re-supplied and re-verified; pins live in circuits/PTAU_SHA256
 circuits/ptau/
+
+# Gate 2.0 local install / build (1.0 frontend/ already ignored above)
+/gate2/web/node_modules/
+/gate2/web/dist/
+/gate2/scripts/node_modules/

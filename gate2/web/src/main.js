@@ -9,6 +9,10 @@ import {
   watchFreighter,
   freighterConnect,
   sendWithFreighter,
+  friendbot,
+  openUsdcTrustline,
+  EXPLORER_TX,
+  EXPLORER_ACCOUNT,
 } from "./stellar.js";
 
 const $ = (id) => document.getElementById(id);
@@ -25,16 +29,35 @@ const div6 = (v) => (Number(typeof v === "bigint" ? v : v ?? 0) / 1e6).toFixed(6
 let connectedAddress = null;
 let currentQueryAddress = null;
 
-// ---------- tabs ----------
-const pages = { proof: $("page-proof"), burn: $("page-burn") };
+// ---------- tabs (1.0 Move-value pattern: one card, the pane below switches) ----------
+const TAB_NAMES = ["proof", "burn", "battery", "tickets"];
 function showTab(name) {
-  $("tab-proof").classList.toggle("active", name === "proof");
-  $("tab-burn").classList.toggle("active", name === "burn");
-  pages.proof.classList.toggle("hidden", name !== "proof");
-  pages.burn.classList.toggle("hidden", name !== "burn");
+  for (const n of TAB_NAMES) {
+    const tab = $(`tab-${n}`);
+    const page = $(`page-${n}`);
+    const on = n === name;
+    if (tab) {
+      tab.classList.toggle("active", on);
+      tab.setAttribute("aria-selected", String(on));
+    }
+    if (page) page.classList.toggle("hidden", !on);
+  }
+  if (name === "burn" || name === "proof") {
+    const consoleEl = $("console");
+    if (consoleEl && window.matchMedia("(max-width: 720px)").matches) {
+      /* keep the working pane in view on a phone after a tab change */
+    }
+  }
 }
 $("tab-proof").addEventListener("click", () => showTab("proof"));
 $("tab-burn").addEventListener("click", () => showTab("burn"));
+$("tab-battery")?.addEventListener("click", () => showTab("battery"));
+$("tab-tickets")?.addEventListener("click", () => showTab("tickets"));
+
+// 2.0 kutucuğu: 1.0'daki gibi alttaki bandı bu sürümün çalışma alanı yapar.
+$("gate2Select")?.addEventListener("click", () => {
+  $("console")?.scrollIntoView({ behavior: "smooth", block: "start" });
+});
 
 // ---------- static honesty ----------
 $("contract-ids").textContent =
@@ -65,11 +88,81 @@ function onFreighter(f) {
       $("in-strkey").value = addr;
       $("btn-tier-send").disabled = false;
       $("btn-trustline").disabled = false;
+      if (typeof f.getNetwork === "function") {
+        try {
+          const net = await f.getNetwork();
+          const name = typeof net === "string" ? net : net && (net.network || net.networkPassphrase);
+          if (name && !/test/i.test(String(name))) {
+            setWalletState(`Bağlı ama Freighter ${name} üzerinde. Mainnet’te işlem düğmeleri kapalı.`, "error");
+            $("btn-tier-send").disabled = true;
+            $("btn-burn").disabled = true;
+          }
+        } catch {
+          /* getNetwork is advisory; some builds refuse it until unlocked */
+        }
+      }
     } catch (e) {
       setWalletState(`Bağlantı hatası: ${e.message || e}`, "error");
     }
   }, { once: false });
 }
+function acctLog(text, hash) {
+  const box = $("acct-log");
+  if (!box) return;
+  box.textContent = "";
+  box.appendChild(el("div", "muted", text));
+  if (hash) {
+    const a = document.createElement("a");
+    a.href = EXPLORER_TX + hash;
+    a.target = "_blank";
+    a.rel = "noreferrer";
+    a.textContent = hash;
+    a.className = "contracts";
+    box.appendChild(a);
+  }
+}
+
+function setWalletActions(on) {
+  for (const id of ["btn-fund", "btn-trust-open", "btn-bump", "btn-trust-open-burn"]) {
+    if ($(id)) $(id).disabled = !on;
+  }
+}
+
+async function refreshBalances(g) {
+  const kv = $("walletKv");
+  if (!kv || !g) return;
+  try {
+    const r = await hasUsdcTrustline(g);
+    kv.innerHTML = "";
+    if (!r.exists) {
+      kv.appendChild(el("tr", null, null));
+      const tr = document.createElement("tr");
+      tr.innerHTML = "<td>Hesap</td><td>zincirde yok — Friendbot ile XLM al</td>";
+      kv.appendChild(tr);
+      return;
+    }
+    const xlm = (r.balances || []).find((b) => b.asset_type === "native");
+    const usdc = (r.balances || []).find((b) => b.asset_code === "USDC" && b.asset_issuer === CONFIG.usdcIssuer);
+    const row = (k, v) => {
+      const tr = document.createElement("tr");
+      tr.appendChild(el("td", null, k));
+      tr.appendChild(el("td", "mono", v));
+      kv.appendChild(tr);
+    };
+    row("XLM", xlm ? Number(xlm.balance).toFixed(7) : "—");
+    row("USDC", usdc ? `${Number(usdc.balance).toFixed(7)} (trustline var)` : "trustline yok");
+    const link = document.createElement("a");
+    link.href = EXPLORER_ACCOUNT + g;
+    link.target = "_blank";
+    link.rel = "noreferrer";
+    link.textContent = "Stellar Expert’te aç";
+    link.className = "link-btn";
+    $("walletNote")?.append?.("");
+  } catch (e) {
+    acctLog(`Bakiye okunamadı: ${e.message || e}`);
+  }
+}
+
 watchFreighter(onFreighter);
 // The watcher only enables the button when a provider shows up; keep a
 // manual fallback so the click always tries the current window state.
@@ -238,7 +331,62 @@ $("btn-strkey").addEventListener("click", () => {
   box.innerHTML = "";
   const ok = StrKey.isValidEd25519PublicKey(g);
   box.appendChild(pill(ok ? "StrKey geçerli" : "StrKey geçersiz", ok ? "pill ok" : "pill bad"));
-  if (ok) $("btn-trustline").disabled = false;
+  if (ok) {
+    $("btn-trustline").disabled = false;
+    if (connectedAddress) $("btn-trust-open-burn").disabled = false;
+  }
+});
+
+async function runTrustOpen() {
+  const f = getFreighter();
+  if (!f || !connectedAddress) {
+    acctLog("Önce Freighter ile bağlan.");
+    return;
+  }
+  acctLog("Freighter imzası bekleniyor (USDC trustline)…");
+  try {
+    const r = await openUsdcTrustline(f);
+    if (r.ok && r.hash) {
+      acctLog("Trustline açıldı — Freighter ve Expert’te görünür.", r.hash);
+      await refreshBalances(connectedAddress);
+    } else {
+      acctLog(`Trustline reddedildi: ${JSON.stringify(r).slice(0, 180)}`);
+    }
+  } catch (e) {
+    acctLog(`Trustline hatası: ${e.message || e}`);
+  }
+}
+
+$("btn-fund")?.addEventListener("click", async () => {
+  if (!connectedAddress) return;
+  acctLog("Friendbot çağrılıyor…");
+  const r = await friendbot(connectedAddress);
+  if (r.ok) {
+    acctLog("Friendbot XLM gönderdi (testnet).", r.hash);
+    await refreshBalances(connectedAddress);
+  } else {
+    acctLog(`Friendbot: ${r.status} — hesap zaten dolu olabilir.`);
+    await refreshBalances(connectedAddress);
+  }
+});
+$("btn-trust-open")?.addEventListener("click", () => runTrustOpen());
+$("btn-trust-open-burn")?.addEventListener("click", () => runTrustOpen());
+$("btn-bump")?.addEventListener("click", async () => {
+  const f = getFreighter();
+  if (!f || !connectedAddress) return;
+  acctLog("bump imzası bekleniyor…");
+  try {
+    const r = await sendWithFreighter(f, CONFIG.gateClaimCanonical, "bump", [
+      { scVal: addrScVal(connectedAddress) },
+    ]);
+    if (r.ok) {
+      acctLog(`bump ${r.status}`, r.hash);
+    } else {
+      acctLog(`bump: ${String(r.error || r.status).slice(0, 220)}`, r.hash);
+    }
+  } catch (e) {
+    acctLog(`bump hatası: ${e.message || e}`);
+  }
 });
 
 $("btn-trustline").addEventListener("click", async () => {
@@ -278,3 +426,129 @@ $("btn-burn").addEventListener("click", () => {
     $("res-burn").textContent = "Router yok — bu butonun açılması imkânsızdı; bu bir hatadır, lütfen bildir.";
   }
 });
+
+// ---------- lattice (same wall as Gate 1.0; pointer frame only on visible cubes)
+const TILE_PX = 60;
+const FRAME_PX = 4;
+const LATTICE_BLOCKERS = [
+  "header.top",
+  "footer",
+  "nav.foot-nav",
+  ".testnet-band",
+  ".boundary",
+  ".band",
+  ".card",
+  ".hero-banner",
+  ".track-box",
+  ".row-strip",
+  ".trust-grid",
+];
+
+function sizeLattice() {
+  const dpr = window.devicePixelRatio || 1;
+  const root = document.documentElement;
+  const cell = TILE_PX / dpr;
+  root.style.setProperty("--cell", `${cell}px`);
+  root.style.setProperty("--pitch", `${cell}px`);
+  root.style.setProperty("--ring", `${FRAME_PX / dpr}px`);
+  return cell;
+}
+
+function buildLattice() {
+  const wall = $("cubeLattice");
+  if (!wall) return;
+  const pitch = sizeLattice();
+  const cols = Math.max(1, Math.ceil(window.innerWidth / pitch));
+  const rows = Math.max(1, Math.ceil(window.innerHeight / pitch));
+  const wanted = Math.min(cols * rows, 6000);
+  if (buildLattice.wanted === wanted) return;
+  buildLattice.wanted = wanted;
+  const frag = document.createDocumentFragment();
+  for (let i = 0; i < wanted; i += 1) {
+    const cube = document.createElement("div");
+    cube.className = "cube";
+    frag.append(cube);
+  }
+  wall.textContent = "";
+  wall.append(frag);
+}
+
+function cubeUnderPointer(stack) {
+  const at = stack.findIndex((node) => node.classList && node.classList.contains("cube"));
+  if (at === -1) return null;
+  const hidden = stack
+    .slice(0, at)
+    .some((node) => node.matches && LATTICE_BLOCKERS.some((selector) => node.matches(selector)));
+  return hidden ? null : stack[at];
+}
+
+function initLatticeFrame() {
+  const wall = $("cubeLattice");
+  if (!wall || typeof document.elementsFromPoint !== "function") return;
+  let framed = null;
+  let queued = false;
+  let x = 0;
+  let y = 0;
+  let seen = false;
+  const clear = () => {
+    if (!framed) return;
+    framed.classList.remove("frame");
+    framed = null;
+  };
+  const paint = () => {
+    queued = false;
+    if (!seen) return;
+    const cube = cubeUnderPointer(document.elementsFromPoint(x, y));
+    if (cube === framed) return;
+    clear();
+    if (cube) {
+      cube.classList.add("frame");
+      framed = cube;
+    }
+  };
+  const schedule = () => {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(paint);
+  };
+  window.addEventListener("pointermove", (event) => {
+    if (event.pointerType === "touch") return;
+    x = event.clientX;
+    y = event.clientY;
+    seen = true;
+    schedule();
+  }, { passive: true });
+  window.addEventListener("pointerleave", clear);
+  window.addEventListener("blur", clear);
+  window.addEventListener("scroll", () => { if (seen) schedule(); }, { passive: true });
+  window.addEventListener("resize", () => { if (seen) schedule(); }, { passive: true });
+}
+
+let latticeQueued = false;
+function queueLattice() {
+  if (latticeQueued) return;
+  latticeQueued = true;
+  requestAnimationFrame(() => {
+    latticeQueued = false;
+    buildLattice();
+  });
+}
+
+function watchSections() {
+  const targets = [...document.querySelectorAll("nav.main a[data-nav]")];
+  const sections = targets.map((link) => $(link.dataset.nav)).filter(Boolean);
+  if (!("IntersectionObserver" in window) || sections.length === 0) return;
+  const observer = new IntersectionObserver((entries) => {
+    const visible = entries.filter((e) => e.isIntersecting).sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+    if (!visible) return;
+    for (const link of targets) {
+      link.setAttribute("aria-current", link.dataset.nav === visible.target.id ? "true" : "false");
+    }
+  }, { rootMargin: "-84px 0px -60% 0px", threshold: [0.05, 0.25] });
+  for (const section of sections) observer.observe(section);
+}
+
+window.addEventListener("resize", queueLattice);
+buildLattice();
+initLatticeFrame();
+watchSections();

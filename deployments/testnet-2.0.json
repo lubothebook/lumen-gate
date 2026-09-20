@@ -24,7 +24,8 @@
         "message_transmitter_v2": "0xE737e5cEBEEBa77EFE34D4aa090756590b1CE275"
       },
       "native_usdc_stellar_testnet": "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA",
-      "source": "developers.circle.com contract-addresses.md + stellar-contracts.md pages fetched 2026-09-20; the Stellar USDC id was read from TMM.get_local_token(0, sepoliaUsdc) on-chain, no page lists it"
+      "native_usdc_stellar_testnet_issuer": "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+      "source": "developers.circle.com contract-addresses.md + stellar-contracts.md + usdc-on-testing-networks.md pages fetched 2026-09-20; the Stellar USDC SAC id was read from TMM.get_local_token(0, sepoliaUsdc) on-chain; the classic issuer GBBD47... is Circle's published Stellar testnet USDC issuer (needed for Horizon trustlines / ChangeTrust)"
     },
     "iris_api_testnet_base": "https://iris-api-sandbox.circle.com",
     "burn_router_local": {
