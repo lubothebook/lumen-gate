@@ -46,3 +46,5 @@ circuits/ptau/
 /gate2/web/node_modules/
 /gate2/web/dist/
 /gate2/scripts/node_modules/
+/gate2/soroban/gate_stamp/target/
+/gate2/soroban/gate_stamp/.stellar/

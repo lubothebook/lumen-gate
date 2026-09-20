@@ -63,7 +63,8 @@ $("gate2Select")?.addEventListener("click", () => {
 $("contract-ids").textContent =
   `gate_claim (kanonik/sertlestirilmis): ${CONFIG.gateClaimCanonical} · ` +
   `gate_claim (F3 kulvari, kampanya buna bagli): ${CONFIG.gateClaimPreHardening} · ` +
-  `kampanya: ${CONFIG.campaign}`;
+  `kampanya: ${CONFIG.campaign} · ` +
+  `testnet damga: ${CONFIG.stamp}`;
 $("burn-blocker").textContent = CONFIG.burnRouterBlocker;
 $("iris-url").textContent = CONFIG.irisApi;
 
@@ -88,6 +89,9 @@ function onFreighter(f) {
       $("in-strkey").value = addr;
       $("btn-tier-send").disabled = false;
       $("btn-trustline").disabled = false;
+      setWalletActions(true);
+      await refreshBalances(addr);
+      acctLog(`Bağlandı. Expert: ${addr.slice(0, 8)}…`);
       if (typeof f.getNetwork === "function") {
         try {
           const net = await f.getNetwork();
@@ -96,6 +100,7 @@ function onFreighter(f) {
             setWalletState(`Bağlı ama Freighter ${name} üzerinde. Mainnet’te işlem düğmeleri kapalı.`, "error");
             $("btn-tier-send").disabled = true;
             $("btn-burn").disabled = true;
+            setWalletActions(false);
           }
         } catch {
           /* getNetwork is advisory; some builds refuse it until unlocked */
@@ -123,7 +128,7 @@ function acctLog(text, hash) {
 }
 
 function setWalletActions(on) {
-  for (const id of ["btn-fund", "btn-trust-open", "btn-bump", "btn-trust-open-burn"]) {
+  for (const id of ["btn-fund", "btn-trust-open", "btn-bump", "btn-trust-open-burn", "btn-stamp"]) {
     if ($(id)) $(id).disabled = !on;
   }
 }
@@ -219,6 +224,15 @@ async function queryAddress(g) {
 
   // NFTs from the F3-lane gate (the campaign reads this one; the hardened
   // lane has no claims yet either — both are queried, both are honest).
+  try {
+    const st = await readContract(CONFIG.stamp, "stamp_of", [{ scVal: addrScVal(g) }]);
+    if (st.ok && st.value !== null && st.value !== undefined) {
+      migBox.appendChild(el("div", "muted", `TESTNET damga (CCTP değil): id=${st.value}`));
+    } else if (st.ok) {
+      migBox.appendChild(el("div", "muted", "TESTNET damga: yok"));
+    }
+  } catch { /* stamp is additive */ }
+
   nftBox.textContent = "NFT listesi okunuyor…";
   nftBox.innerHTML = "";
   for (const lane of lanes) {

@@ -102,6 +102,12 @@
       "build": "stellar 25.2.0 GitHub-release binary, cargo release wasm32v1-none via 'stellar contract build', source gate2/soroban/gate_campaign_example",
       "status_note": "the only campaign deployment on testnet; wired to the pre-hardening gate_claim CBKSNJ... above"
     },
+    "gate_stamp_testnet": {
+      "id": "CAC4XCFEDRRVDEHCJF4VSKVZEFHKYPARSHKLODZU3N4OZWDGYGNCCTDS",
+      "deploy_tx": "36a4d188098918d5f97717f36afe90ee567455a2d627c209a0153d877bd1733a",
+      "wasm_hash": "76e8e1af9b068ac767f85c4d161a36610266f5bbf48d73c6af3503aa160e0f8e",
+      "note": "TESTNET soulbound stamp. Caller mints to self via stamp(owner). Not a CCTP Passport. No transfer, no admin. Source gate2/soroban/gate_stamp."
+    },
     "testnet_deployer": {
       "alias": "gate2-deployer",
       "public_key": "GDML46BD7KOLEB57D4GW4FNPML6UZKOKSPXAVFG5KTGKQO6E3OI53V5U",
