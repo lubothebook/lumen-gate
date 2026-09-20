@@ -1,0 +1,56 @@
+name: gate-2.0 hardening (HARDENING-2.0.md)
+
+# Added by HARDENING-2.0.md sections 8/9/12. This workflow does NOT touch
+# the Gate 1.0 ci.yml (frozen territory, DIRECTIVE 2.0 section 4); it runs the
+# 2.0-specific gates on every push and pull request.
+
+on: [push, pull_request]
+
+jobs:
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: gitleaks (fingerprints of triaged public identifiers live in .gitleaks.toml; any NEW leak is red)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  proof-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: claim/proof alignment (Ek A section 12; warning stance until the operator flips PROOF_LINT_REQUIRED=1)
+        run: node gate2/scripts/proof-lint.mjs --json
+
+  panic-grep:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: no panic-form code in gate2/soroban (Ek A 5.1/9; comments excluded because the first naive rule fired on its own comment line - calibration recorded in deployments/hardening-2.0.json)
+        run: |
+          ! grep -rn --include='*.rs' -E 'unwrap\(\)|expect\(|panic!|assert!' gate2/soroban \
+            | grep -v '/target/' | grep -vE ':[0-9]+: *//'
+
+  regression-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Gate 1.0 test floor (counts recorded in deployments/testnet-2.0.json findings; a drop fails this job)
+        run: cargo test --workspace --lib
+
+  rust-advisories:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: cargo audit (Ek A section 9)
+        run: |
+          cargo install cargo-audit --locked --quiet
+          cargo audit

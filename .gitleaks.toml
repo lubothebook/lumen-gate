@@ -1,0 +1,28 @@
+# Gitleaks allowlist for lumen-gate (HARDENING-2.0.md section 8, applied 2026-09-20).
+# Every entry below is a TRIAGED false positive: a public identifier (domain
+# verification key, account strkey, contract id or tx hash) that the generic
+# key=value rule matched by field name. Fingerprints pin the allow to the exact
+# historical line - a NEW occurrence of even the same field name re-alarms CI.
+# The triage table (file, field, class of value) lives in
+# deployments/hardening-2.0.json under leak_triage[].
+title = "lumen-gate gitleaks config"
+
+[allowlist]
+description = "triaged public-identifier fingerprints from deployments evidence files"
+regexes = [
+  """22345b82f7c494dba217b19bd21bb0146f782688:frontend/src/deployment.js:generic-api-key:14""",
+  """22345b82f7c494dba217b19bd21bb0146f782688:frontend/src/deployment.js:generic-api-key:15""",
+  """3e58d0bb3a0d3b54bb49c29e727bb96aa05302ed:deployments/testnet-2.0.json:generic-api-key:24""",
+  """3e58d0bb3a0d3b54bb49c29e727bb96aa05302ed:deployments/testnet-2.0.json:generic-api-key:30""",
+  """3e58d0bb3a0d3b54bb49c29e727bb96aa05302ed:gate2/scripts/spike-s1.mjs:generic-api-key:43""",
+  """525caa3db92bf600b8a6fc5ec9d3e516af3d8634:deployments/gate-vm-lane.json:generic-api-key:10""",
+  """525caa3db92bf600b8a6fc5ec9d3e516af3d8634:deployments/testnet.json:generic-api-key:249""",
+  """661b1265616b05078daf6fd842bf10c37f782f29:deployments/tr-cashout.json:generic-api-key:45""",
+  """69e8ff496398fdc28f0f132a9b11b87248abbef1:deployments/step-chain.json:generic-api-key:10""",
+  """69f000b31c63cc375706ade3c316d75389520559:gate2/scripts/spike-notes.md:generic-api-key:8""",
+  """b7c6a1109f36366c8a63b5aef0b07edba6489889:deployments/cashout-live.json:generic-api-key:83""",
+  """d4201cad7db23256e438400079fd560ef97bf17f:deployments/execution-lane.json:generic-api-key:10""",
+  """d8ea9c58822d415f3a669b1748b42c9d8725dfab:deployments/testnet.json:generic-api-key:42""",
+  """e44a50e0efa286daab659d34c08ac4581eb022bf:deployments/testnet.json:generic-api-key:249""",
+  """f5be0b4f9bbb865bac1e93e29c0de40e60c33eed:deployments/testnet.json:generic-api-key:87""",
+]
