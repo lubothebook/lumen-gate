@@ -45,6 +45,17 @@ jobs:
       - name: Gate 1.0 test floor (counts recorded in deployments/testnet-2.0.json findings; a drop fails this job)
         run: cargo test --workspace --lib
 
+  evm-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: foundry toolchain (foundryup is pinned in gate2/evm/TOOLCHAIN.md)
+        run: curl -L https://foundry.paradigm.xyz | bash && ~/.foundry/bin/foundryup
+      - name: forge-std for the test layer only
+        run: git clone --depth 1 https://github.com/foundry-rs/forge-std gate2/evm/lib/forge-std
+      - name: BurnRouter conformance suite (HARDENING-2.0.md section 4; suite was written red-first)
+        run: cd gate2/evm && ~/.foundry/bin/forge test
+
   rust-advisories:
     runs-on: ubuntu-latest
     steps:
