@@ -7,7 +7,6 @@ import {
   hasUsdcTrustline,
   getFreighter,
   watchFreighter,
-  detectFreighter,
   freighterConnect,
   sendWithFreighter,
   friendbot,
@@ -89,19 +88,13 @@ function paintEmbedGate() {
   }
 }
 async function connectWallet() {
-  paintEmbedGate();
-  const found = await detectFreighter();
-  if (!found.installed) {
-    const note = embeddedFrame()
-      ? "Freighter bu çerçeveye giremez. Sekmede aç, sonra bağlan."
-      : "Freighter yok. chrome.google.com/webstore’dan Freighter kur, sayfayı yenile, bağlan.";
-    setWalletState(note, "error");
-    acctLog(note);
-    return null;
-  }
+  // requestAccess must run in this click turn. Awaiting isConnected first
+  // (2s) drops the user gesture and the browser blocks the popup — that is
+  // why Connect did nothing on a real Freighter install.
+  const f = getFreighter();
   setWalletState("Freighter açılıyor…", "muted");
   try {
-    const addr = await freighterConnect(found.api, { installed: found.installed });
+    const addr = await freighterConnect(f);
     connectedAddress = addr;
     setWalletState(`${addr.slice(0, 8)}…${addr.slice(-6)} bağlı`, "ok");
     $("in-address").value = addr;
@@ -111,9 +104,9 @@ async function connectWallet() {
     setWalletActions(true);
     await refreshBalances(addr);
     acctLog(`Bağlandı. Expert: ${addr.slice(0, 8)}…`);
-    if (typeof found.api.getNetwork === "function") {
+    if (typeof f.getNetwork === "function") {
       try {
-        const net = await found.api.getNetwork();
+        const net = await f.getNetwork();
         const name = typeof net === "string" ? net : net && (net.network || net.networkPassphrase);
         if (name && !/test/i.test(String(name))) {
           setWalletState(`Bağlı ama Freighter ${name} üzerinde. Mainnet’te işlem düğmeleri kapalı.`, "error");
