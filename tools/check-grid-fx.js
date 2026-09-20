@@ -308,6 +308,21 @@ if (rowRule) {
   expect(/margin-top:\s*var\(--row-gap\)/.test(rowRule[0]), 'the gap between two strips is where the lattice shows: it must come from --row-gap');
 }
 expect(/main > section\.strip > \.shell > :first-child \{[^}]*margin-top:\s*0/.test(html), 'the first row in a section must not open with a gap');
+
+// The interface panel's demo wall is part of the same rule: it paints the
+// submitted tile at the tile's own 60px, pixelated, and wears the same ring.
+// A demo that quietly resampled the artwork would be the exact regression this
+// whole contract exists to prevent, in miniature.
+const demoCube = /\.iface-cube\s*\{[^}]*\}/.exec(html);
+expect(Boolean(demoCube), 'the interface panel demo cube rule is missing');
+if (demoCube) {
+  expect(/background-image:\s*var\(--grid-tile\)/.test(demoCube[0]), 'a demo cube must be painted from the submitted tile bytes');
+  expect(/background-size:\s*60px 60px/.test(demoCube[0]), "a demo cube must paint the tile at the tile's own 60px, never resampled");
+  expect(/image-rendering:\s*pixelated/.test(demoCube[0]), 'a demo cube must not smooth the artwork');
+  expect(/width:\s*60px;\s*height:\s*60px/.test(demoCube[0]), 'a demo cube is one tile: 60x60');
+}
+expect(/\.iface-cube:hover,\s*\.iface-cube\.frame\s*\{[^}]*inset 0 0 0 var\(--ring\)/.test(html), 'a demo cube must wear the same inset ring as the wall');
+expect(/\.iface-strip-gap\s*\{[^}]*background-size:\s*60px 60px/.test(html), "the demo gap must show the lattice at the tile's own size");
 expect(/--row-gap:\s*clamp\(/.test(html), '--row-gap must be part of the rhythm tokens');
 expect(/overflow-x:\s*hidden/.test(html) && /overflow-x:\s*clip/.test(html), 'the full-bleed strips are measured in vw, so the horizontal overflow must be clipped (with a fallback first)');
 

@@ -195,6 +195,19 @@ async function main() {
     await new Promise((r) => setTimeout(r, 200));
     expect((await page.evaluate(() => document.querySelectorAll('.cube.frame').length)) === 0, 'leaving the window must close the frame');
 
+    // ------------------------------------------------- the interface panel
+    const panel = await page.evaluate(() => ({
+      present: Boolean(document.getElementById('interfacePanel')),
+      strips: document.getElementById('ifaceStripCount')?.textContent.trim(),
+      gap: document.getElementById('ifaceStripGap')?.textContent.trim(),
+      cubes: document.querySelectorAll('#ifaceCubes .iface-cube').length,
+      demoStrips: document.querySelectorAll('.iface-strip-row').length,
+    }));
+    expect(panel.present, 'the interface panel is missing from the page');
+    expect(Number(panel.strips) === layout.rows.length, `the panel reports ${panel.strips} strips while the page has ${layout.rows.length}`);
+    expect(/\(\d+px\)|px at/.test(panel.gap || ''), `the panel's gap readout is not a measurement: ${panel.gap}`);
+    expect(panel.cubes === 6 && panel.demoStrips === 2, 'the interface panel demos are not rendered');
+
     // -------------------------------------------------------------- the banner
     const banner = await page.evaluate(() => {
       const img = document.querySelector('.hero-banner');

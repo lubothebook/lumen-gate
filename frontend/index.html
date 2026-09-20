@@ -446,6 +446,45 @@
   footer { margin-top: clamp(44px, 5.5vw, 92px); }
 
   .trust-lanes { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 22px; }
+
+  /* -------------------------------------------------- the interface panel
+     Three claims this page makes about itself, rendered from the page itself:
+     the strips are counted and measured, the frame is a real cube you can put
+     the pointer on, and the list of disabled controls is read out of the DOM
+     at load. A picture of the interface would be a claim; this is the thing. */
+  .iface-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+  .iface-block { border: 1px solid var(--line); border-radius: var(--r-lg); padding: 20px 22px; background: rgba(5, 6, 4, 0.5); }
+  .iface-block h3 { font-size: 0.9375rem; letter-spacing: -0.006em; }
+  .iface-block .note { margin-top: 10px; }
+  .iface-facts { margin-top: 14px; display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: 0.8125rem; }
+  .iface-facts dt { color: var(--faint); }
+  .iface-facts dd { margin: 0; font-family: var(--mono); }
+  /* the strip demo: two rows with an opening between them, drawn at the tile's
+     own 60px so nothing here is a resample of the submitted artwork */
+  .iface-strip-demo { margin-top: 16px; border-radius: var(--r-sm); overflow: hidden; border: 1px solid var(--line-2); }
+  .iface-strip-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    background: rgba(2, 2, 2, 0.94); border-top: 1px solid var(--line-2); border-bottom: 1px solid var(--line-2);
+    padding: 11px 14px; font-size: 0.8125rem; color: var(--muted);
+  }
+  .iface-strip-row .tag { font-family: var(--mono); font-size: 0.6875rem; color: var(--faint); letter-spacing: 0.1em; }
+  .iface-strip-gap {
+    height: 30px; background-image: var(--grid-tile); background-size: 60px 60px;
+    image-rendering: pixelated; display: grid; place-items: center;
+  }
+  .iface-strip-gap span { font-family: var(--mono); font-size: 0.625rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--faint); background: rgba(2,2,2,0.72); padding: 3px 8px; border-radius: 999px; }
+  /* the frame demo: real cubes, the submitted tile at its own size, the same ring */
+  .iface-cubes { display: flex; flex-wrap: wrap; gap: 0; margin-top: 16px; border: 1px solid var(--line-2); border-radius: var(--r-sm); overflow: hidden; width: min(100%, 362px); }
+  .iface-cube {
+    width: 60px; height: 60px; flex: none;
+    background-image: var(--grid-tile); background-size: 60px 60px; background-repeat: no-repeat;
+    image-rendering: pixelated; transition: box-shadow var(--dur-fast) var(--ease);
+  }
+  .iface-cube:hover, .iface-cube.frame { box-shadow: inset 0 0 0 var(--ring) rgba(255, 255, 255, 0.55); }
+  .iface-table { width: 100%; margin-top: 14px; }
+  .iface-table td, .iface-table th { vertical-align: top; }
+  .iface-table td.reason { color: var(--muted); font-family: var(--sans); font-size: 0.8125rem; }
+  @media (max-width: 900px) { .iface-grid { grid-template-columns: 1fr; } }
   .lane { display: flex; gap: 14px; align-items: flex-start; border: 1px solid var(--line); border-radius: var(--r); padding: 16px 18px; }
   .lane-chip {
     flex: none; font-family: var(--mono); font-size: 0.625rem; letter-spacing: 0.12em;
@@ -987,6 +1026,68 @@
         <div class="stack">
           <h3>The limits, stated where they cannot be missed</h3>
           <div id="honestyPanel"><p class="muted">loading</p></div>
+        </div>
+      </div>
+
+      <div class="card" id="interfacePanel" style="margin-top:20px">
+        <div class="card-head">
+          <h3>The interface, checked rather than described</h3>
+          <span class="hint">read out of this page, not out of a picture</span>
+        </div>
+        <p class="note" style="max-width:82ch">
+          Three claims this page makes about itself. Each one is rendered here from the page itself &mdash; the strips
+          are counted and measured, the frame is a real cube you can put the pointer on, and the reasons below are read
+          out of the live DOM &mdash; so none of them can turn into a sentence that used to be true.
+        </p>
+
+        <div class="iface-grid" style="margin-top:22px">
+          <div class="iface-block">
+            <h3>1. Text sits on its own row of strip</h3>
+            <p class="note">
+              Not one black block per section: each row of text carries a full-bleed band, and the lattice stays visible
+              in the gap between one band and the next, which is where the pointer frame gets to play.
+            </p>
+            <div class="iface-strip-demo" aria-hidden="true">
+              <div class="iface-strip-row"><span>a row of text</span><span class="tag">strip</span></div>
+              <div class="iface-strip-gap"><span>open lattice</span></div>
+              <div class="iface-strip-row"><span>the next row of text</span><span class="tag">strip</span></div>
+            </div>
+            <dl class="iface-facts">
+              <dt>strips on this page</dt><dd id="ifaceStripCount">-</dd>
+              <dt>gap between neighbours</dt><dd id="ifaceStripGap">-</dd>
+              <dt>horizontal overflow</dt><dd id="ifaceOverflow">-</dd>
+            </dl>
+          </div>
+
+          <div class="iface-block">
+            <h3>2. The frame follows the pointer</h3>
+            <p class="note">
+              Put the pointer on a cube below. The ring is <span class="mono">4</span> screen pixels, drawn inset, at
+              the tile's own scale &mdash; these are the submitted 60&times;60 asset, not a resample of it. On the page
+              behind this card the same rule holds for every cube, and only where the cube is visible.
+            </p>
+            <div class="iface-cubes" id="ifaceCubes" aria-hidden="true"></div>
+            <dl class="iface-facts">
+              <dt>cubes under the pointer</dt><dd id="ifaceFramedCount">-</dd>
+              <dt>ring</dt><dd id="ifaceRing">-</dd>
+            </dl>
+          </div>
+        </div>
+
+        <div style="margin-top:24px">
+          <h3>3. A control that cannot act says why</h3>
+          <p class="note" style="max-width:82ch">
+            Every disabled control on this page, its own title, and the note it points at. This table is built from the
+            DOM when the page loads, so it cannot promise something the buttons are not doing.
+          </p>
+          <table class="audit-table iface-table">
+            <thead>
+              <tr><th>Control</th><th>Its reason</th><th>Where it is written</th></tr>
+            </thead>
+            <tbody id="ifaceDisabledRows">
+              <tr><td class="faint xs" colspan="3">reading the page&hellip;</td></tr>
+            </tbody>
+          </table>
         </div>
       </div>
 

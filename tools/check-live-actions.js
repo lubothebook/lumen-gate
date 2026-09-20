@@ -368,6 +368,29 @@ async function main() {
 
     expect(errors.length === 0, `the page raised ${errors.length} uncaught error(s): ${errors.slice(0, 2).join(' | ')}`);
 
+    // ------------------------------------------------- the interface panel
+    // The panel claims to be read out of this page. That is checkable: the
+    // controls it lists must be exactly the controls the page is disabling.
+    const panel = await page.evaluate(() => {
+      const rows = [...document.querySelectorAll('#ifaceDisabledRows tr')];
+      const listed = rows.map((r) => r.children[0]?.textContent.trim()).filter(Boolean);
+      const onPage = [...document.querySelectorAll('button:disabled')].map((b) => b.id);
+      return {
+        listed,
+        onPage,
+        strips: document.getElementById('ifaceStripCount')?.textContent.trim(),
+        gap: document.getElementById('ifaceStripGap')?.textContent.trim(),
+        overflow: document.getElementById('ifaceOverflow')?.textContent.trim(),
+        cubes: document.querySelectorAll('#ifaceCubes .iface-cube').length,
+      };
+    });
+    expect(panel.listed.length === panel.onPage.length && panel.onPage.every((id) => panel.listed.includes(id)),
+      `the interface panel lists [${panel.listed}] while the page disables [${panel.onPage}]: the panel is not reading the DOM it claims to read`);
+    expect(Number(panel.strips) > 0, `the interface panel reports ${panel.strips} strips`);
+    expect(/none/.test(panel.overflow || ''), `the interface panel reports horizontal overflow: ${panel.overflow}`);
+    expect(panel.cubes === 6, `the demo wall should hold 6 cubes, found ${panel.cubes}`);
+    report.push({ id: 'interface panel', result: `${panel.strips} strips, gap ${panel.gap}, overflow ${panel.overflow}, ${panel.listed.length} disabled controls listed, ${panel.cubes} demo cubes` });
+
     if (LEARN) {
       console.log('what each click changed:');
       for (const row of report) console.log(`  ${String(row.id).padEnd(28)} ${row.result}`);

@@ -480,6 +480,18 @@ functionality belongs in the off-chain surface, the facade and the docs.
       full-bleed lattice behind it stays interactive. No generated artwork
       anywhere, per the standing rule that the operator's pixels are the
       design.
+- [x] **The design record lives in the product, not in a picture folder.**
+      Screenshots were committed for one round and then removed: a screenshot is
+      a claim that goes stale, and the operator's standing rule is that the
+      interface is code, so a picture of it is the weakest possible evidence.
+      The About section now carries an **interface panel** that renders the
+      three claims from the page as it loads - it counts and measures the
+      strips (13 on this page, 30px of open lattice between neighbours, no
+      horizontal overflow), it draws six real cubes from the submitted tile at
+      the tile's own 60px so the pointer can raise the 4px ring on one of them,
+      and it builds the disabled-control table from the DOM, reasons included.
+      Both browser harnesses assert the panel's numbers against the page's own
+      measurements, so it cannot describe a page that is not there.
 - [x] **The click-through runs against the live deployment, and it does not
       guess when the page is ready.** Both browser harnesses take a URL; run
       against the deployed console, the page check passes and the action check
