@@ -95,23 +95,34 @@ function walletReasonFrom(answer) {
   return null;
 }
 
+const officialFreighter = {
+  requestAccess: officialRequestAccess,
+  getAddress: officialGetAddress,
+  getNetwork: officialGetNetwork,
+  signTransaction: officialSignTransaction,
+  setAllowed: officialSetAllowed,
+};
+
+export function embeddedFrame() {
+  try { return window.top !== window.self; } catch { return true; }
+}
+
 /**
- * Freighter injects as window.freighter, window.freighterApi, or
- * window.stellar.freighter depending on the build. The official module
- * talks to the extension over postMessage even when the window stub is
- * incomplete. requestAccess() is the door that actually opens the popup;
- * isConnected() is not — treating a false isConnected as fatal is why
- * "Bağlan" used to do nothing.
+ * The npm module talks to the extension over postMessage. It does not
+ * need window.freighter. A page that waits for the window stub never
+ * opens the popup on Freighter 5+/6. Tests that inject window.freighterApi
+ * still win so the harness can drive requestAccess without the extension.
  */
 export function getFreighter() {
-  if (window.freighterApi) return window.freighterApi;
-  if (window.freighter) return window.freighter;
-  if (window.stellar && (window.stellar.freighter || window.stellar.Freighter)) {
-    return window.stellar.freighter || window.stellar.Freighter;
-  }
-  const sep43 = window.stellar?._wallets?.find?.((w) => /freighter/i.test(w.name || w.id || ""));
-  if (sep43) return sep43;
-  return null;
+  const injected =
+    window.freighterApi ||
+    window.freighter ||
+    window.stellar?.freighter ||
+    window.stellar?.Freighter ||
+    window.stellar?._wallets?.find?.((w) => /freighter/i.test(w.name || w.id || "")) ||
+    null;
+  if (injected && typeof injected.requestAccess === "function") return injected;
+  return officialFreighter;
 }
 
 export function watchFreighter(cb) {

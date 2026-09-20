@@ -11,6 +11,7 @@ import {
   sendWithFreighter,
   friendbot,
   openUsdcTrustline,
+  embeddedFrame,
   EXPLORER_TX,
   EXPLORER_ACCOUNT,
 } from "./stellar.js";
@@ -74,19 +75,27 @@ function setWalletState(text, cls = "muted") {
   s.textContent = text;
   s.className = cls;
 }
-function embeddedFrame() {
-  try { return window.top !== window.self; } catch { return true; }
+function paintEmbedGate() {
+  const framed = embeddedFrame();
+  const tab = $("btn-open-tab");
+  const connect = $("btn-connect");
+  if (tab) {
+    tab.href = window.location.href;
+    tab.target = "_blank";
+    tab.classList.toggle("hidden", !framed);
+  }
+  if (connect) connect.classList.toggle("hidden", framed);
+  if (framed) {
+    setWalletState("Cüzdan uzantısı bu çerçeveye giremez. Sekmede aç.", "error");
+  }
 }
 async function connectWallet() {
-  const f = getFreighter();
-  if (!f) {
-    const note = embeddedFrame()
-      ? "Freighter bu çerçeveye enjekte olmaz. Sayfayı kendi sekmesinde aç."
-      : "Bu tarayıcıda Freighter yok. Uzantıyı kur, sayfayı yenile, sonra bağlan.";
-    setWalletState(note, "error");
-    acctLog(note);
+  if (embeddedFrame()) {
+    paintEmbedGate();
     return null;
   }
+  const f = getFreighter();
+  setWalletState("Freighter açılıyor…", "muted");
   try {
     const addr = await freighterConnect(f);
     connectedAddress = addr;
@@ -119,10 +128,12 @@ async function connectWallet() {
   }
 }
 function onFreighter(f) {
+  if (embeddedFrame()) {
+    paintEmbedGate();
+    return;
+  }
   if (!f) {
-    setWalletState(embeddedFrame()
-      ? "Freighter bu çerçeveye ulaşamaz — kendi sekmesinde aç"
-      : "Freighter bulunamadı (geç yüklenirse bağlan yine dener)", "muted");
+    setWalletState("Freighter bulunamadı. Uzantıyı kur, sayfayı yenile, bağlan.", "muted");
     return;
   }
   setWalletState("Freighter hazır — bağlanmak için tıkla", "ok");
@@ -184,6 +195,7 @@ async function refreshBalances(g) {
   }
 }
 
+paintEmbedGate();
 watchFreighter(onFreighter);
 $("btn-connect").addEventListener("click", () => connectWallet());
 
