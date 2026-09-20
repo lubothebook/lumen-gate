@@ -872,18 +872,24 @@ async function requestWalletAddress(freighter) {
 // for the frame. The note names the frame instead, and a watcher catches the
 // extension when it injects after the page has booted.
 function injectedFreighterProvider() {
-  if (window.freighterApi) return window.freighterApi;
-  if (window.freighter) return window.freighter;
-  if (window.stellar && (window.stellar.freighter || window.stellar.Freighter)) {
-    return window.stellar.freighter || window.stellar.Freighter;
+  const injected =
+    window.freighterApi ||
+    window.freighter ||
+    (window.stellar && (window.stellar.freighter || window.stellar.Freighter)) ||
+    null;
+  // A registry entry that cannot be asked for access is not a usable door.
+  if (injected && (typeof injected.requestAccess === 'function' || typeof injected.getPublicKey === 'function')) {
+    return injected;
   }
   return null;
 }
 
-// The official @stellar/freighter-api module is always available (it is
-// bundled with the page), so a provider object always exists. Whether a real
-// extension is installed is a question the module answers at call time
-// (isConnected / requestAccess), not a question about the window.
+// The official @stellar/freighter-api module is imported statically (top of
+// file), so it is already loaded by the time the first click lands - a lazy
+// dynamic import here would download a chunk inside the click and, combined
+// with the awaits below, drop the browser's user-activation before
+// requestAccess() runs. That is exactly why Connect did nothing on a real
+// Freighter install, and it is the pattern Gate 2.0 already avoids.
 const officialFreighterProvider = {
   __lumenOfficial: true,
   requestAccess: officialRequestAccess,
@@ -902,9 +908,59 @@ function embeddedFrame() {
 }
 function walletAbsenceNote() {
   if (embeddedFrame()) {
-    return 'Freighter is not installed or cannot reach this frame: extensions inject only into a top-level tab, and this console is running embedded. Open the page in its own tab to connect; receiving needs no wallet at all.';
+    return 'This console is running inside a frame, and browser extensions are injected only into top-level tabs - so Freighter cannot reach the page here even when it is installed and unlocked. Use the button above to reopen this console in its own tab; the connection works there. Receiving needs no wallet at all.';
   }
   return 'Freighter is not installed in this browser. Receiving does not need a wallet at all; only burning your own tokens does.';
+}
+
+/**
+ * In a frame, offer the way out instead of only naming the problem.
+ *
+ * A wallet extension does not inject into an iframe (content scripts declare
+ * all_frames: false), so "Connect" inside an embedded preview can never
+ * succeed no matter how many doors the detection tries. Saying "open it in a
+ * tab" and leaving the reader to work out how is a dead end when the frame's
+ * URL is not in any address bar they can see.
+ *
+ * So the button becomes the action: one click opens this exact page top-level,
+ * where the extension is present. window.open with noopener is enough - and if
+ * the popup is blocked, the link stays on screen to be clicked or copied,
+ * because a blocked popup with no fallback is another dead end.
+ */
+function offerTopLevelTab() {
+  const btn = $('connectBtn');
+  if (!btn || btn.dataset.framed === 'true') return;
+  btn.dataset.framed = 'true';
+  btn.textContent = 'Open in a tab to connect';
+  btn.title = 'Extensions cannot reach a framed page; this opens the console top-level where Freighter works.';
+
+  const note = $('walletNote');
+  if (note && !document.getElementById('walletTabLink')) {
+    const link = document.createElement('a');
+    link.id = 'walletTabLink';
+    link.href = window.location.href;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.textContent = 'Open this console in a new tab';
+    link.style.cssText = 'display:inline-block; margin-top:8px; color:inherit; text-decoration:underline; font-size:0.8125rem';
+    note.insertAdjacentElement('afterend', link);
+  }
+}
+
+/** Open the console top-level. Returns false if the browser blocked it. */
+function openTopLevel() {
+  const url = window.location.href;
+  try {
+    const opened = window.open(url, '_blank', 'noopener,noreferrer');
+    if (opened) {
+      log('Opened this console in a new tab. Connect Freighter there: the extension can reach a top-level page.', 'ok');
+      return true;
+    }
+  } catch (error) {
+    // fall through to the visible link
+  }
+  log('The browser blocked the new tab. Use the "Open this console in a new tab" link under the wallet card.', 'warn');
+  return false;
 }
 let freighterWatch = null;
 function watchForFreighter() {
@@ -931,6 +987,13 @@ function watchForFreighter() {
 }
 
 async function connectWallet() {
+  // If the button has already turned into the escape hatch, honour that: the
+  // second press should open the tab, not re-run a detection that cannot
+  // succeed in this frame.
+  if ($('connectBtn') && $('connectBtn').dataset.framed === 'true') {
+    openTopLevel();
+    return null;
+  }
   // Inside an embedded frame even the official module cannot reach an
   // extension (extensions inject only into top-level tabs), so the frame
   // note is the honest answer there instead of a two-second round trip.
@@ -939,11 +1002,22 @@ async function connectWallet() {
     log(walletAbsenceNote(), 'warn');
     return null;
   }
+  // Synchronous on purpose: nothing between this click and requestAccess()
+  // may await, or the browser's user-activation is gone and the wallet popup
+  // will not open. The official provider is a plain object, so looking it up
+  // costs no turn and downloads nothing.
   const freighter = freighterProvider();
   if (!freighter) {
     $('walletNote').textContent = walletAbsenceNote();
     log(walletAbsenceNote(), 'warn');
-    watchForFreighter();
+    // A framed page cannot be fixed by waiting for an injection that will
+    // never come, so offer the tab instead of watching forever.
+    if (embeddedFrame()) {
+      offerTopLevelTab();
+      openTopLevel();
+    } else {
+      watchForFreighter();
+    }
     return null;
   }
   try {
@@ -1025,6 +1099,22 @@ async function refreshWallet() {
         ? 'This is the deployment manifest\'s demo account, read straight from Horizon. It is read-only: connecting your own wallet is still the only way to sign a burn.'
         : 'This Freighter account is not on Stellar testnet yet. Fund it with Friendbot, then refresh.';
       log('This account is not on Stellar testnet yet.', 'warn');
+      return;
+    }
+    // Horizon answers 404 for a valid-but-unfunded account, which is handled
+    // above. Everything else it refuses - a malformed key is a 400, an
+    // overloaded instance a 429 or 504 - comes back as a problem document with
+    // no `balances` at all. Reading .find() off that threw
+    // "Cannot read properties of undefined", so a connected wallet reported a
+    // TypeError instead of what Horizon actually said.
+    if (!accountRes.ok || !Array.isArray(account.balances)) {
+      const reason = account.detail || account.title || `Horizon answered ${accountRes.status}`;
+      const body = $('walletKv');
+      body.textContent = '';
+      body.append(el('tr', {}, [el('td', { text: 'Account' }), el('td', { class: 'warn', text: 'balances unavailable' })]));
+      paintWalletKind();
+      $('walletNote').textContent = `Connected as ${short(state.wallet, 6)}, but Horizon would not return balances: ${reason}`;
+      log(`Horizon refused the balance read: ${reason}`, 'warn');
       return;
     }
     const native = account.balances.find((b) => b.asset_type === 'native');
@@ -1864,6 +1954,15 @@ async function renderLanes() {
 
 renderLanes().catch(() => {});
 wire();
+
+// Say it before the reader presses anything. In a frame the extension is
+// unreachable no matter what, so the wallet card should show the way out on
+// arrival rather than after a click that was always going to fail.
+if (embeddedFrame() && !freighterProvider()) {
+  offerTopLevelTab();
+  const note = $('walletNote');
+  if (note) note.textContent = walletAbsenceNote();
+}
 wireWindows();
 watchSections();
 buildLattice();
