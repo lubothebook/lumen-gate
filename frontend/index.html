@@ -116,8 +116,16 @@
      tile at the tile's own size - never resampled, never scaled up. The cubes
      are the interactive surface: while the pointer is over one cube it wears a
      4px white inset frame; when the pointer leaves, the frame closes. */
+  /* z-index 0, not -1 - the same wall Gate 2.0 runs (gate2/web/src/style.css).
+     Behind the page (-1) the cubes can never be hovered, so the animation
+     depended entirely on the JS-painted frame, and the old negative media
+     guard then killed that too on every device that reports no hover pointer -
+     which is how Gate 1.0 ended up with no cube animation at all while 2.0
+     had one. At z-index 0 the wall is hoverable wherever it is the top
+     element; the content surfaces above it are lifted (see the lift list by
+     the structure rules), and the cubes animate exactly like Gate 2.0's. */
   .cube-lattice {
-    position: fixed; inset: 0; z-index: -1; overflow: hidden;
+    position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: auto;
     display: grid; grid-template-columns: repeat(auto-fill, var(--cell));
     grid-auto-rows: var(--cell);
   }
@@ -129,9 +137,17 @@
     image-rendering: pixelated;
     transition: box-shadow 0.18s var(--ease);
   }
-  /* .frame is the same state, painted by app.js - see the note there on why the
-     cube cannot rely on its own :hover while it lives behind the page. */
-  .cube:hover, .cube.frame { box-shadow: inset 0 0 0 var(--ring) rgba(255, 255, 255, 0.92); }
+  /* The frame in two halves, exactly as Gate 2.0 paints it: .frame is the
+     state app.js paints on the cube under the pointer (unconditional - a
+     no-hover media environment must not kill it, the JS already ignores
+     touch pointers), and the native :hover is guarded affirmatively so a
+     device with no hover pointer never gets a sticky frame. The old negative
+     guard (`(hover: none)`) suppressed both halves and took the whole
+     animation with it. */
+  .cube.frame { box-shadow: inset 0 0 0 var(--ring) rgba(255, 255, 255, 0.92); }
+  @media (hover: hover) and (pointer: fine) {
+    .cube:hover { box-shadow: inset 0 0 0 var(--ring) rgba(255, 255, 255, 0.92); }
+  }
 
   /* The lattice stops on a hairline. Everything above the line is the source
      chain; the black band below it is the only surface on this page that can
@@ -166,7 +182,6 @@
      should be on this display. Rendered as a miniature segmented control. */
   .field .hint[data-state="warn"] { color: var(--warn); }
   .log .log-empty { color: var(--faint); }
-  @media (hover: none), (pointer: coarse) { .cube:hover, .cube.frame { box-shadow: none; } }
   @media (prefers-reduced-motion: reduce) { .cube { transition: none; } }
 
   /* ---------------------------------------------------------------- header */
@@ -249,11 +264,13 @@
   /* ------------------------------------------------------------ structure */
   .sec-head { display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-end; justify-content: space-between; }
   .sec-head > div { max-width: 62ch; }
-  /* The lattice is position:fixed with z-index:0, so anything that stays in the
-     default (auto) layer paints UNDER it: the wallet card was legible but sat
-     beneath the pattern and swallowed its own clicks, because elementFromPoint
-     landed on .cube instead of the card. Gate 2.0 already lifts its content
-     this way (gate2/web/src/style.css); 1.0 never got the same line. */
+  /* The lattice is position:fixed with z-index:0 (see the wall's own rule),
+     so anything that stays in the default (auto) layer paints UNDER it: the
+     wallet card was legible but sat beneath the pattern and swallowed its own
+     clicks, because elementFromPoint landed on .cube instead of the card.
+     This is the same lift Gate 2.0 runs (gate2/web/src/style.css); it is what
+     lets the wall sit at z-index 0 - hoverable, animated - without ever
+     climbing on top of the content. */
   .card, .band, .trust-grid, .row-strip, .strip, footer {
     position: relative; z-index: 1;
   }
