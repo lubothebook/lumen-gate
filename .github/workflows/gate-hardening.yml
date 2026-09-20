@@ -34,8 +34,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: no panic-form code in gate2/soroban (Ek A 5.1/9; comments excluded because the first naive rule fired on its own comment line - calibration recorded in deployments/hardening-2.0.json)
         run: |
-          ! grep -rn --include='*.rs' -E 'unwrap\(\)|expect\(|panic!|assert!' gate2/soroban \
-            | grep -v '/target/' | grep -vE ':[0-9]+: *//'
+          ! grep -rn --include='*.rs' --exclude-dir=tests -E 'unwrap\(\)|expect\(|panic!|assert!' gate2/soroban \
+            | grep -v '/target/' | grep -vE ':[0-9]+: *//' # tests/ is Annex-exempt (mocks trap by design); src/ has zero tolerance
 
   regression-gate:
     runs-on: ubuntu-latest
@@ -43,7 +43,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - name: Gate 1.0 test floor (counts recorded in deployments/testnet-2.0.json findings; a drop fails this job)
-        run: cargo test --workspace --lib
+        run: cargo test --workspace --lib --tests
 
   evm-tests:
     runs-on: ubuntu-latest
@@ -74,7 +74,7 @@ jobs:
           cargo build --workspace
           cargo test --workspace
           cargo clippy -q --workspace
-      - name: residue gate - neutral-naming rule re-proved every run (the gate script itself carries the lesson: heredoc terminator at column zero closed the YAML block and killed the whole workflow - CI went red on the LINTER, exactly as designed)
+      - name: "residue gate - neutral-naming rule re-proved every run (the gate script itself carries the lesson: heredoc terminator at column zero closed the YAML block and killed the whole workflow - CI went red on the LINTER, exactly as designed)"
         run: python3 gate2/scripts/residue-check.py
 
   rust-advisories:
