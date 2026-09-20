@@ -16,6 +16,7 @@ import {
   getNetwork as officialGetNetwork,
   signTransaction as officialSignTransaction,
   setAllowed as officialSetAllowed,
+  isConnected as officialIsConnected,
 } from "@stellar/freighter-api";
 import { CONFIG } from "./config.js";
 
@@ -101,19 +102,14 @@ const officialFreighter = {
   getNetwork: officialGetNetwork,
   signTransaction: officialSignTransaction,
   setAllowed: officialSetAllowed,
+  isConnected: officialIsConnected,
 };
 
 export function embeddedFrame() {
   try { return window.top !== window.self; } catch { return true; }
 }
 
-/**
- * The npm module talks to the extension over postMessage. It does not
- * need window.freighter. A page that waits for the window stub never
- * opens the popup on Freighter 5+/6. Tests that inject window.freighterApi
- * still win so the harness can drive requestAccess without the extension.
- */
-export function getFreighter() {
+function injectedFreighter() {
   const injected =
     window.freighterApi ||
     window.freighter ||
@@ -122,33 +118,58 @@ export function getFreighter() {
     window.stellar?._wallets?.find?.((w) => /freighter/i.test(w.name || w.id || "")) ||
     null;
   if (injected && typeof injected.requestAccess === "function") return injected;
-  return officialFreighter;
+  return null;
+}
+
+/**
+ * Injected window.freighterApi is the content-script door (and the harness).
+ * The npm module talks over postMessage; without the content script,
+ * requestAccess never opens a popup and never resolves. Docs require
+ * isConnected() first in that path. Do not treat the npm wrapper itself
+ * as "Freighter is here".
+ */
+export async function detectFreighter() {
+  const injected = injectedFreighter();
+  if (injected) return { installed: true, api: injected, via: "injected" };
+  try {
+    const status = await Promise.race([
+      officialIsConnected(),
+      new Promise((resolve) => setTimeout(() => resolve({ isConnected: false, timeout: true }), 2500)),
+    ]);
+    const installed = Boolean(status && status.isConnected);
+    return { installed, api: officialFreighter, via: "official", status };
+  } catch (error) {
+    return { installed: false, api: officialFreighter, via: "official", error };
+  }
+}
+
+export function getFreighter() {
+  return injectedFreighter() || officialFreighter;
 }
 
 export function watchFreighter(cb) {
   let done = false;
   const fire = () => {
     if (done) return;
-    const f = getFreighter();
-    if (f) {
-      done = true;
-      cb(f);
-    }
+    detectFreighter().then((d) => {
+      if (done) return;
+      if (d.installed) {
+        done = true;
+        cb(d.api);
+      }
+    });
   };
   fire();
-  if (!done) {
-    const t = setInterval(fire, 400);
-    const stop = setTimeout(() => {
-      clearInterval(t);
-      if (!done) cb(null);
-    }, 8000);
-    window.addEventListener("focus", fire);
-    return () => {
-      clearInterval(t);
-      clearTimeout(stop);
-    };
-  }
-  return () => {};
+  const t = setInterval(fire, 400);
+  const stop = setTimeout(() => {
+    clearInterval(t);
+    if (!done) cb(null);
+  }, 8000);
+  window.addEventListener("focus", fire);
+  return () => {
+    clearInterval(t);
+    clearTimeout(stop);
+  };
 }
 
 export async function freighterConnect(f) {
