@@ -25,7 +25,7 @@ export const CONFIG = {
     tokenMessengerV2: c.circle_testnet_reference.sepolia_domain0.token_messenger_v2,
     messageTransmitterV2: c.circle_testnet_reference.sepolia_domain0.message_transmitter_v2,
   },
-  burnRouter: null, // F2/F4 Sepolia fonu bekliyor; uydurma adres yazilmaz
+  burnRouter: null, // deploy + makbuz bekliyor; uydurma adres yazilmaz
   burnRouterBlocker:
-    "BurnRouter is not deployed on Sepolia: F2 end-to-end burn waits on Sepolia testnet ETH/USDC (DIRECTIVE 2.0 §10 stop-report). When funded, the router address is written to the receipt and this screen lights up.",
+    "BurnRouter is not deployed on Sepolia. The v2 router, its 31/31 test suite and the deploy script are ready in the repo; the lane is gated on two operator inputs: Sepolia testnet funding, and the router-binding finding (the live gate_claim accepts burns only from the exact bound router address — the router must land there or a fresh gate_claim must be bound to it). When deployed and receipted, this screen lights up from the same manifest.",
 };

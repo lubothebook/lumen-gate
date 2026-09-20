@@ -267,5 +267,16 @@ export async function openUsdcTrustline(f) {
   const result = await horizon.submitTransaction(
     TransactionBuilder.fromXDR(signed, CONFIG.networkPassphrase)
   );
-  return { ok: Boolean(result.hash || result.successful), hash: result.hash, result };
+  // A Horizon response ALWAYS carries a hash, even when the transaction
+  // failed on chain. "ok" must follow `successful`, or the UI would print
+  // "Trustline opened" for a rejected tx.
+  if (result.successful === true) return { ok: true, hash: result.hash, result };
+  return {
+    ok: false,
+    hash: result.hash,
+    result,
+    error:
+      result.exceptions ||
+      "transaction was submitted but failed on chain — open the hash to inspect",
+  };
 }

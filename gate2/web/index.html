@@ -195,7 +195,7 @@
                       uses live Horizon data.
                     </p>
                     <div class="row">
-                      <button class="btn small" id="btn-trustline" type="button" disabled title="Connect Freighter first — the address to check comes from the connected wallet.">Check trustline</button>
+                      <button class="btn small" id="btn-trustline" type="button" disabled title="Read-only Horizon check of the address in the box above — no wallet or signature needed.">Check trustline</button>
                       <button class="btn primary small" id="btn-trust-open-burn" type="button" disabled title="Connect Freighter first — opening a trustline needs a signature.">Open trustline with Freighter</button>
                     </div>
                     <div id="res-trustline"></div>
@@ -226,10 +226,10 @@
 
                 <section id="page-battery" class="page hidden" role="tabpanel">
                   <h2>Battery</h2>
-                  <p class="warn">The Battery contract is not written yet (F5). Balance, top-up, withdraw or forward are not invented.</p>
+                  <p class="warn">The Battery contract is built and fully tested (11/11) but is not deployed to testnet yet (F5). No balance, top-up, withdraw or forward is shown — nothing is invented until the deploy receipt lands.</p>
                   <p class="muted" style="margin-top:12px">
                     The relayer pays network fees in XLM and is repaid in USDC from the Battery.
-                    That sentence is how this screen will work once the contract and F7 evidence exist.
+                    That sentence is how this screen will work once the deploy receipt exists.
                     Inspired by Tonkeeper Battery: off-chain on TON, on-chain and user-owned on Gate.
                     There is no balance to show today.
                   </p>
@@ -237,7 +237,7 @@
 
                 <section id="page-tickets" class="page hidden" role="tabpanel">
                   <h2>My tickets</h2>
-                  <p class="warn">The Ticket contract is not written yet (F6). List, send, redeem or split are not invented.</p>
+                  <p class="warn">The Ticket contract is built and fully tested (12/12) but is not deployed to testnet yet (F6). No list, send, redeem or split is shown — nothing is invented until the deploy receipt lands.</p>
                   <p class="muted" style="margin-top:12px">
                     A ticket is a claim on native USDC in the vault. It is not a bridged asset.
                     It is bearer paper: a ticket sent to the wrong address or stolen cannot be clawed back.
@@ -268,7 +268,7 @@
             </div>
             <div>
               <strong>Who does not custody</strong>
-              <p>GateClaim and BurnRouter hold no funds. The two vaults that will — Battery and Ticket — are not written yet.</p>
+              <p>GateClaim and BurnRouter hold no funds. The two vaults that will — Battery and Ticket — are built and tested; neither is deployed to testnet yet.</p>
             </div>
             <div>
               <strong>What is absent</strong>
