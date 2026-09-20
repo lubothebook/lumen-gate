@@ -232,6 +232,11 @@
     "F3-deploy: npm's @stellar/stellar-cli installs but npx finds no runnable 'stellar' executable, and plain cargo wasm builds fail the soroban-sdk check demanding stellar-cli v25.2.0+; fix = GitHub release binary stellar-cli-25.2.0-x86_64-unknown-linux-gnu.tar.gz + 'stellar contract build'.",
     "F3-deploy: stellar contract invoke parses Vec args only as JSON arrays ('--allowed 0' rejected, '--allowed \"[0]\"' works); a failed CLI parse sends no tx, so the rejected first initialize attempt had zero on-chain effect.",
     "F3-deploy merge: two live gate_claim deployments coexist on testnet (sibling hardened CDQ3PA5L... = canonical; pre-hardening CBKSNJ... = kept receipt, the campaign is wired to it); nothing deleted, both recorded.",
+    {
+      "id": "s21",
+      "title": "campaign claim_tier returned `earned` while storage kept the recorded (higher) tier; unreachable while migration totals only grow, but the fix grants and announces ONE value so the 'never drops' doc is true by construction, not by assumption",
+      "status": "fixed with the boundary suite (tests/campaign.rs) proving inclusive-at-exact on all three tiers: 10_000_000->Bronze, 99_999_999->Bronze, 100_000_000->Silver, 999_999_999->Silver, 1_000_000_000->Gold, 9_999_999->BelowBronze-err"
+    },
     "F6: @stellar/stellar-sdk v12 exports no addressToScVal; nativeToScVal(addr.toScAddress(), {type:'address'}) double-wraps and RPC rejects it ('cannot interpret value as ScVal'). Correct: new Address(g).toScVal().",
     "F6 harness: puppeteer real-mouse clicks get swallowed when auto-scroll puts a button under the position:sticky header (hit-test lies because it runs pre-scroll); drive handlers with element.click() via page.$eval instead.",
     "F6-vercel: vercel.json and frontend/index.html are Gate 1.0 frozen territory under DIRECTIVE 2.0; the operator explicitly ordered the Vercel app to cover both gates ('vercel app de de tum front end dizayni bu ikisine uygun olsun'), which lifts the freeze for exactly these touches: build pipeline, SPA rewrite exclusion, header link, 2.0 track-box text. Nothing else in 1.0 was edited; check-live-page still green (31 controls).",

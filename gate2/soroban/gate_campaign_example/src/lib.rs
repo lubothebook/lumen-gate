@@ -88,11 +88,20 @@ impl Campaign {
         };
         let key = DataKey::Tier(owner.clone());
         let current: Option<Tier> = env.storage().persistent().get(&key);
-        if current.map_or(true, |c| c < earned) {
-            env.storage().persistent().set(&key, &earned);
-        }
-        env.events().publish((Symbol::new(&env, "tier"), owner), earned as u32);
-        Ok(earned)
+        // the monotonically-increasing migration total makes a downgrade
+        // unreachable today, but a return value that disagreed with storage
+        // the moment it became reachable is the kind of latent drift the
+        // annex review exists to stop: grant and announce ONE value — the
+        // better of recorded and earned.
+        let granted = match current {
+            Some(c) if c >= earned => c,
+            _ => {
+                env.storage().persistent().set(&key, &earned);
+                earned
+            }
+        };
+        env.events().publish((Symbol::new(&env, "tier"), owner), granted as u32);
+        Ok(granted)
     }
 
     pub fn get_tier(env: Env, owner: Address) -> Option<Tier> {

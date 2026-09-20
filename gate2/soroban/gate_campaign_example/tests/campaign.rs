@@ -130,4 +130,33 @@ mod test {
         migrate(&w, 9_000_000, 3); // 9 USDC: below Bronze
         assert_eq!(client.try_claim_tier(&w.owner), Err(Ok(CampError::BelowBronze)));
     }
+
+    // F3 boundary suite (the test HARDENING-2.0.md section 5.1 makes F3 hinge
+    // on): the operator named it because the implementation's >= vs > choice
+    // is the whole semantics at these lines. BRONZE is 10 USDC = 10_000_000
+    // stroops; each tier is tested at exact-minus-one and exact, fresh world
+    // per probe so the gate's monotonically-increasing total cannot mask a
+    // boundary by accumulation.
+    #[test]
+    fn tier_boundaries_are_inclusive_at_exact_and_exclusive_below() {
+        for (amount, expect) in [
+            (9_999_999u64, None),                    // one stroop below Bronze: nothing earned
+            (10_000_000, Some(Tier::Bronze)),        // exact boundary: included
+            (99_999_999, Some(Tier::Bronze)),        // one below Silver: stays Bronze
+            (100_000_000, Some(Tier::Silver)),       // exact: included
+            (999_999_999, Some(Tier::Silver)),       // one below Gold: stays Silver
+            (1_000_000_000, Some(Tier::Gold)),        // exact: included
+        ] {
+            let w = world();
+            w.env.mock_all_auths();
+            migrate(&w, amount, 1);
+            let client = CampaignClient::new(&w.env, &w.camp);
+            match expect {
+                None => assert_eq!(client.try_claim_tier(&w.owner), Err(Ok(CampError::BelowBronze)),
+                                    "below-Bronze must earn nothing, got a tier at {}", amount),
+                Some(t) => assert_eq!(client.claim_tier(&w.owner), t,
+                                       "wrong tier at {}", amount),
+            }
+        }
+    }
 }

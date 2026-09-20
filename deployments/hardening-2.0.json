@@ -1,214 +1,211 @@
 {
- "schema": "lumen-gate/hardening-2.0/v1",
- "opened": "2026-09-20",
- "authority": "HARDENING-2.0.md (operator annex Ek A, 2026-09-20); statuses here are per-item with evidence or an explicit not-started; NOTHING here is checked without a linked artifact",
- "leak_triage": {
-  "tool": "gitleaks 8.x (local run + .gitleaks.toml fingerprint allowlist)",
-  "commits_scanned": 113,
-  "leaks_found": 15,
-  "real_secrets_found": 0,
-  "verdict": "all 15 triaged as public identifiers matched by the generic key=value rule: domain_key (Ed25519 domain verification keys, public by design), signing_key (a G-address, not an S-seed), tokenId/message_transmitter/token_messenger fields (contract ids, strkeys), EVM address constants in gate2 files; one hit lives in HISTORY only (deployments/tr-cashout.json, file removed in a 1.0-era cleanup)",
-  "fingerprints": {
-   "3e58d0bb3a0d3b54bb49c29e727bb96aa05302ed:deployments/testnet-2.0.json:generic-api-key:24": {
-    "file": "deployments/testnet-2.0.json",
-    "rule": "generic-api-key"
-   },
-   "3e58d0bb3a0d3b54bb49c29e727bb96aa05302ed:deployments/testnet-2.0.json:generic-api-key:30": {
-    "file": "deployments/testnet-2.0.json",
-    "rule": "generic-api-key"
-   },
-   "69f000b31c63cc375706ade3c316d75389520559:gate2/scripts/spike-notes.md:generic-api-key:8": {
-    "file": "gate2/scripts/spike-notes.md",
-    "rule": "generic-api-key"
-   },
-   "3e58d0bb3a0d3b54bb49c29e727bb96aa05302ed:gate2/scripts/spike-s1.mjs:generic-api-key:43": {
-    "file": "gate2/scripts/spike-s1.mjs",
-    "rule": "generic-api-key"
-   },
-   "e44a50e0efa286daab659d34c08ac4581eb022bf:deployments/testnet.json:generic-api-key:249": {
-    "file": "deployments/testnet.json",
-    "rule": "generic-api-key"
-   },
-   "525caa3db92bf600b8a6fc5ec9d3e516af3d8634:deployments/gate-vm-lane.json:generic-api-key:10": {
-    "file": "deployments/gate-vm-lane.json",
-    "rule": "generic-api-key"
-   },
-   "525caa3db92bf600b8a6fc5ec9d3e516af3d8634:deployments/testnet.json:generic-api-key:249": {
-    "file": "deployments/testnet.json",
-    "rule": "generic-api-key"
-   },
-   "d4201cad7db23256e438400079fd560ef97bf17f:deployments/execution-lane.json:generic-api-key:10": {
-    "file": "deployments/execution-lane.json",
-    "rule": "generic-api-key"
-   },
-   "661b1265616b05078daf6fd842bf10c37f782f29:deployments/tr-cashout.json:generic-api-key:45": {
-    "file": "deployments/tr-cashout.json",
-    "rule": "generic-api-key"
-   },
-   "b7c6a1109f36366c8a63b5aef0b07edba6489889:deployments/cashout-live.json:generic-api-key:83": {
-    "file": "deployments/cashout-live.json",
-    "rule": "generic-api-key"
-   },
-   "69e8ff496398fdc28f0f132a9b11b87248abbef1:deployments/step-chain.json:generic-api-key:10": {
-    "file": "deployments/step-chain.json",
-    "rule": "generic-api-key"
-   },
-   "22345b82f7c494dba217b19bd21bb0146f782688:frontend/src/deployment.js:generic-api-key:14": {
-    "file": "frontend/src/deployment.js",
-    "rule": "generic-api-key"
-   },
-   "22345b82f7c494dba217b19bd21bb0146f782688:frontend/src/deployment.js:generic-api-key:15": {
-    "file": "frontend/src/deployment.js",
-    "rule": "generic-api-key"
-   },
-   "f5be0b4f9bbb865bac1e93e29c0de40e60c33eed:deployments/testnet.json:generic-api-key:87": {
-    "file": "deployments/testnet.json",
-    "rule": "generic-api-key"
-   },
-   "d8ea9c58822d415f3a669b1748b42c9d8725dfab:deployments/testnet.json:generic-api-key:42": {
-    "file": "deployments/testnet.json",
-    "rule": "generic-api-key"
-   }
+  "schema": "lumen-gate/hardening-2.0/v1",
+  "opened": "2026-09-20",
+  "authority": "HARDENING-2.0.md (operator annex Ek A, 2026-09-20); statuses here are per-item with evidence or an explicit not-started; NOTHING here is checked without a linked artifact",
+  "leak_triage": {
+    "tool": "gitleaks 8.x (local run + .gitleaks.toml fingerprint allowlist)",
+    "commits_scanned": 113,
+    "leaks_found": 15,
+    "real_secrets_found": 0,
+    "verdict": "all 15 triaged as public identifiers matched by the generic key=value rule: domain_key (Ed25519 domain verification keys, public by design), signing_key (a G-address, not an S-seed), tokenId/message_transmitter/token_messenger fields (contract ids, strkeys), EVM address constants in gate2 files; one hit lives in HISTORY only (deployments/tr-cashout.json, file removed in a 1.0-era cleanup)",
+    "fingerprints": {
+      "3e58d0bb3a0d3b54bb49c29e727bb96aa05302ed:deployments/testnet-2.0.json:generic-api-key:24": {
+        "file": "deployments/testnet-2.0.json",
+        "rule": "generic-api-key"
+      },
+      "3e58d0bb3a0d3b54bb49c29e727bb96aa05302ed:deployments/testnet-2.0.json:generic-api-key:30": {
+        "file": "deployments/testnet-2.0.json",
+        "rule": "generic-api-key"
+      },
+      "69f000b31c63cc375706ade3c316d75389520559:gate2/scripts/spike-notes.md:generic-api-key:8": {
+        "file": "gate2/scripts/spike-notes.md",
+        "rule": "generic-api-key"
+      },
+      "3e58d0bb3a0d3b54bb49c29e727bb96aa05302ed:gate2/scripts/spike-s1.mjs:generic-api-key:43": {
+        "file": "gate2/scripts/spike-s1.mjs",
+        "rule": "generic-api-key"
+      },
+      "e44a50e0efa286daab659d34c08ac4581eb022bf:deployments/testnet.json:generic-api-key:249": {
+        "file": "deployments/testnet.json",
+        "rule": "generic-api-key"
+      },
+      "525caa3db92bf600b8a6fc5ec9d3e516af3d8634:deployments/gate-vm-lane.json:generic-api-key:10": {
+        "file": "deployments/gate-vm-lane.json",
+        "rule": "generic-api-key"
+      },
+      "525caa3db92bf600b8a6fc5ec9d3e516af3d8634:deployments/testnet.json:generic-api-key:249": {
+        "file": "deployments/testnet.json",
+        "rule": "generic-api-key"
+      },
+      "d4201cad7db23256e438400079fd560ef97bf17f:deployments/execution-lane.json:generic-api-key:10": {
+        "file": "deployments/execution-lane.json",
+        "rule": "generic-api-key"
+      },
+      "661b1265616b05078daf6fd842bf10c37f782f29:deployments/tr-cashout.json:generic-api-key:45": {
+        "file": "deployments/tr-cashout.json",
+        "rule": "generic-api-key"
+      },
+      "b7c6a1109f36366c8a63b5aef0b07edba6489889:deployments/cashout-live.json:generic-api-key:83": {
+        "file": "deployments/cashout-live.json",
+        "rule": "generic-api-key"
+      },
+      "69e8ff496398fdc28f0f132a9b11b87248abbef1:deployments/step-chain.json:generic-api-key:10": {
+        "file": "deployments/step-chain.json",
+        "rule": "generic-api-key"
+      },
+      "22345b82f7c494dba217b19bd21bb0146f782688:frontend/src/deployment.js:generic-api-key:14": {
+        "file": "frontend/src/deployment.js",
+        "rule": "generic-api-key"
+      },
+      "22345b82f7c494dba217b19bd21bb0146f782688:frontend/src/deployment.js:generic-api-key:15": {
+        "file": "frontend/src/deployment.js",
+        "rule": "generic-api-key"
+      },
+      "f5be0b4f9bbb865bac1e93e29c0de40e60c33eed:deployments/testnet.json:generic-api-key:87": {
+        "file": "deployments/testnet.json",
+        "rule": "generic-api-key"
+      },
+      "d8ea9c58822d415f3a669b1748b42c9d8725dfab:deployments/testnet.json:generic-api-key:42": {
+        "file": "deployments/testnet.json",
+        "rule": "generic-api-key"
+      }
+    },
+    "ci_posture": "gitleaks/gitleaks-action@v2 in .github/workflows/gate-hardening.yml; any NEW leak is red; allowlist pins per-fingerprint, not per-field, so the same field name with a new value re-alarms (HARDENING 8)"
   },
-  "ci_posture": "gitleaks/gitleaks-action@v2 in .github/workflows/gate-hardening.yml; any NEW leak is red; allowlist pins per-fingerprint, not per-field, so the same field name with a new value re-alarms (HARDENING 8)"
- },
- "proof_lint": {
-  "script": "gate2/scripts/proof-lint.mjs",
-  "stance": "warning (PROOF_LINT_REQUIRED unset; flip to required is an operator call per Ek A 12)",
-  "run_2026_09_20": {
-   "warnings": 15,
-   "exempt_rule_mentions": 1,
-   "files_missing": [
-    "README.tr.md - intentionally absent by 1.0 rule, noted for Ek A 12's README/README.tr.md pair"
-   ]
+  "proof_lint": {
+    "script": "gate2/scripts/proof-lint.mjs",
+    "stance": "warning (PROOF_LINT_REQUIRED unset; flip to required is an operator call per Ek A 12)",
+    "run_2026_09_20": {
+      "warnings": 15,
+      "exempt_rule_mentions": 1,
+      "files_missing": [
+        "README.tr.md - intentionally absent by 1.0 rule, noted for Ek A 12's README/README.tr.md pair"
+      ]
+    },
+    "note": "the 15 remaining warnings are 1.0-era narrative lines ('live'/'gasless' used as common adjectives with evidence nearby but outside the +-2-line window, or in the two DIRECTIVE docs); they are recorded, not mass-waived: closing them is a README prose pass, deliberately NOT bundled into a tooling commit"
   },
-  "note": "the 15 remaining warnings are 1.0-era narrative lines ('live'/'gasless' used as common adjectives with evidence nearby but outside the +-2-line window, or in the two DIRECTIVE docs); they are recorded, not mass-waived: closing them is a README prose pass, deliberately NOT bundled into a tooling commit"
- },
- "panic_grep": {
-  "rule": "grep -rn 'unwrap()|expect(|panic!|assert!' gate2/soroban minus comments",
-  "first_run": "RED on spike_gate assert! (line 23)",
-  "fix": "Error::TransmitterRefused result-coding; rebuilt (1641-byte wasm) and redeployed; old deployment in deployments/testnet-2.0.json superseded[]",
-  "calibration_finding": "the naive rule then fired on a COMMENT line that described the rule itself - the workflow excludes comment lines but the tooling records that this filter must never be widened past ^\\s*// lines, or real prose-adjacent panics get hidden (wrong-reason-green, Bulgu #4 class)",
-  "status": "GREEN for gate2/soroban (code lines)"
- },
- "h_gates": {
-  "F0": {
-   "gate": "gitleaks wired+green",
-   "status": "closed-this-turn",
-   "evidence": "local run green with allowlist; workflow file committed; GitHub run status queried below",
-   "ci": "gate-hardening.yml on GitHub: secret-scan, proof-lint, panic-grep, regression-gate green; rust-advisories green with the documented single-ID ignore (audit_ignores[]) - untriaged advisories stay red"
+  "panic_grep": {
+    "rule": "grep -rn 'unwrap()|expect(|panic!|assert!' gate2/soroban minus comments",
+    "first_run": "RED on spike_gate assert! (line 23)",
+    "fix": "Error::TransmitterRefused result-coding; rebuilt (1641-byte wasm) and redeployed; old deployment in deployments/testnet-2.0.json superseded[]",
+    "calibration_finding": "the naive rule then fired on a COMMENT line that described the rule itself - the workflow excludes comment lines but the tooling records that this filter must never be widened past ^\\s*// lines, or real prose-adjacent panics get hidden (wrong-reason-green, Bulgu #4 class)",
+    "status": "GREEN for gate2/soroban (code lines)"
   },
-  "F1": {
-   "gate": "spike results re-runnable as post_deploy_checks[]",
-   "status": "wired",
-   "evidence": "deployments/testnet-2.0.json post_deploy_checks[] added with the exact re-run commands for the S2/S3/S6 chain reads",
-   "ci": "gate-hardening.yml on GitHub: secret-scan, proof-lint, panic-grep, regression-gate green; rust-advisories green with the documented single-ID ignore (audit_ignores[]) - untriaged advisories stay red"
+  "h_gates": {
+    "F0": {
+      "gate": "gitleaks wired+green",
+      "status": "closed-this-turn",
+      "evidence": "local run green with allowlist; workflow file committed; GitHub run status queried below",
+      "ci": "gate-hardening.yml on GitHub: secret-scan, proof-lint, panic-grep, regression-gate green; rust-advisories green with the documented single-ID ignore (audit_ignores[]) - untriaged advisories stay red"
+    },
+    "F1": {
+      "gate": "spike results re-runnable as post_deploy_checks[]",
+      "status": "wired",
+      "evidence": "deployments/testnet-2.0.json post_deploy_checks[] added with the exact re-run commands for the S2/S3/S6 chain reads",
+      "ci": "gate-hardening.yml on GitHub: secret-scan, proof-lint, panic-grep, regression-gate green; rust-advisories green with the documented single-ID ignore (audit_ignores[]) - untriaged advisories stay red"
+    },
+    "F2": {
+      "gate": "reentrancy/deadline/balance-delta tests",
+      "status": "F4-BurnRouter: conformance suite 23/23 local+CI, slither triaged with evidence, NOT deployed yet (deployment belongs after the F2 lane); F2: acceptance = funded manual burn, still awaiting operator funds - the only missing input"
+    },
+    "F3": "CLOSED: gate_claim deployed live (id CDQ3PA5L..., init tx 21c53dfe..., on-chain negatives as error codes #3/#1 - see testnet manifest s19); src panic-form grep green with tests/ exempt zone (s20); suites gate_claim 7/7 + campaign 3/3 including the required tier-boundary matrix (BRONZE/SILVER/GOLD at exact and exact-minus-one, fresh world per probe) + a claim_tier grant/announce consistency fix; CI 7/7 on the same commit lineage",
+    "F4": {
+      "gate": "slither/mythril/token-class fuzz",
+      "status": "F4-BurnRouter: conformance suite 23/23 local+CI, slither triaged with evidence, NOT deployed yet (deployment belongs after the F2 lane); F2: acceptance = funded manual burn, still awaiting operator funds - the only missing input"
+    },
+    "F5": {
+      "gate": "threshold boundary tests",
+      "status": "not-started (campaign crate is a skeleton)"
+    },
+    "F6": {
+      "gate": "npm audit/CSP/SRI/attestation-wait UI",
+      "status": "not-started (no web app yet); the gate2/scripts/package-lock.json that DOES exist is pinned exact majors with a lockfile committed"
+    },
+    "F7": {
+      "gate": "mutation score in manifest",
+      "status": "not-started; cargo-mutants not installed - same environment note as F4"
+    },
+    "F8": {
+      "gate": "proof-lint required mode + anomaly watch in self-audit",
+      "status": "not-started; proof-lint exists and runs in warning stance now"
+    },
+    "F9": {
+      "gate": "freeze + fresh eyes + mainnet checklist filled",
+      "status": "not-started; mainnet_gate below is the living checklist"
+    }
   },
-  "F2": {
-   "gate": "reentrancy/deadline/balance-delta tests",
-   "status": "F4-BurnRouter: conformance suite 23/23 local+CI, slither triaged with evidence, NOT deployed yet (deployment belongs after the F2 lane); F2: acceptance = funded manual burn, still awaiting operator funds - the only missing input"
+  "mainnet_gate": {
+    "all_unchecked_per_design": true,
+    "items": [
+      "F0-F9 acceptance + H gates proven",
+      "independent review completed",
+      "slither/mythril/mutation clean or accepted-with-reason",
+      "mainnet addresses separately verified",
+      "restricted mainnet deploy keys + two-person rule",
+      "canary end-to-end flow proven small first",
+      "SECURITY.md live with a real contact channel (file exists; the channel address awaits operator)",
+      "decision_record committed (who/when/on-what-proof)"
+    ]
   },
-  "F3": {
-   "status": "code landed by sibling session; hardening applied same day (zero panic forms, checked totals); local suites 7+2 green; ON-CHAIN: deployed with real init tx, both security-relevant negatives return error CODES live (#3 MessageTooShort, #1 AlreadyInitialized); tier boundary test suite (9.999999/10.000000 both directions) is the remaining F3 item before closure",
-   "ci": "gate-hardening regression job extended to --tests so the relocated suites run in CI"
+  "sections_checklist": {
+    "4.1": "deferred-to-F4-with-design-recorded",
+    "4.2": "deferred-to-F4 (the balance-delta rule is already the product design per DIRECTIVE 5.1; negative tests come with the contract)",
+    "4.3": "deferred-to-F4 (deadline + minOut==0 rejection are design notes captured here)",
+    "4.4": "deferred-to-F4; NOTE the driver spike-s1.mjs already builds hookData byte-exact per the circle page and validates strkey via SDK decode (the EVM-side CRC check in Solidity is the router's F4 job)",
+    "4.5": "deferred-to-F4 token-class matrix",
+    "4.6": "environment gap recorded (no foundry/slither in sandbox); clippy-style grep gate active NOW via workflow",
+    "4.7": "trust-model text owed at F8 (docs/GATE2_TRUST_MODEL.md), risk already voiced in README 2.0 paragraph and DIRECTIVE 6",
+    "5.1": "spike_gate fixed same-rule-same-turn; GateClaim inherits it from its first line",
+    "5.2": "post_deploy_checks[] wired (see h_gates F1)",
+    "5.3": "inherited-from-doc (checked_mul discipline recorded for F3)",
+    "5.4": "F3 tests + F8 sentinel owed; recorded",
+    "5.5": "F5 boundary tests owed; the downgrade question is now a finding (see testnet manifest)",
+    "6": "iris-outage UX owed at F6; freeze-scenario owed at F8 trust model; rescue-impossible probe is F7's list; address-verification step: F2/F4 deploy scripts must print the docs URL + the id side by side (design rule adopted)",
+    "7.1-7.5": "web-phase owed; double-validation rule already enforced by spike driver (SDK StrKey decode, not regex)",
+    "8": "gitleaks CI wired; least-privilege ALREADY true in practice (audit-probe deploys, runtime keys transact the spike - separate accounts); pre-commit hook: recorded-gap (the sandbox rebuilds cannot keep hooks; server-side check carries the rule)",
+    "9": "workflow committed: audit/clippy-grep/regression/proof-lint steps; cargo audit step will show first real output on GitHub side",
+    "10": "fuzz/mutation/chaos owed to F7/F8 with tools gap recorded",
+    "11": "SECURITY.md opened (channel address pending operator); additive-timestamped self-audit-2.0 format inherited from 1.0; bump sentinel owed F8",
+    "12": "proof-lint exists, runs in CI (warning stance), scan set documented",
+    "13": "H-gate table is this file; F9 accepted as a real phase by the branch plan",
+    "14": "mainnet_gate above, untouched",
+    "15": "this status column IS the checklist with statuses",
+    "16": "tools wired where the sandbox allows; where not (foundry/echidna/gambit), the gap is recorded next to the phase that will need it",
+    "17": "definition-of-done amendment acknowledged; nothing here claims 'done'"
   },
-  "F4": {
-   "gate": "slither/mythril/token-class fuzz",
-   "status": "F4-BurnRouter: conformance suite 23/23 local+CI, slither triaged with evidence, NOT deployed yet (deployment belongs after the F2 lane); F2: acceptance = funded manual burn, still awaiting operator funds - the only missing input"
+  "audit_ignores": [
+    {
+      "id": "RUSTSEC-2026-0258",
+      "crate": "h2",
+      "version": "0.3.27",
+      "severity": "unbounded empty DATA frames (HTTP/2 memory DoS)",
+      "found_by": "first gate-hardening CI run; local cargo audit reproduced it",
+      "reachability": "transitive ONLY via crates/relayer -> reqwest 0.11 -> hyper 0.14 (Gate 1.0 component); the 2.0 CCTP path has no relayer dependency at all, and relayer only speaks HTTP/1.1 JSON-RPC to horizon - h2 is negotiated only if a server offers h2 via ALPN, which horizon does not; exposure assessed LOW, not zero",
+      "why_not_fixed": "the patch lives at h2 >=0.4.16 which hyper 0.14 cannot take; fixing means a major reqwest bump inside the 1.0 relayer crate - DIRECTIVE 2.0 section 4 forbids touching 1.0 beyond rename/members/README, so this is an operator decision, not mine to smuggle through",
+      "removal_condition": "delete this entry and the workflow --ignore flag as soon as relayer's reqwest chain is updated (or relayer is retired in 2.0); a NEW advisory never inherits an ignore",
+      "recorded": "2026-09-20T02:24:15Z"
+    }
+  ],
+  "sections_4_now": {
+    "4.1": "PROVEN in test: guard in OZ pattern; inner reentry refused with Reentrancy selector recorded by the attacking token itself, outer completes, messenger saw 1 call",
+    "4.2": "PROVEN: isolated per-side before/after pairs (USDC and token); donation stays inert dust, next burn unaffected; 500-run fuzz conservation as CI job evm-tests",
+    "4.3": "PROVEN: deadline reject before any interaction; ZeroMinOut; slippage reverts with zero Circle calls (half-burn impossible by construction)",
+    "4.4": "PROVEN: format vs CRC16 as separate negatives; real deployed C-id + sha-derived valid G fixture; golden hook bytes from independent Python oracle",
+    "4.5": "PROVEN for fee-on-transfer (measured 1980 beat the 10-percent assumption inside the TEST itself), rebasing/NoDelta, no-return, false-return on both pull and push paths, honeypot, blacklist, zero-decimals; ERC777-callback covered as the reentrancy class; blacklist-of-router stays a README-known-limit (contract-side unfixable, annex row 7)",
+    "4.6": "forge fuzz 500 runs in CI; slither 0.30: 18 down to 17 reports after OZ-pattern rename, remainder REBUTTED: reentrancy-balance flags the required 4.2 measurement (guarded, tested); timestamp flags the required 4.3 deadline mechanism; unused-return flags deliberately ignoring the venue claim in favor of measurement. No suppression flags added.",
+    "4.7": "kill-switch doctrine written into docs/GATE2_TRUST_MODEL.md section 4; adminless proven at dispatch level in the suite (test_AdminlessSurface_DispatchLevelProof, 10 privileged selectors must miss)"
   },
-  "F5": {
-   "gate": "threshold boundary tests",
-   "status": "not-started (campaign crate is a skeleton)"
+  "toolchain_update": {
+    "checked_at": "2026-09-20T02:55:03Z",
+    "foundry": "1.8.3 installed via foundryup (stable, 2026-09-15 build); solc 0.8.30 via svm; slither via pip; the old no-foundry-in-sandbox note for F4/F7 is OBSOLETE - superseded by real runs, the gate flipped from excuse to execution the same day",
+    "evm_ci": "evm-tests job green (23 tests) on gate-2.0; the first CI red for the job was the foundryup XDG path change - infra, recorded as finding"
   },
-  "F6": {
-   "gate": "npm audit/CSP/SRI/attestation-wait UI",
-   "status": "not-started (no web app yet); the gate2/scripts/package-lock.json that DOES exist is pinned exact majors with a lockfile committed"
-  },
-  "F7": {
-   "gate": "mutation score in manifest",
-   "status": "not-started; cargo-mutants not installed - same environment note as F4"
-  },
-  "F8": {
-   "gate": "proof-lint required mode + anomaly watch in self-audit",
-   "status": "not-started; proof-lint exists and runs in warning stance now"
-  },
-  "F9": {
-   "gate": "freeze + fresh eyes + mainnet checklist filled",
-   "status": "not-started; mainnet_gate below is the living checklist"
+  "zkvm_lane": {
+    "at": "2026-09-20T03:12:08Z",
+    "scope": "gate2/zkvm independent cargo workspace (7 crates: isa, vm, proof/stark, state, compiler, verifier-registry, note-packing); ported from the operator-owned sibling monorepo per explicit instruction; renamed to neutral family BEFORE landing (word-boundary script + zero-residue asserts, both now CI-enforced)",
+    "tests": "cargo test --workspace: 365 passed, 0 failed (incl. 185-test prover soundness suite at ~5min); cargo build clean; clippy lib+test clean under the workspace deny(unwrap/expect) gates",
+    "finding": "clippy --all-targets additionally surfaces deny-gate violations in the two benches (upstream excluded benches from the gate deliberately); recorded NOT fixed: bench code is measurement scaffolding, not production; the CI job runs clippy on lib+test, matching upstream scope - the divergence is written here, not hidden",
+    "coupling_fix": "spec-example fence length was a hardcoded literal (any rename ate one char of every example); now derived from the fence string itself - a latent upstream trap caught by the port",
+    "domain_tags": "Fiat-Shamir domain-separator strings renamed consistently prover+verifier+tests in one pass; no deployed artifacts exist to conflict with the new tags"
   }
- },
- "mainnet_gate": {
-  "all_unchecked_per_design": true,
-  "items": [
-   "F0-F9 acceptance + H gates proven",
-   "independent review completed",
-   "slither/mythril/mutation clean or accepted-with-reason",
-   "mainnet addresses separately verified",
-   "restricted mainnet deploy keys + two-person rule",
-   "canary end-to-end flow proven small first",
-   "SECURITY.md live with a real contact channel (file exists; the channel address awaits operator)",
-   "decision_record committed (who/when/on-what-proof)"
-  ]
- },
- "sections_checklist": {
-  "4.1": "deferred-to-F4-with-design-recorded",
-  "4.2": "deferred-to-F4 (the balance-delta rule is already the product design per DIRECTIVE 5.1; negative tests come with the contract)",
-  "4.3": "deferred-to-F4 (deadline + minOut==0 rejection are design notes captured here)",
-  "4.4": "deferred-to-F4; NOTE the driver spike-s1.mjs already builds hookData byte-exact per the circle page and validates strkey via SDK decode (the EVM-side CRC check in Solidity is the router's F4 job)",
-  "4.5": "deferred-to-F4 token-class matrix",
-  "4.6": "environment gap recorded (no foundry/slither in sandbox); clippy-style grep gate active NOW via workflow",
-  "4.7": "trust-model text owed at F8 (docs/GATE2_TRUST_MODEL.md), risk already voiced in README 2.0 paragraph and DIRECTIVE 6",
-  "5.1": "spike_gate fixed same-rule-same-turn; GateClaim inherits it from its first line",
-  "5.2": "post_deploy_checks[] wired (see h_gates F1)",
-  "5.3": "inherited-from-doc (checked_mul discipline recorded for F3)",
-  "5.4": "F3 tests + F8 sentinel owed; recorded",
-  "5.5": "F5 boundary tests owed; the downgrade question is now a finding (see testnet manifest)",
-  "6": "iris-outage UX owed at F6; freeze-scenario owed at F8 trust model; rescue-impossible probe is F7's list; address-verification step: F2/F4 deploy scripts must print the docs URL + the id side by side (design rule adopted)",
-  "7.1-7.5": "web-phase owed; double-validation rule already enforced by spike driver (SDK StrKey decode, not regex)",
-  "8": "gitleaks CI wired; least-privilege ALREADY true in practice (audit-probe deploys, runtime keys transact the spike - separate accounts); pre-commit hook: recorded-gap (the sandbox rebuilds cannot keep hooks; server-side check carries the rule)",
-  "9": "workflow committed: audit/clippy-grep/regression/proof-lint steps; cargo audit step will show first real output on GitHub side",
-  "10": "fuzz/mutation/chaos owed to F7/F8 with tools gap recorded",
-  "11": "SECURITY.md opened (channel address pending operator); additive-timestamped self-audit-2.0 format inherited from 1.0; bump sentinel owed F8",
-  "12": "proof-lint exists, runs in CI (warning stance), scan set documented",
-  "13": "H-gate table is this file; F9 accepted as a real phase by the branch plan",
-  "14": "mainnet_gate above, untouched",
-  "15": "this status column IS the checklist with statuses",
-  "16": "tools wired where the sandbox allows; where not (foundry/echidna/gambit), the gap is recorded next to the phase that will need it",
-  "17": "definition-of-done amendment acknowledged; nothing here claims 'done'"
- },
- "audit_ignores": [
-  {
-   "id": "RUSTSEC-2026-0258",
-   "crate": "h2",
-   "version": "0.3.27",
-   "severity": "unbounded empty DATA frames (HTTP/2 memory DoS)",
-   "found_by": "first gate-hardening CI run; local cargo audit reproduced it",
-   "reachability": "transitive ONLY via crates/relayer -> reqwest 0.11 -> hyper 0.14 (Gate 1.0 component); the 2.0 CCTP path has no relayer dependency at all, and relayer only speaks HTTP/1.1 JSON-RPC to horizon - h2 is negotiated only if a server offers h2 via ALPN, which horizon does not; exposure assessed LOW, not zero",
-   "why_not_fixed": "the patch lives at h2 >=0.4.16 which hyper 0.14 cannot take; fixing means a major reqwest bump inside the 1.0 relayer crate - DIRECTIVE 2.0 section 4 forbids touching 1.0 beyond rename/members/README, so this is an operator decision, not mine to smuggle through",
-   "removal_condition": "delete this entry and the workflow --ignore flag as soon as relayer's reqwest chain is updated (or relayer is retired in 2.0); a NEW advisory never inherits an ignore",
-   "recorded": "2026-09-20T02:24:15Z"
-  }
- ],
- "sections_4_now": {
-  "4.1": "PROVEN in test: guard in OZ pattern; inner reentry refused with Reentrancy selector recorded by the attacking token itself, outer completes, messenger saw 1 call",
-  "4.2": "PROVEN: isolated per-side before/after pairs (USDC and token); donation stays inert dust, next burn unaffected; 500-run fuzz conservation as CI job evm-tests",
-  "4.3": "PROVEN: deadline reject before any interaction; ZeroMinOut; slippage reverts with zero Circle calls (half-burn impossible by construction)",
-  "4.4": "PROVEN: format vs CRC16 as separate negatives; real deployed C-id + sha-derived valid G fixture; golden hook bytes from independent Python oracle",
-  "4.5": "PROVEN for fee-on-transfer (measured 1980 beat the 10-percent assumption inside the TEST itself), rebasing/NoDelta, no-return, false-return on both pull and push paths, honeypot, blacklist, zero-decimals; ERC777-callback covered as the reentrancy class; blacklist-of-router stays a README-known-limit (contract-side unfixable, annex row 7)",
-  "4.6": "forge fuzz 500 runs in CI; slither 0.30: 18 down to 17 reports after OZ-pattern rename, remainder REBUTTED: reentrancy-balance flags the required 4.2 measurement (guarded, tested); timestamp flags the required 4.3 deadline mechanism; unused-return flags deliberately ignoring the venue claim in favor of measurement. No suppression flags added.",
-  "4.7": "kill-switch doctrine written into docs/GATE2_TRUST_MODEL.md section 4; adminless proven at dispatch level in the suite (test_AdminlessSurface_DispatchLevelProof, 10 privileged selectors must miss)"
- },
- "toolchain_update": {
-  "checked_at": "2026-09-20T02:55:03Z",
-  "foundry": "1.8.3 installed via foundryup (stable, 2026-09-15 build); solc 0.8.30 via svm; slither via pip; the old no-foundry-in-sandbox note for F4/F7 is OBSOLETE - superseded by real runs, the gate flipped from excuse to execution the same day",
-  "evm_ci": "evm-tests job green (23 tests) on gate-2.0; the first CI red for the job was the foundryup XDG path change - infra, recorded as finding"
- },
- "zkvm_lane": {
-  "at": "2026-09-20T03:12:08Z",
-  "scope": "gate2/zkvm independent cargo workspace (7 crates: isa, vm, proof/stark, state, compiler, verifier-registry, note-packing); ported from the operator-owned sibling monorepo per explicit instruction; renamed to neutral family BEFORE landing (word-boundary script + zero-residue asserts, both now CI-enforced)",
-  "tests": "cargo test --workspace: 365 passed, 0 failed (incl. 185-test prover soundness suite at ~5min); cargo build clean; clippy lib+test clean under the workspace deny(unwrap/expect) gates",
-  "finding": "clippy --all-targets additionally surfaces deny-gate violations in the two benches (upstream excluded benches from the gate deliberately); recorded NOT fixed: bench code is measurement scaffolding, not production; the CI job runs clippy on lib+test, matching upstream scope - the divergence is written here, not hidden",
-  "coupling_fix": "spec-example fence length was a hardcoded literal (any rename ate one char of every example); now derived from the fence string itself - a latent upstream trap caught by the port",
-  "domain_tags": "Fiat-Shamir domain-separator strings renamed consistently prover+verifier+tests in one pass; no deployed artifacts exist to conflict with the new tags"
- }
 }
