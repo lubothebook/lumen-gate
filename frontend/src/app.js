@@ -850,32 +850,6 @@ function freighterProvider() {
   return injectedFreighter() || officialApi;
 }
 
-/**
- * Is Freighter actually reachable?
- *
- * Injected wins immediately. Otherwise ask the npm module: importing it always
- * succeeds, so the module's presence proves nothing - only isConnected() does,
- * and it is raced against a timeout because without a content script on the
- * other end it never settles.
- */
-async function detectFreighter() {
-  const injected = injectedFreighter();
-  if (injected) return { available: true, api: injected, via: 'injected' };
-  try {
-    const status = await Promise.race([
-      officialApi.isConnected(),
-      new Promise((resolve) => setTimeout(() => resolve({ isConnected: false, timedOut: true }), 2500)),
-    ]);
-    const ok = Boolean(status && (status.isConnected === true || status === true));
-    // The api is handed back either way. A slow or silent content script means
-    // "not confirmed", never "not installed" - only the connect attempt itself
-    // can establish that, and it is the caller's job to make it.
-    return { available: ok, api: officialApi, via: ok ? 'official' : 'unconfirmed' };
-  } catch {
-    return { available: false, api: officialApi, via: 'unconfirmed' };
-  }
-}
-
 function embeddedFrame() {
   try { return window.top !== window.self; } catch (error) { return true; }
 }

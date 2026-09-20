@@ -33,7 +33,7 @@ export async function getContractEvents(contractId: string, startLedger: number 
 // Check finality via registry is_finalized and get_finalized_full
 export async function isFinalized(registryId: string, domainKey: string, height: number) {
   // Build dummy account for simulation
-  const account = await server.getAccount('GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF');
+  const account = new StellarSdk.Account('GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF', '0');
   const contract = new StellarSdk.Contract(registryId);
   // domainKey is hex 32 bytes -> we need to convert to ScVal BytesN
   const domainBytes = StellarSdk.xdr.ScVal.scvBytes(Buffer.from(domainKey, 'hex'));
@@ -51,7 +51,7 @@ export async function isFinalized(registryId: string, domainKey: string, height:
 }
 
 export async function getFinalizedFull(registryId: string, domainKey: string, height: number) {
-  const account = await server.getAccount('GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF');
+  const account = new StellarSdk.Account('GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF', '0');
   const contract = new StellarSdk.Contract(registryId);
   const domainBytes = StellarSdk.xdr.ScVal.scvBytes(Buffer.from(domainKey, 'hex'));
   const tx = new StellarSdk.TransactionBuilder(account, {
@@ -66,7 +66,7 @@ export async function getFinalizedFull(registryId: string, domainKey: string, he
 }
 
 export async function getProfile(registryId: string, domainKey: string) {
-  const account = await server.getAccount('GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF');
+  const account = new StellarSdk.Account('GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF', '0');
   const contract = new StellarSdk.Contract(registryId);
   const domainBytes = StellarSdk.xdr.ScVal.scvBytes(Buffer.from(domainKey, 'hex'));
   const tx = new StellarSdk.TransactionBuilder(account, {
