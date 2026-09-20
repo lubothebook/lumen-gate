@@ -131,7 +131,7 @@
   }
   /* .frame is the same state, painted by app.js - see the note there on why the
      cube cannot rely on its own :hover while it lives behind the page. */
-  .cube:hover, .cube.frame { box-shadow: inset 0 0 0 var(--ring) rgba(255, 255, 255, 0.55); }
+  .cube:hover, .cube.frame { box-shadow: inset 0 0 0 var(--ring) rgba(255, 255, 255, 0.92); }
 
   /* The lattice stops on a hairline. Everything above the line is the source
      chain; the black band below it is the only surface on this page that can
@@ -658,7 +658,7 @@
     background-image: var(--grid-tile); background-size: 60px 60px; background-repeat: no-repeat;
     image-rendering: pixelated; transition: box-shadow var(--dur-fast) var(--ease);
   }
-  .iface-cube:hover, .iface-cube.frame { box-shadow: inset 0 0 0 var(--ring) rgba(255, 255, 255, 0.55); }
+  .iface-cube:hover, .iface-cube.frame { box-shadow: inset 0 0 0 var(--ring) rgba(255, 255, 255, 0.92); }
   .iface-table { width: 100%; margin-top: 14px; }
   .iface-table td, .iface-table th { vertical-align: top; }
   .iface-table td.reason { color: var(--muted); font-family: var(--sans); font-size: 0.8125rem; }
