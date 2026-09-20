@@ -624,9 +624,12 @@ async function loadStatus() {
   markUnavailable($('settleBtn'), !relayReady || !state.lock);
 
   const sourceReady = Boolean(payload.capabilities?.source_chain?.configured);
-  $('sourceNote').textContent = sourceReady
-    ? 'Source adapter configured. Locks created here become real events on the simulated source chain, with real BLS evidence behind them.'
-    : 'No source adapter is configured on this deployment (SOURCE_URL is unset server-side), so this button cannot lock anything. Pressing it says exactly this instead of pretending to work.';
+  const embedded = Boolean(payload.capabilities?.source_chain?.embedded);
+  $('sourceNote').textContent = !sourceReady
+    ? 'No source adapter is configured on this deployment (SOURCE_URL is unset server-side), so this button cannot lock anything. Pressing it says exactly this instead of pretending to work.'
+    : embedded
+      ? 'Lock runs in this process (in-process simulator). Message id and Merkle root are real. BLS is not signed here and mint is not submitted to Stellar without a relayer key.'
+      : 'Source adapter configured. Locks created here become real events on the simulated source chain, with real BLS evidence behind them.';
   markUnavailable($('lockBtn'), !sourceReady);
 
   paintWriteState();
@@ -1072,13 +1075,25 @@ async function lock() {
 
 async function showProof(height) {
   step('finality', 'active', 'reading the finality evidence for this height');
-  const { ok, payload } = await api(`/api/source?path=${encodeURIComponent(`/proof?height=${height}&kind=bls`)}`);
+  const messageId = state.lock?.event?.message_id;
+  const proofPath = `/proof?height=${height}&kind=bls${messageId ? `&message_id=${encodeURIComponent(messageId)}` : ''}`;
+  const { ok, payload } = await api(`/api/source?path=${encodeURIComponent(proofPath)}`);
   if (!ok) {
     step('finality', 'idle');
     log(`Finality evidence unavailable: ${failureText(payload)}`, 'bad');
     return null;
   }
   const b = payload.payload || {};
+  if (payload.local_simulator) {
+    step('finality', 'done', `local Merkle root at height ${payload.declared_height} — BLS not signed, not on Stellar`);
+    step('mint', 'idle', 'mint needs the relayer key; nothing was submitted to the gateway');
+    log(
+      `Local simulator proof for height ${payload.declared_height}\n  state_root ${payload.declared_root}\n  event_root ${b.event_root}\n  ${payload.note || 'BLS not produced in this process'}`,
+      'info'
+    );
+    $('runStatus').textContent = `locked at source height ${height} — mint not submitted (no relayer)`;
+    return payload;
+  }
   step('finality', 'active', `${b.signer_count} signatures collected, ${b.required} required`);
   log(
     `Finality evidence for height ${payload.declared_height}\n  state_root ${payload.declared_root}\n  event_root ${b.event_root}\n  ${b.signer_count} signatures collected, policy requires ${b.required} - aggregate is ${(b.sig_hex || '').length / 2} bytes`,
