@@ -117,7 +117,7 @@
      are the interactive surface: while the pointer is over one cube it wears a
      4px white inset frame; when the pointer leaves, the frame closes. */
   .cube-lattice {
-    position: fixed; inset: 0; z-index: -1; overflow: hidden;
+    position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: auto;
     display: grid; grid-template-columns: repeat(auto-fill, var(--cell));
     grid-auto-rows: var(--cell);
   }
@@ -171,8 +171,21 @@
 
   /* ---------------------------------------------------------------- header */
   /* Apple chrome: frosted glass, hairline underneath, everything else quiet. */
+  .testnet-band {
+    position: sticky; top: 0; z-index: 45;
+    background: #000;
+    border-bottom: 1px solid var(--line-2);
+    color: var(--warn);
+    font-family: var(--mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    text-align: center;
+    padding: 8px 16px;
+  }
+  .band-narrow { display: none; }
   header.top {
-    position: absolute; top: 0; left: 0; right: 0; z-index: 40;
+    position: absolute; top: 34px; left: 0; right: 0; z-index: 40;
     background: none; border: 0;
   }
   .top-inner { display: flex; align-items: center; gap: 20px; min-height: 68px; padding-top: 14px; }
@@ -257,7 +270,10 @@
   /* ------------------------------------------------------------------ hero */
   /* The banner sits high and the wallet band starts right under it: the first
      screen is a wordmark, one sentence and two buttons, not a wall of prose. */
-  .hero { padding-top: clamp(72px, 7vw, 92px); padding-bottom: clamp(10px, 1.4vw, 18px); }
+  .hero { position: relative; z-index: 1; padding-top: clamp(108px, 10vw, 132px); padding-bottom: clamp(10px, 1.4vw, 18px); pointer-events: none; }
+  .hero > .shell { position: relative; z-index: 1; pointer-events: none; }
+  .hero-panel { pointer-events: none; }
+  .hero-banner, .track-row, .hero-panel .cta, .hero-panel .eyebrow, .hero-panel h1, .hero-panel .lead { pointer-events: auto; }
   /* The hero carries no strip. Every other text row on the page sits on its own
      black band; this one is the exception the operator asked for, and it works
      because the lattice underneath is dark enough to read against - the panel
@@ -687,8 +703,10 @@
   }
   @media (max-width: 720px) {
     body { font-size: 16px; }
+    .band-wide { display: none; }
+    .band-narrow { display: inline; }
     .top-inner { min-height: 60px; padding-top: 10px; }
-    .hero { padding-top: 92px; }
+    header.top { top: 40px; }
     nav.main.foot-nav { gap: 2px 14px; padding: 9px 16px; bottom: 10px; }
     .hero-panel { padding: 26px 20px; border-radius: 22px; }
     .renounce-row { grid-template-columns: 1fr; gap: 3px; }
@@ -745,6 +763,7 @@
 <body>
 <a class="sr" href="#top">Skip to content</a>
 <div class="cube-lattice" id="cubeLattice" aria-hidden="true"></div>
+<div class="testnet-band"><span class="band-wide">TESTNET · Stellar testnet · not a production network</span><span class="band-narrow">TESTNET · not a production network</span></div>
 
 <header class="top">
   <div class="shell top-inner">
