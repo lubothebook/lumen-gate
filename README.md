@@ -12,6 +12,26 @@ Stellar already has the payment rails, the anchor model and a smart-contract pla
 
 This is the proposal for the [Rise In x Stellar Pro Hackathon](https://www.risein.com/programs/stellar-pro-hackathon), Genesis track. It is deliberately ambitious and deliberately honest: the source chain may remain a deterministic simulator for the hackathon, but Stellar-side contracts, Soroban RPC calls, event ingestion and transaction receipts are designed for real Testnet execution. No green button is allowed to turn an unverified fixture into a production claim.
 
+## Table of Contents
+
+- [What this is, in one minute](#what-this-is-in-one-minute)
+- [One repository, two gates](#one-repository-two-gates)
+- [Architecture — System Overview](#architecture--system-overview)
+- [Part I — Gate 1.0: the neutral finality layer](#part-i--gate-10-the-neutral-finality-layer-frozen)
+  - [The 30-second pitch](#the-30-second-pitch)
+  - [Why Stellar, why now](#why-stellar-why-now)
+  - [How approval works, from the ground up](#how-approval-works-from-the-ground-up)
+  - [The same flow, driven from the console](#the-same-flow-driven-from-the-console)
+  - [Honest status & Receipts](#honest-status)
+- [Product thesis](#product-thesis)
+- [Demo story](#demo-story)
+- [Repository architecture](#repository-architecture)
+- [Deploying the console](#deploying-the-console)
+- [Cryptographic paths](#cryptographic-paths)
+- [Part II — Gate 2.0](#part-ii--gate-20-pasaport--batarya--bilet-in-development)
+
+
+
 ## What this is, in one minute
 
 A bridge is usually two things at once: a way to move value, and a group of
@@ -84,6 +104,143 @@ place only: the Vercel deployment serves both consoles from one origin, so a
 visitor can exercise Gate 1.0 at `/` and Gate 2.0 at `/gate2/` without leaving
 the app.
 
+## Architecture — System Overview
+
+> All diagrams are pure `flowchart` / `sequenceDiagram` — GitHub renders them natively, no images, no external dependencies.
+
+### High-Level — Where every component lives
+
+```mermaid
+flowchart TB
+    User[User No XLM needed] --> FE[Frontend Vite Freighter 7 panels]
+    FE --> SIM[Source Simulator Axum 3001 BLS Merkle]
+    SIM --> REG[Finality Registry Soroban SDK 28 BLS Groth16 zkVM]
+    REG --> GW[Settlement Gateway HWM Merkle SAC mint Gasless]
+    GW --> SAC[SAC wSRC ISSUER admin gateway No custodial]
+    SAC --> User
+
+    REL[Relayer Rust Polls sim Real RPC Pays XLM] --> SIM
+    REL --> REG
+    REL --> GW
+
+    AN[Anchor Facade Node 8081 stellar toml] --> SAC
+
+    RAVEN[Stellar Raven MCP 60 ops 282 catalog 20 playbooks Verified] -.-> REG
+
+    classDef stellar fill:#0A0A0A,stroke:#7D00FF,color:#fff
+    classDef offchain fill:#111,stroke:#00D1FF,color:#fff
+    classDef innovation fill:#1a0a2e,stroke:#FF3B82,color:#fff
+
+    class REG,GW,SAC stellar
+    class SIM,REL,FE,AN offchain
+    class RAVEN innovation
+```
+
+### Trust Boundary — Why machine approval, not human multisig
+
+```mermaid
+flowchart LR
+    subgraph Traditional["Traditional Bridge Human Approval INSECURE"]
+        T1[User locks] --> T2[Multisig validators Human approval]
+        T2 --> T3[Relayer submits Trust humans]
+        T3 --> T4[Mint Custodial risk]
+    end
+
+    subgraph Ours["Trust Stellar Move to Stellar Machine Approval SECURE"]
+        O1[User locks on source with fee Even if no XLM] --> O2[Source produces BLS sig Merkle root]
+        O2 --> O3[zkVM BLS verifier Soroban native hosts No human]
+        O3 --> O4[Machine approves pairing check]
+        O4 --> O5[Gateway mints HWM Merkle Gasless relayer pays XLM]
+        O5 --> O6[User receives wSRC Even with 0 XLM Claimable sponsored]
+    end
+
+    Traditional -.-> Ours
+```
+
+### Container Deep Dive — What is real, what is simulated
+
+```mermaid
+flowchart TB
+    subgraph SourceChain["Source Chain Simulated Real Crypto"]
+        B1[Block Producer state root event root Merkle]
+        B2[Lock Event payload hash message id]
+        B3[BLS Aggregate sk 1 2 3 deterministic TEST ONLY]
+        B4[Merkle Proof siblings]
+        B5[Groth16 Range Proof VK 768B Proof 256B]
+        B6[Fee Included amount user plus fee Gasless]
+    end
+
+    subgraph StellarReal["Stellar Testnet Real No Mocks"]
+        R1[finality registry register domain admit]
+        R2[submit bls 368B payload version gate]
+        R3[submit bls hardened FULL pairing check]
+        R4[submit zk 40B payload groth16 verify]
+        R5[verify via zkvm Machine approval No human]
+        R6[Storage Finalized FinalizedFull Evidence]
+        R7[DomainProfile no score only facts]
+
+        G1[settlement gateway init admin registry token]
+        G2[lock and relay from auth transfer]
+        G3[finalize inbound HWM is finalized Merkle]
+        G4[finalize gasless fee abstraction relayer pays]
+        G5[burn and relay]
+        G6[SAC wSRC ISSUER set admin gateway]
+    end
+
+    subgraph OffChainHardened["Off Chain Hardened"]
+        S1[Simulator API blocks latest lock proof info]
+        RY[Relayer getLatestLedger poll sim Merkle ZK]
+        FE2[Frontend Freighter 7 panels Lock Proof Balance]
+        AN2[Anchor Facade stellar toml info health]
+    end
+
+    B1 --> B2
+    B2 --> B3
+    B2 --> B4
+    B2 --> B5
+    B2 --> B6
+    B3 --> S1
+    B4 --> S1
+    B5 --> S1
+    B6 --> S1
+    S1 --> RY
+    RY --> R2
+    RY --> R3
+    RY --> R4
+    R2 --> R6
+    R3 --> R6
+    R4 --> R6
+    R5 --> R4
+    R6 --> R7
+    R6 --> G3
+    R6 --> G4
+    G1 --> G2
+    G2 --> G3
+    G2 --> G4
+    G3 --> G6
+    G4 --> G6
+    G5 --> G6
+    FE2 --> S1
+    FE2 --> R2
+    FE2 --> G3
+    FE2 --> G4
+    FE2 --> AN2
+    AN2 --> G6
+```
+
+### Machine Approval — BLS and ZK are the same pairing check
+
+```mermaid
+flowchart LR
+    H[Human Multisig 3 of 5 sign Trust humans Custodial] --> M[Machine zkVM BLS Groth16 Native hosts Trust math No human]
+    M --> BLS[BLS pairing check on curve subgroup hash to g1]
+    M --> ZK[ZK pairing check 4 pairings vk x]
+    BLS --> SECURE[Secure Bridge Machine approves No human]
+    ZK --> SECURE
+```
+
+
+
 ## Part I — Gate 1.0: the neutral finality layer (frozen)
 
 Gate 1.0 is complete for what it set out to prove, and it is frozen: its code
@@ -153,6 +310,63 @@ The receipts elsewhere in this file were produced from a terminal. This one was 
 | gasless mint 3 of 3 | `2d5845626e59f9f49912422e11aeddea5a0ab73c24b6425b65906408f165cb40` |
 
 The block held three events, so the Merkle proof was a real tree walk at depth 2 rather than the degenerate single-leaf case. The recipient's XLM balance is **identical before and after** (`1.5000000`): the inbound direction is gasless for the user. The relayer collected `0.3 wSRC` in fees and spent `0.0746712 XLM` on the three transactions plus a trustline, and the arithmetic reconciles exactly — `(13.7 + 13.7000001 + 13.7000002) − 3 × 0.1 = 40.8000003 wSRC` received. Full record: `deployments/testnet.json` → `console_round_trip`.
+
+#### Gasless mint — user with 0 XLM still receives value
+
+```mermaid
+sequenceDiagram
+    participant U as User No XLM
+    participant SRC as Source Chain
+    participant REL as Relayer Has XLM
+    participant REG as Finality Registry
+    participant GW as Settlement Gateway
+    participant SAC as SAC wSRC
+    participant ST as Stellar
+
+    U->>SRC: Lock 110 for recipient fee included
+    SRC->>SRC: Produce block event root Merkle BLS sig
+    REL->>SRC: GET proof height 1 kind bls
+    SRC-->>REL: payload 368B real aggregate Merkle proof
+    REL->>REG: submit bls evidence machine verifies
+    REG-->>REL: Attestation Finalized
+    REL->>ST: Pay XLM fee for tx
+    REL->>GW: finalize gasless relayer message asset 110 recipient fee 10
+    GW->>GW: Verify machine approval HWM Merkle payload
+    GW->>SAC: mint recipient 100 User gets wSRC even with 0 XLM
+    GW->>SAC: mint relayer 10 Relayer reimbursed
+    GW->>GW: Track RelayerReward
+    SAC-->>U: User now has wSRC
+```
+
+#### End-to-end — Freighter → Simulator → Registry → Gateway
+
+```mermaid
+sequenceDiagram
+    participant U as User Freighter
+    participant FE as Frontend
+    participant SIM as Source Simulator
+    participant REL as Relayer
+    participant REG as Finality Registry
+    participant GW as Settlement Gateway
+    participant SAC as SAC wSRC
+
+    U->>FE: Connect Freighter amount 110 fee included recipient
+    FE->>SIM: POST lock amount 110 recipient sender
+    SIM->>SIM: payload hash message id event root Merkle BLS sig
+    SIM-->>FE: event block height 1
+    FE->>SIM: GET proof height 1 kind bls message id
+    SIM-->>FE: payload hex 368B real aggregate merkle proof
+    FE->>REL: Request gasless mint
+    REL->>REG: submit bls evidence
+    REG->>REG: version gate digest replay declared rederive
+    REG-->>REL: Attestation
+    REL->>GW: finalize gasless relayer message asset 110 recipient fee 10
+    GW->>GW: id rederive expiry HWM is finalized Merkle
+    GW->>SAC: mint recipient 100 gasless
+    GW->>SAC: mint relayer 10 reward
+    SAC-->>U: wSRC 100 even with 0 XLM
+```
+
 
 **This run also found a defect, which is the point of driving the product instead of the CLI.** A lock with a plain-string source sender was accepted by the simulator, hashed into the message id, signed into BLS evidence and *anchored* by the registry — and only then failed at the CLI, because the gateway carries that field in an `Address`-typed argument. The result was a half-settled block: a permanent on-chain finality record for a message nobody could ever mint, with the fee already paid. The simulator now validates sender and recipient as Stellar strkeys before creating an event, so the failure lands where the operator can still act on it.
 
