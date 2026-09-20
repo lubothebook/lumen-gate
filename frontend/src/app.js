@@ -840,9 +840,59 @@ function embeddedFrame() {
 }
 function walletAbsenceNote() {
   if (embeddedFrame()) {
-    return 'Freighter is not installed or cannot reach this frame: extensions inject only into a top-level tab, and this console is running embedded. Open the page in its own tab to connect; receiving needs no wallet at all.';
+    return 'This console is running inside a frame, and browser extensions are injected only into top-level tabs - so Freighter cannot reach the page here even when it is installed and unlocked. Use the button above to reopen this console in its own tab; the connection works there. Receiving needs no wallet at all.';
   }
   return 'Freighter is not installed in this browser. Receiving does not need a wallet at all; only burning your own tokens does.';
+}
+
+/**
+ * In a frame, offer the way out instead of only naming the problem.
+ *
+ * A wallet extension does not inject into an iframe (content scripts declare
+ * all_frames: false), so "Connect" inside an embedded preview can never
+ * succeed no matter how many doors the detection tries. Saying "open it in a
+ * tab" and leaving the reader to work out how is a dead end when the frame's
+ * URL is not in any address bar they can see.
+ *
+ * So the button becomes the action: one click opens this exact page top-level,
+ * where the extension is present. window.open with noopener is enough - and if
+ * the popup is blocked, the link stays on screen to be clicked or copied,
+ * because a blocked popup with no fallback is another dead end.
+ */
+function offerTopLevelTab() {
+  const btn = $('connectBtn');
+  if (!btn || btn.dataset.framed === 'true') return;
+  btn.dataset.framed = 'true';
+  btn.textContent = 'Open in a tab to connect';
+  btn.title = 'Extensions cannot reach a framed page; this opens the console top-level where Freighter works.';
+
+  const note = $('walletNote');
+  if (note && !document.getElementById('walletTabLink')) {
+    const link = document.createElement('a');
+    link.id = 'walletTabLink';
+    link.href = window.location.href;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.textContent = 'Open this console in a new tab';
+    link.style.cssText = 'display:inline-block; margin-top:8px; color:inherit; text-decoration:underline; font-size:0.8125rem';
+    note.insertAdjacentElement('afterend', link);
+  }
+}
+
+/** Open the console top-level. Returns false if the browser blocked it. */
+function openTopLevel() {
+  const url = window.location.href;
+  try {
+    const opened = window.open(url, '_blank', 'noopener,noreferrer');
+    if (opened) {
+      log('Opened this console in a new tab. Connect Freighter there: the extension can reach a top-level page.', 'ok');
+      return true;
+    }
+  } catch (error) {
+    // fall through to the visible link
+  }
+  log('The browser blocked the new tab. Use the "Open this console in a new tab" link under the wallet card.', 'warn');
+  return false;
 }
 let freighterWatch = null;
 function watchForFreighter() {
@@ -869,12 +919,27 @@ async function connectWallet() {
   // Ask both doors before giving up: injected first, then the npm module.
   // Deciding on `window` alone is what made a wallet that only speaks over
   // postMessage look absent.
+  // If the button has already turned into the escape hatch, honour that: the
+  // second press should open the tab, not re-run a detection that cannot
+  // succeed in this frame.
+  if ($('connectBtn') && $('connectBtn').dataset.framed === 'true') {
+    openTopLevel();
+    return null;
+  }
+
   const found = await detectFreighter();
   const freighter = found.api;
   if (!freighter) {
     $('walletNote').textContent = walletAbsenceNote();
     log(walletAbsenceNote(), 'warn');
-    watchForFreighter();
+    // A framed page cannot be fixed by waiting for an injection that will
+    // never come, so offer the tab instead of watching forever.
+    if (embeddedFrame()) {
+      offerTopLevelTab();
+      openTopLevel();
+    } else {
+      watchForFreighter();
+    }
     return null;
   }
   try {
@@ -1806,6 +1871,15 @@ async function renderLanes() {
 
 renderLanes().catch(() => {});
 wire();
+
+// Say it before the reader presses anything. In a frame the extension is
+// unreachable no matter what, so the wallet card should show the way out on
+// arrival rather than after a click that was always going to fail.
+if (embeddedFrame() && !freighterProvider()) {
+  offerTopLevelTab();
+  const note = $('walletNote');
+  if (note) note.textContent = walletAbsenceNote();
+}
 wireWindows();
 watchSections();
 buildLattice();

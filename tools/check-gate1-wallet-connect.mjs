@@ -117,6 +117,56 @@ check("the absence is explained", /not installed|frame/i.test(none.note), none.n
 check("receiving is still described as keyless", /receiv/i.test(none.note));
 check("no page error without a wallet", none.errors.length === 0, none.errors[0] || "");
 
+// 5 - CERCEVE. Bu, konsolun onizlemede gercekten calistigi durum ve
+// "cuzdan baglanmiyor" sikayetinin asil sebebi: eklenti content script'leri
+// all_frames: false ile gelir, yani bir iframe'e HIC enjekte olmazlar. Kod ne
+// kadar dogru olursa olsun cerceve icinde baglanti mumkun degil. O yuzden
+// kontrol edilen sey "baglandi mi" degil, "cikis yolu sunuluyor mu".
+{
+  const page = await browser.newPage();
+  await page.setViewport({ width: 1400, height: 1000 });
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(e.message.slice(0, 140)));
+  // Gercek eklenti davranisi: sadece ust cerceveye enjekte et.
+  await page.evaluateOnNewDocument((addr) => {
+    if (window.top === window.self) {
+      window.freighterApi = {
+        isConnected: async () => ({ isConnected: true }),
+        requestAccess: async () => ({ address: addr }),
+        getAddress: async () => ({ address: addr }),
+        getNetwork: async () => ({ network: "TESTNET" }),
+        signTransaction: async (x) => ({ signedTxXdr: x }),
+      };
+    }
+  }, FUNDED);
+  await page.setContent(
+    `<!doctype html><html><body style="margin:0"><iframe src="${BASE}" style="width:100%;height:900px;border:0"></iframe></body></html>`,
+    { waitUntil: "networkidle2" }
+  );
+  await new Promise((r) => setTimeout(r, 3500));
+  const frame = page.frames().find((f) => f.url().includes(new URL(BASE).port || "5175"));
+  check("the framed console loads", Boolean(frame));
+
+  if (frame) {
+    const label = await frame.$eval("#connectBtn", (n) => n.textContent.trim());
+    const link = await frame.evaluate(() => Boolean(document.getElementById("walletTabLink")));
+    const note = await frame.$eval("#walletNote", (n) => n.textContent.replace(/\s+/g, " "));
+
+    // Tiklamadan ONCE soylenmeli: tiklayip basarisiz olmayi beklemek degil.
+    check("a framed console offers the tab before any click", /tab/i.test(label), label);
+    check("a clickable link is present as a popup-blocker fallback", link);
+    check("the note explains frames, not a missing wallet",
+      /frame/i.test(note) && !/not installed in this browser/i.test(note), note.slice(0, 80));
+
+    const before = (await browser.pages()).length;
+    await frame.evaluate(() => document.getElementById("connectBtn").click());
+    await new Promise((r) => setTimeout(r, 3000));
+    check("pressing it opens a top-level tab", (await browser.pages()).length > before);
+    check("no page error in a frame", errors.length === 0, errors[0] || "");
+  }
+  await page.close();
+}
+
 console.log("OK:"); for (const o of oks) console.log(`  + ${o}`);
 if (fails.length) { console.log("\nFAIL:"); for (const f of fails) console.log(`  - ${f}`); }
 console.log(fails.length ? `\n${fails.length} FAILED of ${oks.length + fails.length}` : `\nALL GREEN (${oks.length} checks)`);
