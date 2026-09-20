@@ -1,0 +1,483 @@
+{
+  "document": "gate2/zkvm evidence \u2014 DIRECTIVE 2.0-ZKVM (Z0\u2013Z4)",
+  "generated": "2026-09-20",
+  "headline": "This is half a job. It does not produce or verify a ZK proof. Every number here is measured from real command output.",
+  "source": {
+    "repo": "https://github.com/budlum-xyz/budlum",
+    "sha": "d8423b773d54b12e84b256dba1570b9b20c0465c",
+    "commit_date": "2026-09-17T00:49:54+03:00",
+    "tree": "budzero/",
+    "retrieved": "2026-09-20",
+    "licence_on_disk": "PolyForm Shield 1.0.0 (NOT MIT \u2014 see finding z5)",
+    "licence_sha256": "77080c7cad9136ebf3a8dca6999db572f0b1250a74dfcc4bd0a21a875e897401",
+    "selection_rationale": "Named the default source by the annex, and the safer of the two candidates: VerifyMerkle and VerifyInference are gated off by MainnetActivation, the VM is larger and more constrained (3267 vs 1123 lines), and its baseline is green at 409 tests. Operator confirmed this choice after being shown that the licence is PolyForm Shield rather than MIT (decision d1).",
+    "alternative_considered": {
+      "repo": "https://github.com/Budlum/BudZKVM",
+      "sha": "8c16dbddc528c0cb5895695188bd6b0acc7ce537",
+      "licence": "MIT",
+      "rejected_because": "31 opcodes with is_experimental() hardcoded false and no MainnetActivation gate; its README declares VerifyMerkle production-ready, contradicting the selected source. Weaker safety posture."
+    },
+    "unreachable": [
+      "lubosruler/budlum (HTTP 404)",
+      "lubosruler/BudZero (HTTP 404)"
+    ]
+  },
+  "baseline_tests": {
+    "command": "cargo test --manifest-path budzero/Cargo.toml --workspace",
+    "measured_at_sha": "d8423b773d54b12e84b256dba1570b9b20c0465c",
+    "before_copying": true,
+    "suites": 20,
+    "passed": 409,
+    "failed": 0,
+    "ignored": 0,
+    "exit_code": 0,
+    "verdict": "green \u2014 the 'stop if baseline is red' condition did not fire"
+  },
+  "post_copy_tests": {
+    "command": "cargo test --workspace (in gate2/zkvm/, toolchain 1.97.1)",
+    "suites": 20,
+    "passed": 379,
+    "failed": 0,
+    "ignored": 0,
+    "exit_code": 0,
+    "delta": "+14 over the 365 that were already here: the gate-tier-parity crate (6 opcode-gate tests + 8 parity/determinism tests)",
+    "note": "379 != 409 because the imported tree is the pre-existing gate2/zkvm copy, which does not include bud-cli or bud-node. See excluded[]."
+  },
+  "clippy": {
+    "command": "cargo clippy --workspace --all-targets -- -D warnings (in gate2/zkvm/)",
+    "exit_code": 0,
+    "errors": 0,
+    "warnings": 0,
+    "note": "Failed with 38 errors before clippy.toml was copied from the source; all 38 were unwrap/expect inside pre-existing #[cfg(test)] modules of verifier-registry. The source exempts tests in one place via clippy.toml (allow-unwrap-in-tests / allow-expect-in-tests); that file had never been copied into gate2/zkvm. Copying it byte-identical restored parity with the source's own gate rather than suppressing anything. One further error was in a file written by this work (parity/examples/dump_evidence.rs) and was fixed by returning ExitCode instead of calling expect()."
+  },
+  "regression_1_0": {
+    "command": "cargo test --workspace --lib (repo root, toolchain 1.98.1)",
+    "before": {
+      "domain_adapter": 20,
+      "execution_vm": 28,
+      "finality_registry": 61,
+      "gate_vm": 17,
+      "settlement_gateway": 11,
+      "gate_campaign_example": 0,
+      "gate_claim": 0,
+      "exit_code": 0
+    },
+    "after": {
+      "domain_adapter": 20,
+      "execution_vm": 28,
+      "finality_registry": 61,
+      "gate_vm": 17,
+      "settlement_gateway": 11,
+      "gate_campaign_example": 0,
+      "gate_claim": 0,
+      "exit_code": 0
+    },
+    "verdict": "unchanged",
+    "note_on_12_11_3": "DIRECTIVE.md:68 already records that the directive's '12 / 11 / 3' is the 1.0 write-time count and that the repo's floor has since grown to 61/17/11/20/28. Measured numbers agree with that note; nothing dropped.",
+    "campaign_suite": {
+      "command": "cargo test -p gate_campaign_example --test campaign",
+      "passed": 5,
+      "failed": 0,
+      "was": 3,
+      "added": 2
+    }
+  },
+  "isolation": {
+    "separate_workspace": true,
+    "root_workspace_members_touched": false,
+    "own_cargo_lock": true,
+    "rust_toolchain_pin": "1.97.1 (added by this work \u2014 see finding z6)",
+    "root_toolchain": "1.98.1 (unchanged)",
+    "soroban_builds_affected": false
+  },
+  "patches": [
+    {
+      "scope": "pre-existing (commit 28026a9, not authored by this work)",
+      "files": 18,
+      "reason": "Source project identifiers renamed on import: bud_* -> zk_*, BudAir -> ZkAir, budzero -> zkzero, BudL -> ZkLang, .bud -> .zkl, directory bud_stark/ -> zk_stark/.",
+      "diff_summary": "Every one of the 18 inspected diffs is an identifier or comment rename. Largest: zk-proof/src/plonky3_prover.rs (70 lines, all BudAir->ZkAir and comment renames). zk-vm/src/lib.rs 8, zk-compiler/src/lib.rs 12 (rename plus a ```budl -> ```bud fence-length fix), the rest 2\u201310 lines each.",
+      "verified_by": "scripts/diff_against_source.sh \u2014 18 differing, 0 local-only, 0 not-copied"
+    },
+    {
+      "scope": "pre-existing (commit 28026a9)",
+      "file": "zk-state/Cargo.toml",
+      "reason": "Not a pure rename. Upstream depends on budlum-note-packing at ../../crates/note-packing, which reaches outside the budzero/ workspace. Here it is zk-note-packing at ../note-packing: the crate was vendored in to make the workspace self-contained.",
+      "diff_summary": "2 lines: dependency name and path."
+    },
+    {
+      "scope": "added by this work",
+      "file": "gate2/zkvm/clippy.toml",
+      "reason": "Copied byte-identical from the source repository root. Without it the workspace's own unwrap_used/expect_used deny gate fires on pre-existing test modules that the source explicitly exempts in one central place. Restores the source's gate rather than weakening it.",
+      "diff_summary": "New file, identical to budlum/clippy.toml."
+    },
+    {
+      "scope": "added by this work",
+      "file": "gate2/zkvm/rust-toolchain.toml",
+      "reason": "Rule 4 isolation. Without it rustup walks up to the repo root and this tree builds on 1.98.1; the source pins 1.97.1 (finding z6).",
+      "diff_summary": "New file, channel 1.97.1, mirrors budzero/rust-toolchain.toml."
+    },
+    {
+      "scope": "added by this work",
+      "file": "gate2/zkvm/Cargo.toml",
+      "reason": "Register the new parity crate.",
+      "diff_summary": "One line added to [workspace] members: \"parity\"."
+    },
+    {
+      "scope": "added by this work (outside gate2/zkvm \u2014 the single edit the annex permits)",
+      "file": "gate2/soroban/gate_campaign_example/tests/campaign.rs",
+      "reason": "Annex rule 7: the one allowed change to DIRECTIVE-2.0 scope is a test that reads the parity vectors.",
+      "diff_summary": "+2 tests reading vectors/tier_vectors.json. No production contract code changed. Suite 3 -> 5 tests."
+    }
+  ],
+  "superseded": [],
+  "superseded_note": "Empty, and that is a real result rather than an omission: no source test was deleted, ignored or loosened. The pre-existing tree was left in place, so no imported test lost its dependency. The clippy gate was restored by copying the source's own clippy.toml, not by relaxing a lint.",
+  "excluded": [
+    {
+      "crate": "bud-cli",
+      "reason": "Out of scope (prove/verify/deploy/batch). Also depends on bud-proof and bud-state, so compile/run cannot be lifted as-is. Not present in the pre-existing tree either."
+    },
+    {
+      "crate": "bud-node",
+      "reason": "L1 host integration, out of scope. Not present in the pre-existing tree."
+    },
+    {
+      "crate": "bud-proof",
+      "reason": "Proof half \u2014 excluded by the annex. PRESENT in the pre-existing tree as zk-proof (finding z1); left in place, unwired, unclaimed."
+    },
+    {
+      "crate": "bud-state",
+      "reason": "Proof half \u2014 excluded by the annex. PRESENT as zk-state (finding z1); left in place, unwired, unclaimed."
+    },
+    {
+      "crate": "verifier-registry",
+      "reason": "Not in the annex's 'taken' column. PRESENT in the pre-existing tree; left in place."
+    },
+    {
+      "crate": "note-packing",
+      "reason": "Vendored dependency of zk-state. PRESENT in the pre-existing tree; left in place."
+    }
+  ],
+  "gated_opcodes": [
+    {
+      "opcode": "VerifyMerkle",
+      "closed": true,
+      "how": "parity/src/gate_profile.rs \u2014 refused at decode and at compile-screen on the Gate path",
+      "why": "64-depth Merkle soundness (Z-B) is not closed upstream; the source keeps it off by default and the root README calls the production-depth path disabled.",
+      "measured_isa_behaviour": "IsaProfile::Production ACCEPTS it; MainnetActivation::default() rejects it"
+    },
+    {
+      "opcode": "SRead",
+      "closed": true,
+      "how": "parity/src/gate_profile.rs \u2014 refused at decode and at compile-screen",
+      "why": "Persistent state is out of scope for the execution half; no state crate is on the Gate path.",
+      "measured_isa_behaviour": "IsaProfile::Production ACCEPTS it; MainnetActivation::default() ACCEPTS it"
+    },
+    {
+      "opcode": "SWrite",
+      "closed": true,
+      "how": "parity/src/gate_profile.rs \u2014 refused at decode and at compile-screen",
+      "why": "Same as SRead.",
+      "measured_isa_behaviour": "IsaProfile::Production ACCEPTS it; MainnetActivation::default() ACCEPTS it"
+    }
+  ],
+  "gated_opcodes_note": "The annex assumed IsaProfile alone would close these. It does not: Opcode::is_experimental() returns false for every opcode in this revision, so the Production profile refuses nothing, and the mainnet activation gate is silent about storage (finding z10, measured). Changing is_experimental() upstream-style would turn pre-existing prover and VM tests red for reasons unrelated to them, which rule 6 forbids working around. The closure is therefore enforced additively on the Gate path and recorded here.",
+  "parity": {
+    "program": "programs/gate_tier.zkl",
+    "program_sha256": "1d54244802caa42041ddc7db787457fbd6d884946a0b78272979af735e9aa6b6",
+    "vectors_file": "vectors/tier_vectors.json",
+    "vectors_sha256": "94563b9e3025250b140f6dcde7d860a8eb4c0ba055b8b4b48c61596bb456ad12",
+    "vector_count": 12,
+    "vm_side_passed": 12,
+    "soroban_side_passed": 10,
+    "soroban_side_skipped": 2,
+    "thresholds": {
+      "bronze": 10000000,
+      "silver": 100000000,
+      "gold": 1000000000
+    },
+    "thresholds_asserted_equal_to_contract": true,
+    "both_sides_read_the_same_file": true,
+    "skipped_detail": [
+      {
+        "vector": "zero",
+        "total_usdc": 0,
+        "why": "GateClaim refuses a zero mint (NothingMinted, error #13), so a zero-total migration record cannot exist on-chain at all. Evaluated on the VM side, where the rung is 0. Finding z11."
+      },
+      {
+        "vector": "large_value",
+        "total_usdc": 1000000000000,
+        "why": "Larger than the mocked CCTP message carries in that harness. The rung above Gold is already pinned on the Soroban side by the exact-Gold and just-above-Gold cases."
+      }
+    ],
+    "boundaries_covered": [
+      0,
+      9999999,
+      10000000,
+      99999999,
+      100000000,
+      999999999,
+      1000000000,
+      1000000000000
+    ]
+  },
+  "trace_hashes": [
+    {
+      "vector": "zero",
+      "total_usdc": 0,
+      "tier": 0,
+      "trace_len": 25,
+      "gas_used": 47,
+      "trace_hash": "79be4319073657e958a9d47c32d4591d5554626ca51ff230b60f64d5aea3fb31",
+      "deterministic": true
+    },
+    {
+      "vector": "one_unit",
+      "total_usdc": 1,
+      "tier": 0,
+      "trace_len": 25,
+      "gas_used": 47,
+      "trace_hash": "88e20d01e9050cba0be9fea8409fba2b01ec618d67537da9ab760300f1491e1e",
+      "deterministic": true
+    },
+    {
+      "vector": "just_below_bronze",
+      "total_usdc": 9999999,
+      "tier": 0,
+      "trace_len": 25,
+      "gas_used": 47,
+      "trace_hash": "7bc8c3e6b17406f04507046002a11bd0316ff7410789d8f99ff03966995d06f9",
+      "deterministic": true
+    },
+    {
+      "vector": "exactly_bronze",
+      "total_usdc": 10000000,
+      "tier": 1,
+      "trace_len": 26,
+      "gas_used": 50,
+      "trace_hash": "817c12d18ef4eec03d401e725cbd3d6dc2019d964c186cd60af27a035a0bddc8",
+      "deterministic": true
+    },
+    {
+      "vector": "just_above_bronze",
+      "total_usdc": 10000001,
+      "tier": 1,
+      "trace_len": 26,
+      "gas_used": 50,
+      "trace_hash": "3994bfee1034137ddfff0c9769f95d90cd264e822e0ed61914a8848f135ed78f",
+      "deterministic": true
+    },
+    {
+      "vector": "just_below_silver",
+      "total_usdc": 99999999,
+      "tier": 1,
+      "trace_len": 26,
+      "gas_used": 50,
+      "trace_hash": "ac034602d2630bc2d4f043a0ac428757ba6e7cb51b9674b4ee0d909af1071498",
+      "deterministic": true
+    },
+    {
+      "vector": "exactly_silver",
+      "total_usdc": 100000000,
+      "tier": 2,
+      "trace_len": 27,
+      "gas_used": 53,
+      "trace_hash": "08d22859cb2fd27f359e341469d9d4e6ed6ac89dcd2b7895f3350630e392e8cd",
+      "deterministic": true
+    },
+    {
+      "vector": "just_above_silver",
+      "total_usdc": 100000001,
+      "tier": 2,
+      "trace_len": 27,
+      "gas_used": 53,
+      "trace_hash": "06e57569bf632c200bc1ef4f309120456114fd306147c4b282ca4712f00f4d2e",
+      "deterministic": true
+    },
+    {
+      "vector": "just_below_gold",
+      "total_usdc": 999999999,
+      "tier": 2,
+      "trace_len": 27,
+      "gas_used": 53,
+      "trace_hash": "62dbd10768f0e6f00392236923c0fc07b5a3484539b87c29cba49b132d0b4c46",
+      "deterministic": true
+    },
+    {
+      "vector": "exactly_gold",
+      "total_usdc": 1000000000,
+      "tier": 3,
+      "trace_len": 28,
+      "gas_used": 56,
+      "trace_hash": "018a16c3ee15fd1bd790d92e2a7ca06c604e0bb7962e44d3b4bedda7d9d7463f",
+      "deterministic": true
+    },
+    {
+      "vector": "just_above_gold",
+      "total_usdc": 1000000001,
+      "tier": 3,
+      "trace_len": 28,
+      "gas_used": 56,
+      "trace_hash": "158ab05eaf712d0b4886ffb8ecdeb072d70db1cb85c09d97ca8e7c09512ce623",
+      "deterministic": true
+    },
+    {
+      "vector": "large_value",
+      "total_usdc": 1000000000000,
+      "tier": 3,
+      "trace_len": 28,
+      "gas_used": 56,
+      "trace_hash": "4c4879f650f43925a840b5de7d531d81429b1b2717d90129ba2ce2d6997e4c71",
+      "deterministic": true
+    }
+  ],
+  "trace_hashes_note": "sha256 over the ordered execution-trace rows (pc, next_pc, encoded instruction, operand slots and values), domain-separated by 'gate-tier-trace/v1'. Produced by `cargo run -p gate-tier-parity --example dump_evidence`. Each vector was run twice and the digests matched: determinism holds for all 12. Distinct inputs produce distinct digests, so the check cannot pass vacuously. THIS IS NOT A PROOF and nobody verifies it \u2014 it is a reproducibility digest.",
+  "determinism": {
+    "vectors_run_twice": 12,
+    "digest_matched": 12,
+    "mismatches": 0
+  },
+  "negative_probes": [
+    {
+      "probe": "VerifyMerkle in a bytecode image",
+      "expected": "rejected at decode",
+      "result": "rejected",
+      "test": "gate_profile::tests::verify_merkle_is_refused_at_decode"
+    },
+    {
+      "probe": "SRead / SWrite in a bytecode image",
+      "expected": "rejected at decode",
+      "result": "rejected",
+      "test": "gate_profile::tests::storage_opcodes_are_refused_at_decode"
+    },
+    {
+      "probe": "program carrying a closed opcode",
+      "expected": "rejected, naming the instruction index",
+      "result": "rejected at index 2",
+      "test": "gate_profile::tests::a_program_carrying_a_closed_opcode_is_rejected_with_its_index"
+    },
+    {
+      "probe": "ordinary arithmetic and control flow",
+      "expected": "still passes the gate",
+      "result": "passes",
+      "test": "gate_profile::tests::ordinary_arithmetic_still_passes_the_gate"
+    },
+    {
+      "probe": "closed set size",
+      "expected": "exactly 3 opcodes closed",
+      "result": "3",
+      "test": "gate_profile::tests::the_closed_set_is_exactly_three_opcodes"
+    },
+    {
+      "probe": "one below / one above each threshold",
+      "expected": "correct rung",
+      "result": "correct for all 8 boundary cases",
+      "test": "tests::boundary_values_land_on_the_right_rung"
+    },
+    {
+      "probe": "same program, same input, twice",
+      "expected": "identical trace hash",
+      "result": "identical",
+      "test": "tests::identical_input_gives_an_identical_trace_hash"
+    },
+    {
+      "probe": "different input",
+      "expected": "different trace hash (guards against a vacuous determinism check)",
+      "result": "different",
+      "test": "tests::different_input_gives_a_different_trace_hash"
+    },
+    {
+      "probe": "gas limit exceeded",
+      "expected": "VM errors with OutOfGas and yields no tier",
+      "result": "OutOfGas, no partial output",
+      "test": "tests::exhausted_gas_is_a_refusal_not_a_partial_answer"
+    },
+    {
+      "probe": "vector file vs its own declared thresholds",
+      "expected": "self-consistent",
+      "result": "consistent",
+      "test": "tests::vector_file_is_self_consistent"
+    },
+    {
+      "probe": "vector file vs Soroban contract constants",
+      "expected": "equal",
+      "result": "equal",
+      "test": "tests::thresholds_match_the_soroban_contract"
+    },
+    {
+      "probe": "diff_against_source.sh vs patches[]",
+      "expected": "no difference absent from patches[]",
+      "result": "18 differing / 0 local-only / 0 not-copied, all covered",
+      "test": "scripts/diff_against_source.sh"
+    }
+  ],
+  "findings": [
+    {
+      "id": "z1",
+      "severity": "blocking-resolved",
+      "finding": "gate2/zkvm/ already existed and already contained the proof half (zk-proof, zk-state, verifier-registry, note-packing) \u2014 precisely what the annex says not to take. Commit 28026a9, 2026-09-20 03:11 UTC, 'lumen-gate auditor', 62 files, 31687 insertions, on main. Reported as a stop before any file was written; operator instructed to proceed and take what testnet needs (decision d2)."
+    },
+    {
+      "id": "z2",
+      "severity": "info",
+      "finding": "That pre-existing tree is a renamed copy of the same budzero/ workspace this annex targets. Normalising only the rename gives 0 differing lines in zk-isa, ast.rs, codegen.rs, lexer.rs, parser.rs, private_transfer.rs, syscall_context.rs and trace_fixtures.rs; zk-vm/src/lib.rs is 2579 lines on both sides with 8 differing."
+    },
+    {
+      "id": "z3",
+      "severity": "policy-conflict",
+      "finding": "The source project's name appears nowhere in the workspace (grep -ri 'budlum|budzero|budzkvm' over *.rs/*.toml/*.md returns 0 matches), conflicting with annex \u00a71 'existing copyright lines are not deleted'. Predates this work. Operator chose to continue the scrub (decision d3); LICENSE and PROVENANCE.md now carry the attribution trail instead."
+    },
+    {
+      "id": "z4",
+      "severity": "resolved",
+      "finding": "No LICENSE, PROVENANCE.md, STATUS.md or evidence.json accompanied the pre-existing tree, though its crates declare LicenseRef-PolyForm-Shield-1.0.0. All four added by this work; LICENSE vendored byte-identical from the source."
+    },
+    {
+      "id": "z5",
+      "severity": "assumption-wrong",
+      "finding": "The annex (\u00a71) states the sources are MIT. The selected source is PolyForm Shield 1.0.0, which carries a Noncompete clause. Only Budlum/BudZKVM is MIT. No legal interpretation offered; recorded so PROVENANCE.md does not carry a false 'MIT summary'. Operator kept budzero/ (decision d1)."
+    },
+    {
+      "id": "z6",
+      "severity": "resolved",
+      "finding": "The pre-existing tree had no rust-toolchain.toml, so it silently built on the root's 1.98.1 while the source pins 1.97.1 \u2014 rule 4 isolation was incomplete. Pinned to 1.97.1 by this work; the root toolchain was not touched and the 1.0 floor still passes."
+    },
+    {
+      "id": "z7",
+      "severity": "info",
+      "finding": "Z1 dependency analysis is clean: bud-isa has no path dependencies; bud-vm and bud-compiler depend only on bud-isa (plus serde/logos/tracing). References to bud_proof or bud_state in their sources: 0. The execution/proof boundary is real, so the 'cannot be separated' stop condition did not fire."
+    },
+    {
+      "id": "z8",
+      "severity": "info",
+      "finding": "The predicted README contradiction is confirmed. Budlum/BudZKVM: '31/31 opcodes production-ready' including VerifyMerkle at 64 depth. budzero/: VerifyMerkle mainnet-gated, default off; root README calls the production-depth path disabled. Safe reading adopted."
+    },
+    {
+      "id": "z9",
+      "severity": "info",
+      "finding": "The pre-existing tree is not wired to any Soroban contract, BurnRouter, GateClaim or web flow (grep across contracts, crates, web, scripts, frontend, api: no references). Rule 3 is intact today. The single match, zk_proof_len in crates/source_simulator, is an unrelated local constant."
+    },
+    {
+      "id": "z10",
+      "severity": "important",
+      "finding": "IsaProfile::Production gates nothing in this ISA revision. Measured: VerifyMerkle, SRead and SWrite all decode successfully under Production, because Opcode::is_experimental() is hardcoded to return false. MainnetActivation::default() rejects VerifyMerkle but accepts both storage opcodes. Rule 2 therefore could not be satisfied by selecting a profile, and is enforced by parity/src/gate_profile.rs on the Gate path instead."
+    },
+    {
+      "id": "z11",
+      "severity": "info",
+      "finding": "The zero-amount parity vector cannot be exercised on the Soroban side: GateClaim rejects a zero mint with NothingMinted (#13), so a zero-total migration record cannot exist on-chain. Checked on the VM side only, where the rung is 0; the skip is recorded in the test itself and in parity.skipped_detail rather than silently passed."
+    }
+  ],
+  "acceptance": {
+    "Z0": "met \u2014 source pinned to a commit SHA, baseline measured green (409/0) BEFORE copying, PROVENANCE.md written with both candidates compared, ownership statement and an accurate licence summary",
+    "Z1": "met \u2014 dependency map produced; zero dependencies from the execution half onto the excluded crates; bud-cli's dependency on bud-proof/bud-state recorded as the reason no CLI was built",
+    "Z2": "met with a caveat \u2014 cargo check, cargo clippy -D warnings and cargo test --workspace all pass inside gate2/zkvm (379/0); root cargo test --workspace --lib unchanged; diff_against_source.sh output matches patches[] exactly. Caveat: no new copy was made, because the execution half was already present (finding z1)",
+    "Z3": "met \u2014 12 shared vectors, VM side 12/12, Soroban side 10/10 with 2 documented skips, both reading the same JSON file; trace hashes recorded; determinism verified by a second run of every vector",
+    "Z4": "met \u2014 STATUS.md carries the 'half a job' banner at the top and every line has a counterpart here or in PROVENANCE.md"
+  },
+  "not_done": [
+    "No compile/run CLI binary was built (bud-cli depends on the excluded proof crates; the harness is a library plus tests, which is what parity needed).",
+    "The pre-existing proof-half crates were neither audited nor removed. Their status is an open question for the operator, not a claim made here.",
+    "Source copyright headers were not restored (decision d3).",
+    "No proof, prover, verifier or on-chain verification exists on the Gate path, and none is claimed."
+  ]
+}

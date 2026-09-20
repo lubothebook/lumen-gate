@@ -1,0 +1,50 @@
+// gate_tier - the tier ladder, expressed for the execution VM.
+//
+// This is the ONE point of contact between this workspace and Gate: the same
+// thresholds the Soroban `gate_campaign_example` contract applies, run here as
+// deterministic bytecode so the two sides can be checked against each other on
+// a shared vector file (`vectors/tier_vectors.json`).
+//
+// What this is: a parity and determinism test.
+// What this is NOT: a proof of anything. No trace produced here is verified,
+// no result reaches a contract, a router or a web flow. See STATUS.md.
+//
+// Input channel: `msg::sender()` (Syscall imm=1) carries `total_usdc`, a u64 in
+// 6-decimal USDC units. The language has no other way to take a runtime value
+// today (see docs/ZkLang_SPEC.md section 6), and a literal would be folded into
+// the program - which would make every vector a different program and prove
+// nothing about the ladder.
+//
+// Output channel: `emit Tier(t)` (Log), so the tier lands in the receipt's
+// event list where the harness reads it.
+//
+// Thresholds, 6 decimals, identical to gate_campaign_example/src/lib.rs:
+//   BRONZE = 10 * 1_000_000        = 10_000_000
+//   SILVER = 100 * 1_000_000       = 100_000_000
+//   GOLD   = 1_000 * 1_000_000     = 1_000_000_000
+//
+// Ladder: 0 = none (below Bronze), 1 = Bronze, 2 = Silver, 3 = Gold.
+//
+// Note on comparison: the VM is a Goldilocks field machine, so `>=` on values
+// near the field modulus is not machine-integer `>=`. The vectors stay inside
+// the u64 range the contract's i128 totals can actually reach, and the harness
+// documents the one large value it exercises.
+contract GateTier {
+    pub fn main() {
+        let total = msg::sender();
+
+        let tier = 0;
+
+        if (total >= 10000000) {
+            tier = 1;
+        }
+        if (total >= 100000000) {
+            tier = 2;
+        }
+        if (total >= 1000000000) {
+            tier = 3;
+        }
+
+        emit Tier(tier);
+    }
+}

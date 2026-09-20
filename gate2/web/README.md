@@ -6,6 +6,11 @@ bölgesidir; bu uygulama onlara dokunmaz. Üretimde tek Vercel dağıtımının
 geliştirmede ayrı portta (5174) çalışır ve 1.0 dev sunucusu `/gate2`’yi
 buraya proxy’ler — yani yerel deneyim Vercel’in birebir aynısıdır.
 
+Görsel dil 1.0 ile aynıdır: ızgara duvar, cam kutucuklar, 1.0 / 2.0 anahtarı.
+2.0 kutucuğuna basınca alttaki siyah bant bu sürümün konsolu olur (Burn,
+Taşıma Kanıtım, Batarya, Biletlerim — tek ekran, sekme ile). 1.0 kutucuğu
+dondurulmuş konsola döner.
+
 ## Çalıştırma
 
 ```

@@ -1,0 +1,14 @@
+# gate2/zkvm is a SEPARATE workspace and pins its own toolchain (2.0-ZKVM
+# rule 4: isolation). Without this file rustup walks up to the repository root
+# and this tree silently builds on the root's 1.98.1 - which is what it was
+# doing before this pin was added (finding z6).
+#
+# 1.97.1 is the channel the imported crates were developed and tested against
+# upstream. Keeping it here means a failure in this workspace is a failure in
+# the code, not a compiler difference nobody chose.
+#
+# Do NOT change the root's rust-toolchain.toml to match: the Soroban contracts
+# and the 1.0 regression floor build on 1.98.1 and must stay untouched.
+[toolchain]
+channel = "1.97.1"
+components = ["rustfmt", "clippy"]

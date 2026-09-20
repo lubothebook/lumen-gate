@@ -14,8 +14,10 @@ export const CONFIG = {
   gateClaimCanonical: c.gate_claim_testnet.id,
   gateClaimPreHardening: c.gate_claim_testnet_pre_hardening.id,
   campaign: c.gate_campaign_example_testnet.id,
+  stamp: c.gate_stamp_testnet.id,
   deployerPublicKey: c.testnet_deployer.public_key,
   usdc: c.circle_testnet_reference.native_usdc_stellar_testnet,
+  usdcIssuer: c.circle_testnet_reference.native_usdc_stellar_testnet_issuer,
   tokenMessenger: c.circle_testnet_reference.stellar_domain27.token_messenger_minter,
   messageTransmitter: c.circle_testnet_reference.stellar_domain27.message_transmitter,
   sepolia: {
