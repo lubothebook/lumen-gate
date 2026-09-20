@@ -7,7 +7,6 @@ import {
   hasUsdcTrustline,
   getFreighter,
   watchFreighter,
-  detectFreighter,
   freighterConnect,
   sendWithFreighter,
   friendbot,
@@ -56,17 +55,17 @@ $("tab-burn").addEventListener("click", () => showTab("burn"));
 $("tab-battery")?.addEventListener("click", () => showTab("battery"));
 $("tab-tickets")?.addEventListener("click", () => showTab("tickets"));
 
-// 2.0 kutucuğu: 1.0'daki gibi alttaki bandı bu sürümün çalışma alanı yapar.
+  // 2.0 pill: same as 1.0 — the band below is this version's workspace.
 $("gate2Select")?.addEventListener("click", () => {
   $("console")?.scrollIntoView({ behavior: "smooth", block: "start" });
 });
 
 // ---------- static honesty ----------
 $("contract-ids").textContent =
-  `gate_claim (kanonik/sertlestirilmis): ${CONFIG.gateClaimCanonical} · ` +
-  `gate_claim (F3 kulvari, kampanya buna bagli): ${CONFIG.gateClaimPreHardening} · ` +
-  `kampanya: ${CONFIG.campaign} · ` +
-  `testnet damga: ${CONFIG.stamp}`;
+  `gate_claim (canonical/hardened): ${CONFIG.gateClaimCanonical} · ` +
+  `gate_claim (F3 lane, campaign is wired here): ${CONFIG.gateClaimPreHardening} · ` +
+  `campaign: ${CONFIG.campaign} · ` +
+  `testnet stamp: ${CONFIG.stamp}`;
 $("burn-blocker").textContent = CONFIG.burnRouterBlocker;
 $("iris-url").textContent = CONFIG.irisApi;
 
@@ -85,43 +84,37 @@ function paintEmbedGate() {
     tab.classList.toggle("hidden", !framed);
   }
   if (framed) {
-    setWalletState("Bu çerçevede uzantı yok. Sekmede aç, sonra bağlan.", "error");
+    setWalletState("No extension in this frame. Open in a tab, then connect.", "error");
   }
 }
 async function connectWallet() {
-  paintEmbedGate();
-  const found = await detectFreighter();
-  if (!found.installed) {
-    const note = embeddedFrame()
-      ? "Freighter bu çerçeveye giremez. Sekmede aç, sonra bağlan."
-      : "Freighter yok. chrome.google.com/webstore’dan Freighter kur, sayfayı yenile, bağlan.";
-    setWalletState(note, "error");
-    acctLog(note);
-    return null;
-  }
-  setWalletState("Freighter açılıyor…", "muted");
+  // requestAccess must run in this click turn. Awaiting isConnected first
+  // (2s) drops the user gesture and the browser blocks the popup — that is
+  // why Connect did nothing on a real Freighter install.
+  const f = getFreighter();
+  setWalletState("Opening Freighter…", "muted");
   try {
-    const addr = await freighterConnect(found.api, { installed: found.installed });
+    const addr = await freighterConnect(f);
     connectedAddress = addr;
-    setWalletState(`${addr.slice(0, 8)}…${addr.slice(-6)} bağlı`, "ok");
+    setWalletState(`${addr.slice(0, 8)}…${addr.slice(-6)} connected`, "ok");
     $("in-address").value = addr;
     $("in-strkey").value = addr;
     $("btn-tier-send").disabled = false;
     $("btn-trustline").disabled = false;
     setWalletActions(true);
     await refreshBalances(addr);
-    acctLog(`Bağlandı. Expert: ${addr.slice(0, 8)}…`);
-    if (typeof found.api.getNetwork === "function") {
+    acctLog(`Connected. Expert: ${addr.slice(0, 8)}…`);
+    if (typeof f.getNetwork === "function") {
       try {
-        const net = await found.api.getNetwork();
+        const net = await f.getNetwork();
         const name = typeof net === "string" ? net : net && (net.network || net.networkPassphrase);
         if (name && !/test/i.test(String(name))) {
-          setWalletState(`Bağlı ama Freighter ${name} üzerinde. Mainnet’te işlem düğmeleri kapalı.`, "error");
+          setWalletState(`Connected, but Freighter is on ${name}. Action buttons stay closed on mainnet.`, "error");
           $("btn-tier-send").disabled = true;
           $("btn-burn").disabled = true;
           setWalletActions(
             false,
-            `Freighter ${name} ağında — bu konsol yalnızca testnet’te işlem imzalar. Cüzdanı Stellar testnet’e al.`
+            `Freighter is on ${name} — this console only signs on testnet. Switch the wallet to Stellar testnet.`
           );
         }
       } catch {
@@ -130,7 +123,7 @@ async function connectWallet() {
     }
     return addr;
   } catch (e) {
-    setWalletState(`Bağlantı hatası: ${e.message || e}`, "error");
+    setWalletState(`Connection error: ${e.message || e}`, "error");
     return null;
   }
 }
@@ -140,14 +133,14 @@ function onFreighter(f) {
     return;
   }
   if (!f) {
-    setWalletState("Freighter bulunamadı. Uzantıyı kur, sayfayı yenile, bağlan.", "muted");
+    setWalletState("Freighter not found. Install it, reload, then connect.", "muted");
     setWalletActions(
       false,
-      "Bu tarayıcıda Freighter eklentisi yok. Okuma (Taşıma Kanıtım, StrKey) cüzdansız çalışır; imza isteyen düğmeler kapalı."
+      "No Freighter extension in this browser. Read-only actions (My Migration Proof, StrKey) work without a wallet; anything needing a signature stays closed."
     );
     return;
   }
-  setWalletState("Freighter hazır — bağlanmak için tıkla", "ok");
+  setWalletState("Freighter ready — click to connect", "ok");
 }
 function acctLog(text, hash) {
   const box = $("acct-log");
@@ -173,7 +166,7 @@ function setWalletActions(on, reason) {
     // A disabled control should say why it is disabled. Without this the
     // buttons just look broken.
     if (on) b.removeAttribute("title");
-    else b.title = reason || "Önce Freighter ile bağlan — bu işlem imza ister.";
+    else b.title = reason || "Connect Freighter first — this action needs a wallet signature.";
   }
   const gate = $("walletGate");
   if (gate) {
@@ -184,7 +177,7 @@ function setWalletActions(on, reason) {
       gate.innerHTML = "";
       gate.append(
         reason ||
-          "Yukarıdaki dört düğme bağlanınca açılır — hepsi Freighter imzası ister."
+          "The four buttons above unlock once you connect — each one needs a Freighter signature."
       );
     }
   }
@@ -199,7 +192,7 @@ async function refreshBalances(g) {
     if (!r.exists) {
       kv.appendChild(el("tr", null, null));
       const tr = document.createElement("tr");
-      tr.innerHTML = "<td>Hesap</td><td>zincirde yok — Friendbot ile XLM al</td>";
+      tr.innerHTML = "<td>Account</td><td>not on chain — fund with Friendbot</td>";
       kv.appendChild(tr);
       return;
     }
@@ -212,16 +205,16 @@ async function refreshBalances(g) {
       kv.appendChild(tr);
     };
     row("XLM", xlm ? Number(xlm.balance).toFixed(7) : "—");
-    row("USDC", usdc ? `${Number(usdc.balance).toFixed(7)} (trustline var)` : "trustline yok");
+    row("USDC", usdc ? `${Number(usdc.balance).toFixed(7)} (trustline open)` : "no trustline");
     const link = document.createElement("a");
     link.href = EXPLORER_ACCOUNT + g;
     link.target = "_blank";
     link.rel = "noreferrer";
-    link.textContent = "Stellar Expert’te aç";
+    link.textContent = "Open in Stellar Expert";
     link.className = "link-btn";
     $("walletNote")?.append?.("");
   } catch (e) {
-    acctLog(`Bakiye okunamadı: ${e.message || e}`);
+    acctLog(`Could not read balances: ${e.message || e}`);
   }
 }
 
@@ -229,21 +222,21 @@ paintEmbedGate();
 watchFreighter(onFreighter);
 $("btn-connect").addEventListener("click", () => connectWallet());
 
-// ---------- Taşıma Kanıtım ----------
+  // ---------- Proof of Migration ----------
 async function queryAddress(g) {
   currentQueryAddress = g;
   $("res-which").textContent = `${g.slice(0, 8)}…${g.slice(-6)}`;
   $("results").classList.remove("hidden");
   const migBox = $("res-migration");
   const nftBox = $("res-nfts");
-  migBox.textContent = "Zincirden okunuyor…";
+  migBox.textContent = "Reading the chain…";
   nftBox.textContent = "";
 
   // Both live gate_claim deployments are queried — the canonical hardened
   // one and the F3-lane one the campaign is wired to. Nothing is hidden.
   const lanes = [
-    { name: "kanonik (sertlestirilmis)", id: CONFIG.gateClaimCanonical },
-    { name: "F3 kulvari (kampanya buna bagli)", id: CONFIG.gateClaimPreHardening },
+    { name: "canonical (hardened)", id: CONFIG.gateClaimCanonical },
+    { name: "F3 lane (campaign is wired here)", id: CONFIG.gateClaimPreHardening },
   ];
   migBox.innerHTML = "";
   for (const lane of lanes) {
@@ -251,19 +244,19 @@ async function queryAddress(g) {
     migBox.appendChild(head);
     const r = await readContract(lane.id, "get_migration", [{ scVal: addrScVal(g) }]);
     if (!r.ok) {
-      migBox.appendChild(el("div", "error", `Okuma hatası: ${r.error}`));
+      migBox.appendChild(el("div", "error", `Read error: ${r.error}`));
       continue;
     }
     if (r.value == null) {
-      migBox.appendChild(pill("kayıt yok"));
+      migBox.appendChild(pill("no record"));
       continue;
     }
     const t = el("table");
     const rows = [
-      ["Toplam USDC (6 ondalık)", div6(r.value.total_usdc)],
-      ["Claim sayısı", String(r.value.claim_count)],
-      ["İlk / son ledger", `${r.value.first_ledger} / ${r.value.last_ledger}`],
-      ["Kaynak domainler", (r.value.sources || []).join(", ") || "—"],
+      ["Total USDC (6 decimals)", div6(r.value.total_usdc)],
+      ["Claim count", String(r.value.claim_count)],
+      ["First / last ledger", `${r.value.first_ledger} / ${r.value.last_ledger}`],
+      ["Source domains", (r.value.sources || []).join(", ") || "—"],
     ];
     for (const [k, v] of rows) {
       const tr = el("tr");
@@ -279,25 +272,25 @@ async function queryAddress(g) {
   try {
     const st = await readContract(CONFIG.stamp, "stamp_of", [{ scVal: addrScVal(g) }]);
     if (st.ok && st.value !== null && st.value !== undefined) {
-      migBox.appendChild(el("div", "muted", `TESTNET damga (CCTP değil): id=${st.value}`));
+      migBox.appendChild(el("div", "muted", `TESTNET stamp (not CCTP): id=${st.value}`));
     } else if (st.ok) {
-      migBox.appendChild(el("div", "muted", "TESTNET damga: yok"));
+      migBox.appendChild(el("div", "muted", "TESTNET stamp: none"));
     }
   } catch { /* stamp is additive */ }
 
-  nftBox.textContent = "NFT listesi okunuyor…";
+  nftBox.textContent = "Reading NFT list…";
   nftBox.innerHTML = "";
   for (const lane of lanes) {
     const r = await readContract(lane.id, "proofs_of", [{ scVal: addrScVal(g) }]);
     if (!r.ok) {
-      nftBox.appendChild(el("div", "error", `${lane.name}: okuma hatası ${r.error}`));
+      nftBox.appendChild(el("div", "error", `${lane.name}: read error ${r.error}`));
       continue;
     }
     const ids = r.value || [];
     nftBox.appendChild(el("div", "muted", `${lane.name}: ${ids.length} NFT`));
     for (const id of ids) {
       const card = el("div", "nft");
-      card.appendChild(el("h3", null, `Taşıma Kanıtı #${id}`));
+      card.appendChild(el("h3", null, `Proof of Migration #${id}`));
       const [proof, meta, owner] = await Promise.all([
         readContract(lane.id, "get_proof", [{ value: id, type: "u64" }]),
         readContract(lane.id, "get_meta", [{ value: id, type: "u64" }]),
@@ -306,14 +299,14 @@ async function queryAddress(g) {
       const p = proof.value || {};
       const t = el("table");
       const rows = [
-        ["Sahip (owner_of)", owner.ok && owner.value ? String(owner.value) : "—"],
-        ["Kaynak domain", String(p.source_domain ?? "—")],
+        ["Owner (owner_of)", owner.ok && owner.value ? String(owner.value) : "—"],
+        ["Source domain", String(p.source_domain ?? "—")],
         ["Nonce", String(p.nonce ?? "—")],
-        ["Tutar (USDC 6 ondalık)", div6(p.amount_6)],
-        ["Yürütülen ücret", div6(p.fee_executed_6)],
+        ["Amount (USDC 6 decimals)", div6(p.amount_6)],
+        ["Fee executed", div6(p.fee_executed_6)],
         ["Ledger", String(p.ledger ?? "—")],
-        ["Mesaj hash", p.message_hash ? String(p.message_hash) : "—"],
-        ["Meta (domain/nonce/tutar/ücret/ledger)", meta.ok && meta.value ? JSON.stringify(meta.value, (k, v) => typeof v === "bigint" ? String(v) : v) : "—"],
+        ["Message hash", p.message_hash ? String(p.message_hash) : "—"],
+        ["Meta (domain/nonce/amount/fee/ledger)", meta.ok && meta.value ? JSON.stringify(meta.value, (k, v) => typeof v === "bigint" ? String(v) : v) : "—"],
       ];
       for (const [k, v] of rows) {
         const tr = el("tr");
@@ -331,13 +324,13 @@ $("btn-query").addEventListener("click", () => {
   const g = $("in-address").value.trim();
   const box = $("addr-error");
   if (!StrKey.isValidEd25519PublicKey(g)) {
-    box.textContent = "Geçersiz Stellar adresi — StrKey doğrulaması başarısız.";
+    box.textContent = "Invalid Stellar address — StrKey check failed.";
     box.classList.remove("hidden");
     return;
   }
   box.classList.add("hidden");
   queryAddress(g).catch((e) => {
-    box.textContent = `Sorgu hatası: ${e.message || e}`;
+    box.textContent = `Query error: ${e.message || e}`;
     box.classList.remove("hidden");
   });
 });
@@ -347,8 +340,8 @@ function renderTier(box, label, r) {
   box.innerHTML = "";
   box.appendChild(el("div", "muted", label));
   if (!r.ok) {
-    box.appendChild(el("div", "error", `Reddedildi: ${String(r.error).slice(0, 300)}`));
-    box.appendChild(pill("rozet yok → sözleşme reddetti", "pill bad"));
+    box.appendChild(el("div", "error", `Rejected: ${String(r.error).slice(0, 300)}`));
+    box.appendChild(pill("no badge → contract refused", "pill bad"));
     return;
   }
   const names = { 1: "Bronze", 2: "Silver", 3: "Gold" };
@@ -360,21 +353,21 @@ function renderTier(box, label, r) {
 $("btn-tier-sim").addEventListener("click", async () => {
   const g = currentQueryAddress || connectedAddress || $("in-address").value.trim();
   if (!StrKey.isValidEd25519PublicKey(g)) {
-    renderTier($("res-tier"), "Önce geçerli bir adres sorgula.", { ok: true, value: null });
+    renderTier($("res-tier"), "Query a valid address first.", { ok: true, value: null });
     return;
   }
-  $("res-tier").textContent = "Simüle ediliyor (tx gönderilmez)…";
+  $("res-tier").textContent = "Simulating (no tx)…";
   const r = await readContract(CONFIG.campaign, "claim_tier", [{ scVal: addrScVal(g) }]);
-  renderTier($("res-tier"), `claim_tier simülasyonu — ${g.slice(0, 8)}…`, r);
+  renderTier($("res-tier"), `claim_tier simulation — ${g.slice(0, 8)}…`, r);
 });
 
 $("btn-tier-send").addEventListener("click", async () => {
   const f = getFreighter();
   if (!f || !connectedAddress) {
-    renderTier($("res-tier"), "Freighter bağlı değil.", { ok: true, value: null });
+    renderTier($("res-tier"), "Freighter is not connected.", { ok: true, value: null });
     return;
   }
-  $("res-tier").textContent = "Freighter imzası bekleniyor…";
+  $("res-tier").textContent = "Waiting for Freighter signature…";
   try {
     const r = await sendWithFreighter(f, CONFIG.campaign, "claim_tier", [
       { scVal: addrScVal(connectedAddress) },
@@ -383,20 +376,20 @@ $("btn-tier-send").addEventListener("click", async () => {
     if (r.ok) {
       $("res-tier").appendChild(pill(`tx: ${r.hash}`, "pill ok"));
     } else {
-      $("res-tier").appendChild(el("div", "error", `Reddedildi: ${String(r.error).slice(0, 300)}`));
+      $("res-tier").appendChild(el("div", "error", `Rejected: ${String(r.error).slice(0, 300)}`));
     }
   } catch (e) {
-    renderTier($("res-tier"), "Gönderim hatası", { ok: false, error: e.message || String(e) });
+    renderTier($("res-tier"), "Submit error", { ok: false, error: e.message || String(e) });
   }
 });
 
-// ---------- Burn Ekranı ön koşulları ----------
+  // ---------- Burn-screen preconditions ----------
 $("btn-strkey").addEventListener("click", () => {
   const g = $("in-strkey").value.trim();
   const box = $("res-strkey");
   box.innerHTML = "";
   const ok = StrKey.isValidEd25519PublicKey(g);
-  box.appendChild(pill(ok ? "StrKey geçerli" : "StrKey geçersiz", ok ? "pill ok" : "pill bad"));
+  box.appendChild(pill(ok ? "StrKey valid" : "StrKey invalid", ok ? "pill ok" : "pill bad"));
   if (ok) {
     $("btn-trustline").disabled = false;
     if (connectedAddress) $("btn-trust-open-burn").disabled = false;
@@ -406,32 +399,32 @@ $("btn-strkey").addEventListener("click", () => {
 async function runTrustOpen() {
   const f = getFreighter();
   if (!f || !connectedAddress) {
-    acctLog("Önce Freighter ile bağlan.");
+    acctLog("Connect Freighter first.");
     return;
   }
-  acctLog("Freighter imzası bekleniyor (USDC trustline)…");
+  acctLog("Waiting for Freighter (USDC trustline)…");
   try {
     const r = await openUsdcTrustline(f);
     if (r.ok && r.hash) {
-      acctLog("Trustline açıldı — Freighter ve Expert’te görünür.", r.hash);
+      acctLog("Trustline opened — visible in Freighter and Expert.", r.hash);
       await refreshBalances(connectedAddress);
     } else {
-      acctLog(`Trustline reddedildi: ${JSON.stringify(r).slice(0, 180)}`);
+      acctLog(`Trustline refused: ${JSON.stringify(r).slice(0, 180)}`);
     }
   } catch (e) {
-    acctLog(`Trustline hatası: ${e.message || e}`);
+    acctLog(`Trustline error: ${e.message || e}`);
   }
 }
 
 $("btn-fund")?.addEventListener("click", async () => {
   if (!connectedAddress) return;
-  acctLog("Friendbot çağrılıyor…");
+  acctLog("Calling Friendbot…");
   const r = await friendbot(connectedAddress);
   if (r.ok) {
-    acctLog("Friendbot XLM gönderdi (testnet).", r.hash);
+    acctLog("Friendbot sent XLM (testnet).", r.hash);
     await refreshBalances(connectedAddress);
   } else {
-    acctLog(`Friendbot: ${r.status} — hesap zaten dolu olabilir.`);
+    acctLog(`Friendbot: ${r.status} — the account may already be funded.`);
     await refreshBalances(connectedAddress);
   }
 });
@@ -440,22 +433,22 @@ $("btn-trust-open-burn")?.addEventListener("click", () => runTrustOpen());
 $("btn-stamp")?.addEventListener("click", async () => {
   const f = getFreighter();
   if (!f || !connectedAddress) {
-    acctLog("Önce Freighter ile bağlan.");
+    acctLog("Connect Freighter first.");
     return;
   }
-  acctLog("TESTNET damgası — Freighter imzası bekleniyor (CCTP Pasaportu değil).");
+  acctLog("TESTNET stamp — waiting for Freighter (not a CCTP Passport).");
   try {
     const r = await sendWithFreighter(f, CONFIG.stamp, "stamp", []);
-    if (r.ok) acctLog(`Damga ${r.status}`, r.hash);
-    else acctLog(`Damga: ${String(r.error || r.status).slice(0, 220)}`, r.hash);
+    if (r.ok) acctLog(`Stamp ${r.status}`, r.hash);
+    else acctLog(`Stamp: ${String(r.error || r.status).slice(0, 220)}`, r.hash);
   } catch (e) {
-    acctLog(`Damga hatası: ${e.message || e}`);
+    acctLog(`Stamp error: ${e.message || e}`);
   }
 });
 $("btn-bump")?.addEventListener("click", async () => {
   const f = getFreighter();
   if (!f || !connectedAddress) return;
-  acctLog("bump imzası bekleniyor…");
+  acctLog("Waiting for bump signature…");
   try {
     const r = await sendWithFreighter(f, CONFIG.gateClaimCanonical, "bump", [
       { scVal: addrScVal(connectedAddress) },
@@ -466,22 +459,22 @@ $("btn-bump")?.addEventListener("click", async () => {
       acctLog(`bump: ${String(r.error || r.status).slice(0, 220)}`, r.hash);
     }
   } catch (e) {
-    acctLog(`bump hatası: ${e.message || e}`);
+    acctLog(`bump error: ${e.message || e}`);
   }
 });
 
 $("btn-trustline").addEventListener("click", async () => {
   const g = $("in-strkey").value.trim();
   const box = $("res-trustline");
-  box.textContent = "Horizon’a soruluyor…";
+  box.textContent = "Asking Horizon…";
   try {
     const r = await hasUsdcTrustline(g);
     box.innerHTML = "";
     if (!r.exists) {
-      box.appendChild(pill("hesap zincirde yok — trustline da yok, burn butonu kapalı kalırdı", "pill warn"));
+      box.appendChild(pill("account not on chain — no trustline either, burn would stay closed", "pill warn"));
       return;
     }
-    box.appendChild(pill(r.trusted ? "USDC trustline VAR" : "USDC trustline YOK — burn butonu kapalı kalırdı", r.trusted ? "pill ok" : "pill bad"));
+    box.appendChild(pill(r.trusted ? "USDC trustline YES" : "USDC trustline NO — burn would stay closed", r.trusted ? "pill ok" : "pill bad"));
     const t = el("table");
     for (const b of r.balances || []) {
       const tr = el("tr");
@@ -492,7 +485,7 @@ $("btn-trustline").addEventListener("click", async () => {
     }
     box.appendChild(t);
   } catch (e) {
-    box.textContent = `Hata: ${e.message || e}`;
+    box.textContent = `Error: ${e.message || e}`;
   }
 });
 
@@ -504,7 +497,7 @@ $("in-burnword").addEventListener("input", (ev) => {
 });
 $("btn-burn").addEventListener("click", () => {
   if (!CONFIG.burnRouter) {
-    $("res-burn").textContent = "Router yok — bu butonun açılması imkânsızdı; bu bir hatadır, lütfen bildir.";
+    $("res-burn").textContent = "No router — this button should never have enabled; that is a bug, please report it.";
   }
 });
 
