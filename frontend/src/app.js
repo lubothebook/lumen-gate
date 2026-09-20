@@ -896,16 +896,12 @@ function offerTopLevelTab() {
   btn.textContent = 'Open in a tab to connect';
   btn.title = 'Extensions cannot reach a framed page; this opens the console top-level where Freighter works.';
 
-  const note = $('walletNote');
-  if (note && !document.getElementById('walletTabLink')) {
-    const link = document.createElement('a');
-    link.id = 'walletTabLink';
+  // The link is in the markup, hidden. Point it at this page and reveal it.
+  const link = $('walletTabLink');
+  if (link) {
     link.href = window.location.href;
-    link.target = '_blank';
-    link.rel = 'noopener noreferrer';
-    link.textContent = 'Open this console in a new tab';
-    link.style.cssText = 'display:inline-block; margin-top:8px; color:inherit; text-decoration:underline; font-size:0.8125rem';
-    note.insertAdjacentElement('afterend', link);
+    link.hidden = false;
+    link.style.display = 'inline-block';
   }
 }
 
