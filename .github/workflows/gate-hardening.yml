@@ -16,7 +16,7 @@ jobs:
       - name: gitleaks (fingerprints of triaged public identifiers live in .gitleaks.toml; any NEW leak is red)
         uses: gitleaks/gitleaks-action@v2
         env:
-          GITHUB_TOKEN: *** secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   proof-lint:
     runs-on: ubuntu-latest
