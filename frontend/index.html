@@ -33,11 +33,6 @@
     --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
     --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
     --cell: 60px;   /* one asset pixel per screen pixel; set from the device in app.js */
-    /* The cadence the cubes sit on. The tile keeps its own 60px; the pitch is
-       what changes with the screen, so a wide display gets the same lattice with
-       a quarter of the elements. Set from the device in app.js. */
-    --stride: 2;
-    --pitch: 120px;
     --row-gap: clamp(18px, 2.2vw, 30px);  /* the lattice breathes between two text strips */
     --ring: 4px;    /* the hover frame, same pixel language as the tile */
     /* motion: one easing family everywhere, short durations, no bounce for
@@ -118,20 +113,37 @@
      4px white inset frame; when the pointer leaves, the frame closes. */
   .cube-lattice {
     position: fixed; inset: 0; z-index: -1; overflow: hidden;
-    display: grid; grid-template-columns: repeat(auto-fill, var(--pitch));
-    grid-auto-rows: var(--pitch);
+    display: grid; grid-template-columns: repeat(auto-fill, var(--cell));
+    grid-auto-rows: var(--cell);
   }
   .cube {
-    width: var(--pitch); height: var(--pitch);
+    width: var(--cell); height: var(--cell);
     background-image: var(--grid-tile);
     background-size: var(--cell) var(--cell);
     background-repeat: no-repeat;
     image-rendering: pixelated;
     transition: box-shadow 0.18s var(--ease);
   }
-  /* .frame is the same state, painted by app.js - see the note there on why the
-     cube cannot rely on its own :hover while it lives behind the page. */
-  .cube:hover, .cube.frame { box-shadow: inset 0 0 0 var(--ring) rgba(255, 255, 255, 0.55); }
+  /* Only the wall's own blocks answer :hover directly. The blocks in the first
+     screen are the same paint, so they must not grow a second ring under the
+     pointer: the page draws exactly one ring, and that is the overlay element. */
+  .cube-lattice .cube:hover { box-shadow: inset 0 0 0 var(--ring) rgba(255, 255, 255, 0.55); }
+
+  /* The frame that follows the pointer is one element, and it is painted above
+     the page. That is the whole point: the wall is fixed and its cadence is
+     --cell, so the cell under the pointer is floor(x / cell), floor(y / cell) -
+     arithmetic, with no hit test and no list of surfaces that "hide" it. It
+     therefore works over a card, over a strip and over open lattice alike,
+     because it never asks what it is covering. It stays under the dock and
+     under any dialog, and it is never a control: pointer-events are off, so it
+     can be drawn over anything without taking a click. */
+  .lattice-frame {
+    position: fixed; left: 0; top: 0; width: var(--cell); height: var(--cell);
+    z-index: 45; pointer-events: none; opacity: 0;
+    box-shadow: inset 0 0 0 var(--ring) rgba(255, 255, 255, 0.55);
+    transition: opacity 0.18s var(--ease);
+  }
+  .lattice-frame.on { opacity: 1; }
 
   /* The lattice stops on a hairline. Everything above the line is the source
      chain; the black band below it is the only surface on this page that can
@@ -163,8 +175,8 @@
      should be on this display. Rendered as a miniature segmented control. */
   .field .hint[data-state="warn"] { color: var(--warn); }
   .log .log-empty { color: var(--faint); }
-  @media (hover: none), (pointer: coarse) { .cube:hover, .cube.frame { box-shadow: none; } }
-  @media (prefers-reduced-motion: reduce) { .cube { transition: none; } }
+  @media (hover: none), (pointer: coarse) { .cube-lattice .cube:hover, .lattice-frame { box-shadow: none; } }
+  @media (prefers-reduced-motion: reduce) { .cube { transition: none; } .lattice-frame { transition: none; } }
 
   /* ---------------------------------------------------------------- header */
   /* Apple chrome: frosted glass, hairline underneath, everything else quiet. */
@@ -275,6 +287,21 @@
   .version-btn:hover:not(:disabled) { color: var(--ink); border-color: rgba(255, 255, 255, 0.28); }
   .version-btn[aria-pressed="true"] { color: #000; background: rgba(255, 255, 255, 0.92); border-color: transparent; }
   .version-btn:disabled { cursor: not-allowed; opacity: 0.55; }
+  /* the block row: the same cubes the page is painted with, at their own size */
+  .cube-row { display: flex; justify-content: center; margin: clamp(22px, 3vw, 34px) auto 0; }
+  .cube-row .cube {
+    width: 60px; height: 60px; flex: none;
+    background-image: var(--grid-tile); background-size: 60px 60px; background-repeat: no-repeat;
+    image-rendering: pixelated; transition: box-shadow var(--dur-fast) var(--ease);
+  }
+  /* No :hover ring of its own: the page draws exactly one ring, and it is the
+     element that follows the pointer everywhere. Two rings on one block - the
+     cube's own and the overlay's - read as a rendering bug. */
+  @media (max-width: 640px) {
+    .cube-row .cube { display: none; }
+    .cube-row .cube:first-child { display: block; }
+  }
+
   .version-note { font-size: 0.8125rem; line-height: 1.6; }
   .measure { display: block; max-width: 64ch; }
   .version-btn:focus-visible { outline: 2px solid rgba(255, 255, 255, 0.7); outline-offset: 2px; }
@@ -460,6 +487,12 @@
     margin-right: 8px; background: currentColor;
   }
 
+  /* the defect log borrows the page's own details pattern rather than inventing
+     a control: closed by default, with the count on the line you can see */
+  details.findings { border-top: 0; padding: 0; }
+  details.findings summary { font-size: 0.9375rem; color: var(--muted); }
+  details.findings[open] summary { color: var(--ink); }
+  details.findings > p { margin-top: 14px; }
   .finding { border-top: 1px solid var(--line); padding: 16px 0; }
   .finding:first-child { border-top: 0; padding-top: 0; }
   .finding .id { font-family: var(--mono); font-size: 0.8125rem; color: var(--faint); }
@@ -551,14 +584,6 @@
     image-rendering: pixelated; display: grid; place-items: center;
   }
   .iface-strip-gap span { font-family: var(--mono); font-size: 0.625rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--faint); background: rgba(2,2,2,0.72); padding: 3px 8px; border-radius: 999px; }
-  /* the frame demo: real cubes, the submitted tile at its own size, the same ring */
-  .iface-cubes { display: flex; flex-wrap: wrap; gap: 0; margin-top: 16px; border: 1px solid var(--line-2); border-radius: var(--r-sm); overflow: hidden; width: min(100%, 362px); }
-  .iface-cube {
-    width: 60px; height: 60px; flex: none;
-    background-image: var(--grid-tile); background-size: 60px 60px; background-repeat: no-repeat;
-    image-rendering: pixelated; transition: box-shadow var(--dur-fast) var(--ease);
-  }
-  .iface-cube:hover, .iface-cube.frame { box-shadow: inset 0 0 0 var(--ring) rgba(255, 255, 255, 0.55); }
   .iface-table { width: 100%; margin-top: 14px; }
   .iface-table td, .iface-table th { vertical-align: top; }
   .iface-table td.reason { color: var(--muted); font-family: var(--sans); font-size: 0.8125rem; }
@@ -650,6 +675,9 @@
 <body>
 <a class="sr" href="#top">Skip to content</a>
 <div class="cube-lattice" id="cubeLattice" aria-hidden="true"></div>
+<!-- One ring, redrawn at the block under the pointer. Above the page, below the
+     dock, and never a control: it is paint, and the pointer goes through it. -->
+<div class="lattice-frame" id="latticeFrame" aria-hidden="true"></div>
 
 <header class="top">
   <div class="shell top-inner">
@@ -679,6 +707,11 @@
           <a class="btn primary" href="#console">Open the wallet</a>
           <a class="btn" href="#evidence">Read the evidence</a>
         </div>
+        <!-- The source chain, in the first screen: real blocks, painted from the
+             submitted tile at the tile's own 60px, wearing the same 4px ring the
+             page's own blocks wear. On a narrow display one block is shown on its
+             own - at its own size, never a resized copy. -->
+        <div class="cube-row" id="cubeRow" aria-hidden="true"></div>
       </div>
     </div>
   </section>
@@ -1068,8 +1101,11 @@
           <h3>What went wrong in this build</h3>
           <span class="hint" id="findingsCount"></span>
         </div>
-        <p class="note" id="findingsSummary" style="margin-bottom:18px">Loading the defect log...</p>
-        <div id="findingsList"></div>
+        <details class="findings" id="findingsDetails">
+          <summary><span id="findingsTitle">The defect log</span></summary>
+          <p class="note" id="findingsSummary" style="margin-bottom:18px">Loading the defect log...</p>
+          <div id="findingsList"></div>
+        </details>
       </div>
 
       <div class="card" style="margin-top:20px">
@@ -1130,9 +1166,10 @@
           <span class="hint">read out of this page, not out of a picture</span>
         </div>
         <p class="note" style="max-width:82ch">
-          Three claims this page makes about itself. Each one is rendered here from the page itself &mdash; the strips
-          are counted and measured, the frame is a real cube you can put the pointer on, and the reasons below are read
-          out of the live DOM &mdash; so none of them can turn into a sentence that used to be true.
+          Three claims this page makes about itself, each rendered from the page rather than from a picture: the
+          strips are counted and measured, the ring that follows the pointer is measured where it actually is, and the
+          reasons below are read out of the live DOM &mdash; so none of them can turn into a sentence that used to be
+          true.
         </p>
 
         <div class="iface-grid" style="margin-top:22px">
@@ -1155,16 +1192,16 @@
           </div>
 
           <div class="iface-block">
-            <h3>2. The frame follows the pointer</h3>
+            <h3>2. The frame follows the pointer anywhere</h3>
             <p class="note">
-              Put the pointer on a cube below. The ring is <span class="mono">4</span> screen pixels, drawn inset, at
-              the tile's own scale &mdash; these are the submitted 60&times;60 asset, not a resample of it. On the page
-              behind this card the same rule holds for every cube, and only where the cube is visible.
+              One ring, <span class="mono">4</span> screen pixels, drawn inset, moving with the block under the
+              pointer. It is positioned by arithmetic on the pointer's own coordinates &mdash; the wall is fixed and one
+              cell wide &mdash; so it does not matter what is painted above it: a card, a strip and open lattice all
+              frame the same way. Put the pointer anywhere on this page and the block under it lights up.
             </p>
-            <div class="iface-cubes" id="ifaceCubes" aria-hidden="true"></div>
             <dl class="iface-facts">
-              <dt>cubes under the pointer</dt><dd id="ifaceFramedCount">-</dd>
               <dt>ring</dt><dd id="ifaceRing">-</dd>
+              <dt>blocks under one pointer</dt><dd id="ifaceFramedCount">-</dd>
             </dl>
           </div>
         </div>

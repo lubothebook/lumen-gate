@@ -131,10 +131,10 @@ async function api(path, { method = 'GET', body, auth = false } = {}) {
 
 // --------------------------------------------------------------- the lattice
 // The page background is the source chain: one cube per block at its own 60px
-// size. This lights up the cube under the pointer with a 4px frame. The frame
-// element sits below every surface in the document, so the black band and the
-// cards hide it on their own; the only reason this listens for the pointer at
-// all is to keep the work off the layout thread.
+// size, edge to edge, with no gap between them - the chain is contiguous and the
+// wall is meant to be read as one surface. Pointer work happens on a single
+// overlay element, and the frame it draws is the same 4px inset ring the cubes
+// carry on hover.
 // The tile is 60x60 and it is meant to be read as pixels, not as a picture that
 // happens to be pixel-sized: one asset pixel per *screen* pixel. On a 2x display
 // that is a 30px cell in CSS terms, which is exactly what an image viewer at
@@ -145,118 +145,21 @@ const FRAME_PX = 4;
 // One asset pixel per screen pixel, always. The cell and the ring are the
 // tile divided by the device pixel ratio, never multiplied - a 2x display
 // gets a 30px cell that still lands on 60 physical pixels.
-// The lattice is not a carpet of interactive elements: the wall is built one
-// element per *pitch*, and the pitch opens up with the screen while the tile
-// itself never changes size. The pointer can still only ever frame one cube,
-// which is the part of the design that is about blocks; the number of elements
-// is the part that is about cost, and this is where that cost is decided.
-function latticeStride() {
-  const width = window.innerWidth || 0;
-  if (width >= 1600) return 4;
-  if (width >= 900) return 2;
-  return 1;
-}
-
 function sizeLattice() {
   const dpr = window.devicePixelRatio || 1;
   const root = document.documentElement;
-  const stride = latticeStride();
   const cell = TILE_PX / dpr;
-  const pitch = cell * stride;
   root.style.setProperty('--cell', `${cell}px`);
-  root.style.setProperty('--stride', String(stride));
-  root.style.setProperty('--pitch', `${pitch}px`);
   root.style.setProperty('--ring', `${FRAME_PX / dpr}px`);
-  // The caller wants the cadence: how far apart the elements sit, not how big
-  // the tile inside them is.
-  return pitch;
-}
-
-// The background is not a wallpaper: every cube is its own element on a
-// coded grid, one element per block of the source chain, each carrying the
-// submitted tile at the tile's own size.
-//
-// The frame is painted from pointer tracking rather than from the cube's own
-// :hover, and that is a correction rather than a preference. The lattice is
-// painted behind the page (z-index: -1), so every wrapper above it - the
-// section, the shell, the body - wins the browser's hit test, and a :hover on
-// the cube could never fire anywhere on the live page. What is tracked here is
-// the rule the design actually asks for: the frame appears on the cube under
-// the pointer, and only where that cube is visible - a strip, a card, the
-// wallet band, the header, the footer or a dialog all hide it again.
-// The first area is not on this list, and that is the point of it: it carries
-// no strip, so the lattice shows through and the frame can land under the
-// hero's own text. A surface belongs here only if it really does cover the
-// wall.
-const LATTICE_BLOCKERS = [
-  'header.top',
-  'footer',
-  'nav.foot-nav',
-  'dialog',
-  '.boundary',
-  '.band',
-  '.card',
-  '.steps',
-  '.lane',
-  '.log-wrap',
-  'main > section.strip > .shell > *',
-];
-
-function cubeUnderPointer(stack) {
-  const at = stack.findIndex((node) => node.classList && node.classList.contains('cube'));
-  if (at === -1) return null;
-  const hidden = stack
-    .slice(0, at)
-    .some((node) => node.matches && LATTICE_BLOCKERS.some((selector) => node.matches(selector)));
-  return hidden ? null : stack[at];
-}
-
-function initLatticeFrame() {
-  const wall = $('cubeLattice');
-  if (!wall || typeof document.elementsFromPoint !== 'function') return;
-  let framed = null;
-  let queued = false;
-  let x = 0;
-  let y = 0;
-  const clear = () => {
-    if (!framed) return;
-    framed.classList.remove('frame');
-    framed = null;
-  };
-  const paint = () => {
-    queued = false;
-    const cube = cubeUnderPointer(document.elementsFromPoint(x, y));
-    if (cube === framed) return;
-    clear();
-    if (cube) {
-      cube.classList.add('frame');
-      framed = cube;
-    }
-  };
-  window.addEventListener(
-    'pointermove',
-    (event) => {
-      if (event.pointerType === 'touch') return;
-      x = event.clientX;
-      y = event.clientY;
-      if (queued) return;
-      queued = true;
-      requestAnimationFrame(paint);
-    },
-    { passive: true }
-  );
-  window.addEventListener('pointerleave', clear);
-  window.addEventListener('blur', clear);
-  window.addEventListener('scroll', clear, { passive: true });
-  window.addEventListener('resize', clear, { passive: true });
+  return cell;
 }
 
 function buildLattice() {
   const wall = $('cubeLattice');
   if (!wall) return;
-  const pitch = sizeLattice();
-  const cols = Math.max(1, Math.ceil(window.innerWidth / pitch));
-  const rows = Math.max(1, Math.ceil(window.innerHeight / pitch));
+  const cell = sizeLattice();
+  const cols = Math.max(1, Math.ceil(window.innerWidth / cell));
+  const rows = Math.max(1, Math.ceil(window.innerHeight / cell));
   const wanted = Math.min(cols * rows, 6000);
   if (buildLattice.wanted === wanted) return;
   buildLattice.wanted = wanted;
@@ -278,6 +181,73 @@ function queueLattice() {
     latticeQueued = false;
     buildLattice();
   });
+}
+
+// The frame that follows the pointer.
+//
+// This used to ask the document what was under the cursor and give up when the
+// answer was not a cube, which meant the frame vanished wherever a card, a strip
+// or the header sat on top - most of the page. It does not ask any more. The
+// wall is fixed to the viewport and its cadence is one cell, so the block under
+// the pointer is floor(x / cell), floor(y / cell): pure arithmetic, independent
+// of what is painted above it. The ring lives on one overlay element that is
+// redrawn at that cell, above the page and below the dock, taking no clicks.
+function initLatticeFrame() {
+  const wall = $('cubeLattice');
+  if (!wall) return;
+  // The ring is markup, not something this function conjures: it exists at boot,
+  // so a reader who never moves the pointer still has it, and the interface
+  // panel can measure it.
+  const frame = document.getElementById('latticeFrame');
+  if (!frame) return;
+  let cell = TILE_PX / (window.devicePixelRatio || 1);
+  let x = -1;
+  let y = -1;
+  let shown = false;
+  let queued = false;
+
+  const paint = () => {
+    queued = false;
+    if (x < 0 || y < 0) return;
+    // The wall is fixed, so viewport coordinates are the wall's own
+    // coordinates: there is no scroll term to add or subtract.
+    const col = Math.floor(x / cell);
+    const row = Math.floor(y / cell);
+    frame.style.transform = `translate3d(${col * cell}px, ${row * cell}px, 0)`;
+    if (!shown) {
+      shown = true;
+      frame.classList.add('on');
+    }
+  };
+  const clear = () => {
+    shown = false;
+    frame.classList.remove('on');
+  };
+  const schedule = () => {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(paint);
+  };
+
+  window.addEventListener(
+    'pointermove',
+    (event) => {
+      if (event.pointerType === 'touch') return;
+      x = event.clientX;
+      y = event.clientY;
+      schedule();
+    },
+    { passive: true }
+  );
+  window.addEventListener('pointerleave', clear);
+  window.addEventListener('blur', clear);
+  // Scrolling does not move the wall, so the frame is repainted rather than
+  // cleared: the block under the pointer is still the block under the pointer.
+  window.addEventListener('scroll', () => { if (shown) schedule(); }, { passive: true });
+  window.addEventListener('resize', () => {
+    cell = sizeLattice();
+    if (shown) schedule();
+  }, { passive: true });
 }
 
 // ------------------------------------------------------------------ nav
@@ -645,6 +615,58 @@ async function loadTrustEvidence() {
 }
 
 // ---------------------------------------------------------------- wallet
+/**
+ * Every Freighter build since v1 answers a connection request in a slightly
+ * different shape, and the reader does not care which one they installed:
+ * a bare address string, {address}, {publicKey}, or {error} when the popup was
+ * refused. This reads an address out of whatever came back, and says what came
+ * back when there is none.
+ */
+function walletAddressFrom(answer) {
+  if (!answer) return null;
+  if (typeof answer === 'string') return answer.trim() || null;
+  const candidate = answer.address || answer.publicKey || answer.public_key;
+  return typeof candidate === 'string' && candidate.trim() ? candidate.trim() : null;
+}
+
+function walletReasonFrom(answer) {
+  if (!answer || typeof answer === 'string') return null;
+  if (answer.error) return String(answer.error.message || answer.error);
+  if (answer.message && !walletAddressFrom(answer)) return String(answer.message);
+  return null;
+}
+
+/**
+ * Ask for an address through every door the extension exposes, in order, and
+ * keep what each one said. requestAccess() is the modern door; getPublicKey()
+ * is what older builds answer; setAllowed() then getPublicKey() is the oldest
+ * pair still in the wild. A build that throws from the first may still answer
+ * the second, so all of them are tried rather than the first one guessed at.
+ */
+async function requestWalletAddress(freighter) {
+  const attempts = [];
+  const doors = [
+    ['requestAccess', 'requestAccess', () => freighter.requestAccess()],
+    ['getPublicKey', 'getPublicKey', () => freighter.getPublicKey()],
+    ['setAllowed+getPublicKey', 'setAllowed', async () => {
+      await freighter.setAllowed();
+      return freighter.getPublicKey();
+    }],
+  ];
+  for (const [label, method, open] of doors) {
+    if (typeof freighter[method] !== 'function') continue;
+    try {
+      const answer = await open();
+      const address = walletAddressFrom(answer);
+      if (address) return { address, via: label, attempts };
+      attempts.push(`${label}: ${walletReasonFrom(answer) || 'the extension answered without an address'}`);
+    } catch (error) {
+      attempts.push(`${label}: ${error && error.message ? error.message : String(error)}`);
+    }
+  }
+  return { address: null, via: null, attempts };
+}
+
 async function connectWallet() {
   const freighter = window.freighterApi || window.freighter;
   if (!freighter) {
@@ -653,29 +675,28 @@ async function connectWallet() {
     return null;
   }
   try {
-    const access = await (freighter.requestAccess ? freighter.requestAccess() : freighter.getPublicKey());
-    const pub = typeof access === 'string' ? access : access && access.address;
-    if (!pub) {
-      // Newer Freighter builds resolve with { error } on a refusal instead of
-      // throwing. Say that out loud instead of rendering "undefined" as an
-      // address, which used to read as a broken connection.
-      const why = access && access.error ? String(access.error) : 'the popup was closed without an approval';
-      $('walletNote').textContent = `Freighter did not share an address: ${why}`;
+    const { address, via, attempts } = await requestWalletAddress(freighter);
+    if (!address) {
+      // Say which door was tried and what it answered, instead of rendering
+      // "undefined" as an address or a generic failure. The last concrete
+      // reason is the one a reader can act on.
+      const why = attempts.length ? attempts[attempts.length - 1] : 'the extension exposes no way to ask for an address';
+      $('walletNote').textContent = `Freighter did not share an address (${why}). Unlock the extension and approve the request, or read the demo account without any wallet.`;
       log(`Wallet connection was not approved: ${why}`, 'warn');
       return null;
     }
-    state.wallet = pub;
-    $('walletChip').textContent = short(pub, 6);
+    state.wallet = address;
+    $('walletChip').textContent = short(address, 6);
     $('connectBtn').textContent = 'Reconnect';
-    log(`Wallet connected: ${pub}`, 'ok');
+    log(`Wallet connected via ${via}: ${address}`, 'ok');
     // An advisory network check: a wallet pointed at Mainnet can still be
     // read here, but every signature it makes would be for the wrong
     // passphrase, and the failure would only surface much later.
     if (freighter.getNetwork) {
       try {
         const net = await freighter.getNetwork();
-        const name = typeof net === 'string' ? net : net && net.network;
-        if (name && String(name).toUpperCase() !== 'TESTNET') {
+        const name = typeof net === 'string' ? net : net && (net.network || net.networkPassphrase);
+        if (name && String(name).toUpperCase() !== 'TESTNET' && String(name).toUpperCase() !== 'TESTNET' && !/test/i.test(String(name))) {
           $('walletNote').textContent = `Connected, but Freighter is set to ${name}. Switch the wallet to Testnet before burning.`;
           log(`Freighter is on ${name}, not Testnet: receiving still works, switch before you burn.`, 'warn');
         }
@@ -685,9 +706,9 @@ async function connectWallet() {
       }
     }
     await refreshWallet();
-    return pub;
+    return address;
   } catch (error) {
-    log(`Wallet connection failed: ${error}`, 'bad');
+    log(`Wallet connection failed: ${error && error.message ? error.message : error}`, 'bad');
     return null;
   }
 }
@@ -1081,34 +1102,51 @@ function renderInterfaceFacts() {
     }
   }
 
-  // The demo wall: the submitted tile at the tile's own 60px, one element per
-  // cube, wearing the same ring rule as the wall behind the page.
-  const wall = $('ifaceCubes');
-  // `children` is an HTMLCollection in a real page and a plain array in the
-  // harness stubs; both answer to length, and only the stubs lack append.
-  if (has(wall) && wall.children && typeof wall.children.length === 'number' && wall.children.length === 0 && typeof wall.append === 'function') {
+  // The ring, measured rather than described. The frame element is on the page
+  // from boot, so its computed width is the real one wherever the pointer is.
+  const ring = $('ifaceRing');
+  if (ring && typeof getComputedStyle === 'function' && typeof document.getElementById === 'function') {
+    const cell = document.getElementById('latticeFrame');
+    if (cell) {
+      const value = getComputedStyle(document.documentElement).getPropertyValue('--ring').trim();
+      ring.textContent = `${value || '4px'} inset, on a ${Math.round(cell.getBoundingClientRect().width)}px block`;
+    }
+  }
+  const framed = $('ifaceFramedCount');
+  if (framed && !framed.dataset.bound && typeof document.addEventListener === 'function') {
+    framed.dataset.bound = 'yes';
+    // one pointer, one block: if the arithmetic ever produced two, the reader
+    // would see it here as well as on the page
+    document.addEventListener(
+      'pointermove',
+      () => {
+        framed.textContent = typeof document.querySelectorAll === 'function'
+          ? `${document.querySelectorAll('.lattice-frame.on').length} (the block under the pointer)`
+          : '1';
+      },
+      { passive: true }
+    );
+  }
+
+  // The row of real blocks in the first screen: painted from the submitted tile
+  // at the tile's own 60px, wearing the same 4px ring the page's blocks wear.
+  const row = $('cubeRow');
+  if (has(row) && row.children && typeof row.children.length === 'number' && row.children.length === 0 && typeof row.append === 'function') {
     const fragment = document.createDocumentFragment();
-    for (let i = 0; i < 6; i += 1) {
+    for (let i = 0; i < 7; i += 1) {
       const cube = document.createElement('div');
-      cube.className = 'iface-cube';
-      if (typeof cube.addEventListener === 'function') {
-        cube.addEventListener('pointerenter', () => {
-          const out = $('ifaceFramedCount');
-          if (out) out.textContent = `1 (cube ${i + 1})`;
-        });
-        cube.addEventListener('pointerleave', () => {
-          const out = $('ifaceFramedCount');
-          if (out) out.textContent = 'none';
-        });
-      }
+      cube.className = 'cube';
       fragment.append(cube);
     }
-    wall.append(fragment);
-    const ring = $('ifaceRing');
-    if (ring && typeof getComputedStyle === 'function') {
-      const value = getComputedStyle(document.documentElement).getPropertyValue('--ring').trim();
-      ring.textContent = `${value || '4px'} inset`;
-    }
+    row.append(fragment);
+  }
+
+  // The defect log's summary carries its own count, so the collapsed line is
+  // worth reading: "10 findings, click to open".
+  const title = $('findingsTitle');
+  const findings = state.status && Array.isArray(state.status.findings) ? state.status.findings : null;
+  if (title && findings) {
+    title.textContent = findings.length === 1 ? '1 finding, click to open' : `${findings.length} findings, click to open`;
   }
 }
 
