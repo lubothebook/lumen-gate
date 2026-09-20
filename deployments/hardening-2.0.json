@@ -106,7 +106,7 @@
   },
   "F2": {
    "gate": "reentrancy/deadline/balance-delta tests",
-   "status": "not-started (no EVM contract exists yet - F2 is the manual claim phase; BurnRouter is F4)"
+   "status": "F4-BurnRouter: conformance suite 23/23 local+CI, slither triaged with evidence, NOT deployed yet (deployment belongs after the F2 lane); F2: acceptance = funded manual burn, still awaiting operator funds - the only missing input"
   },
   "F3": {
    "gate": "TTL/bump negative + overflow tests",
@@ -114,7 +114,7 @@
   },
   "F4": {
    "gate": "slither/mythril/token-class fuzz",
-   "status": "not-started; note: foundry is NOT installed in this sandbox - F4 opens by installing it or by the operator choosing to run the suite elsewhere; recording the environment gap now instead of at the wall"
+   "status": "F4-BurnRouter: conformance suite 23/23 local+CI, slither triaged with evidence, NOT deployed yet (deployment belongs after the F2 lane); F2: acceptance = funded manual burn, still awaiting operator funds - the only missing input"
   },
   "F5": {
    "gate": "threshold boundary tests",
@@ -188,5 +188,19 @@
    "removal_condition": "delete this entry and the workflow --ignore flag as soon as relayer's reqwest chain is updated (or relayer is retired in 2.0); a NEW advisory never inherits an ignore",
    "recorded": "2026-09-20T02:24:15Z"
   }
- ]
+ ],
+ "sections_4_now": {
+  "4.1": "PROVEN in test: guard in OZ pattern; inner reentry refused with Reentrancy selector recorded by the attacking token itself, outer completes, messenger saw 1 call",
+  "4.2": "PROVEN: isolated per-side before/after pairs (USDC and token); donation stays inert dust, next burn unaffected; 500-run fuzz conservation as CI job evm-tests",
+  "4.3": "PROVEN: deadline reject before any interaction; ZeroMinOut; slippage reverts with zero Circle calls (half-burn impossible by construction)",
+  "4.4": "PROVEN: format vs CRC16 as separate negatives; real deployed C-id + sha-derived valid G fixture; golden hook bytes from independent Python oracle",
+  "4.5": "PROVEN for fee-on-transfer (measured 1980 beat the 10-percent assumption inside the TEST itself), rebasing/NoDelta, no-return, false-return on both pull and push paths, honeypot, blacklist, zero-decimals; ERC777-callback covered as the reentrancy class; blacklist-of-router stays a README-known-limit (contract-side unfixable, annex row 7)",
+  "4.6": "forge fuzz 500 runs in CI; slither 0.30: 18 down to 17 reports after OZ-pattern rename, remainder REBUTTED: reentrancy-balance flags the required 4.2 measurement (guarded, tested); timestamp flags the required 4.3 deadline mechanism; unused-return flags deliberately ignoring the venue claim in favor of measurement. No suppression flags added.",
+  "4.7": "kill-switch doctrine written into docs/GATE2_TRUST_MODEL.md section 4; adminless proven at dispatch level in the suite (test_AdminlessSurface_DispatchLevelProof, 10 privileged selectors must miss)"
+ },
+ "toolchain_update": {
+  "checked_at": "2026-09-20T02:55:03Z",
+  "foundry": "1.8.3 installed via foundryup (stable, 2026-09-15 build); solc 0.8.30 via svm; slither via pip; the old no-foundry-in-sandbox note for F4/F7 is OBSOLETE - superseded by real runs, the gate flipped from excuse to execution the same day",
+  "evm_ci": "evm-tests job green (23 tests) on gate-2.0; the first CI red for the job was the foundryup XDG path change - infra, recorded as finding"
+ }
 }
