@@ -46,7 +46,7 @@ const MT_STELLAR = "CBJ6MTCKKZG73PMDZCJMSFRD7DQEMI4FKDH7CGDSV4W6FHCRBCQAVVJY";
 // native USDC contract on Stellar testnet: NOT guessed — read from
 // TMM.get_local_token(0, USDC_SEPOLIA) during F1 (see spike-notes.md).
 const USDC_STELLAR = "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA";
-const SPIKE_GATE = process.env.SPIKE_GATE || "CAKZ636NMQ3ZPWM5C2KQBM42WGO5RZ2QDFNQ4YKLJQ4XBWNVXTKHQ2JL";
+const SPIKE_GATE = process.env.SPIKE_GATE || "CCXJS5BBZJZ3L7IQ36EUNKRMNUZCBZA745XJ7OB3U57WKAT3OGW6T2Q6";
 const IRIS = process.env.IRIS_BASE || "https://iris-api-sandbox.circle.com";
 const STELLAR_RPC = process.env.STELLAR_RPC || "https://soroban-testnet.stellar.org";
 

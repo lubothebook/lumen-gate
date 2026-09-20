@@ -4,20 +4,13 @@
   "network": "testnet",
   "contracts": {
     "spike_gate_testnet": {
-      "id": "CAKZ636NMQ3ZPWM5C2KQBM42WGO5RZ2QDFNQ4YKLJQ4XBWNVXTKHQ2JL",
-      "deploy_tx": "fa5d6379b324c1ec1c432c1fe8cae609ae0015ce6a704667e51b69cdf02046fa",
-      "alias_bind_tx": "38d4eb3a629bb5a7ad49c36e24fa34fe148c17d1a475b47e79faf5dcd2187c27",
-      "ledgers": [
-        4769073,
-        4769074
-      ],
-      "fees_stroops": [
-        3995983,
-        32592
-      ],
-      "wasm_bytes": 1543,
-      "note": "S1 test receiver ONLY (gate2/soroban/spike_gate) - not product code; deployed by audit-probe, self-paid fees; the product GateClaim is F2/F3 work and does not exist yet",
-      "source": "stellar contract deploy, verified against deployments/testnet-2.0.json entries here"
+      "id": "CCXJS5BBZJZ3L7IQ36EUNKRMNUZCBZA745XJ7OB3U57WKAT3OGW6T2Q6",
+      "deploy_tx": "46e7a8774da88f27a1057f076cc290cb2f78b9d9854927a59c6ab50cd8be7bbc",
+      "ledger": 4769225,
+      "fee_stroops": 32673,
+      "wasm_bytes": 1641,
+      "note": "error-coded rebuild; predecessor in superseded[]",
+      "source": "stellar contract build/deploy from gate2/soroban/spike_gate"
     },
     "circle_testnet_reference": {
       "stellar_domain27": {
@@ -114,7 +107,61 @@
     "F0 (environment): deployments/testnet.json's finality_registry field still names the legacy v1 contract while rounds 21+ measure the v2 five-slot registry from deployments/registry-v2.json; any 2.0 spike script that reads 'the registry' from a manifest must read it from the v2 file explicitly. Recorded, not patched (frozen 1.0 file).",
     "F1 (tooling): the CLI's BytesN<32> parser wants bare hex without the 0x prefix and without JSON quotes; two documented formats 400 first - recorded because F8's audit script parses the same types.",
     "F1 (blocker, reported per directive section 10): the EVM funding leg needs testnet ETH + Circle faucet access. The captcha-less Circle faucet API is gone (now developer-console), and the public no-captcha Sepolia ETH faucets probed from this sandbox are down or unreachable. The F1 drivers are written, the receiver contract is deployed and live, and the spike will complete the first time the runtime address holds funds; `node gate2/scripts/spike-s1.mjs status` prints the address and re-checks. No simulated burn will substitute for the real one.",
-    "F1 (rebuild survival): this sandbox lost .git and parts of ~/.cargo for the third time mid-session; the durable record of F1 is this manifest + the gate-2.0 branch, and the recovery recipe is now recorded in gate2/scripts/spike-notes.md toolchain notes."
+    "F1 (rebuild survival): this sandbox lost .git and parts of ~/.cargo for the third time mid-session; the durable record of F1 is this manifest + the gate-2.0 branch, and the recovery recipe is now recorded in gate2/scripts/spike-notes.md toolchain notes.",
+    "HARDENING annex received (2026-09-20): installed as HARDENING-2.0.md (transliterated like the 2.0 doc itself); its file list extends the 'new files allowed' set to root HARDENING-2.0.md/SECURITY.md/.gitleaks.toml/.github/workflows/gate-hardening.yml and deployments/hardening-2.0.json - read as the operator's own amendment, recorded rather than silently expanded.",
+    "HARDENING 5.5 open design question, recorded verbatim for F5: if MigrationSummary could ever decrease (a future 'undo'), should tiers downgrade? The 2.0 doc says upgrade-only is free; downgrade policy is undefined. Not decided here; not forgotten."
   ],
-  "superseded": []
+  "superseded": [
+    {
+      "artifact": "spike_gate deployment CAKZ636NMQ3ZPWM5C2KQBM42WGO5RZ2QDFNQ4YKLJQ4XBWNVXTKHQ2JL",
+      "deploy_tx": "fa5d6379b324c1ec1c432c1fe8cae609ae0015ce6a704667e51b69cdf02046fa",
+      "superseded_by": "CCXJS5BBZJZ3L7IQ36EUNKRMNUZCBZA745XJ7OB3U57WKAT3OGW6T2Q6",
+      "reason": "HARDENING-2.0.md section 5.1 adopted before any claim ran: refusals return error codes (Error::TransmitterRefused) so probes learn WHICH check failed, not a bare assert trap. The old contract was live and functional - retired for policy, not malfunction; S1 never ran against it, no evidence orphaned.",
+      "date": "2026-09-20"
+    }
+  ],
+  "post_deploy_checks": [
+    {
+      "check": "transmitter domain is 27",
+      "re": "stellar contract invoke --id CBJ6MTCKKZG73PMDZCJMSFRD7DQEMI4FKDH7CGDSV4W6FHCRBCQAVVJY --network testnet --source <any-funded-id> --send=no -- get_local_domain",
+      "expect": "27",
+      "last_run": "2026-09-20",
+      "last_result": "27"
+    },
+    {
+      "check": "messenger not paused / min fee / cap",
+      "re": "same pattern on CDNG7HXA...: paused -> false; get_min_fee --burn_token CBIELTK6... -> 0; get_max_burn_amount_per_message -> 10000000000000",
+      "expect": "false / 0 / 10000000000000",
+      "last_run": "2026-09-20",
+      "last_result": "all three matched"
+    },
+    {
+      "check": "decimal bridge still {6,7}",
+      "re": "TMM get_token_decimal_config --local_token CBIELTK6...",
+      "expect": "canonical 6 local 7",
+      "last_run": "2026-09-20",
+      "last_result": "{\"canonical_decimals\":6,\"local_decimals\":7}"
+    },
+    {
+      "check": "iris sandbox alive",
+      "re": "curl -s https://iris-api-sandbox.circle.com/v2/publicKeys",
+      "expect": "publicKeys array",
+      "last_run": "2026-09-20",
+      "last_result": "HTTP 200 with keys"
+    },
+    {
+      "check": "route fee table",
+      "re": "curl -s https://iris-api-sandbox.circle.com/v2/burn/USDC/fees/0/27",
+      "expect": "[{1000,1},{2000,0}]",
+      "last_run": "2026-09-20",
+      "last_result": "matched"
+    },
+    {
+      "check": "receiver contract liveness",
+      "re": "stellar contract invoke --id CCXJS5BBZJZ3L7IQ36EUNKRMNUZCBZA745XJ7OB3U57WKAT3OGW6T2Q6 --network testnet --source <id> --send=no -- last_balance",
+      "expect": "null (fresh) - answers without error = deployed+callable",
+      "last_run": "pending first call",
+      "last_result": null
+    }
+  ]
 }
