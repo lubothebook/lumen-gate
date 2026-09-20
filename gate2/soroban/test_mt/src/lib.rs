@@ -79,8 +79,17 @@ impl TestMt {
     /// attestation): verify shape and caller binding, consume the nonce,
     /// mint `amount` (x10 for the 7-decimal local token) to the message's
     /// mintRecipient, return true.
-    pub fn receive_message(env: Env, caller: Address, message: Bytes, attestation: Bytes) -> Result<bool, MtError> {
-        let token: Address = env.storage().instance().get(&DataKey::Token).ok_or(MtError::NotInitialized)?;
+    pub fn receive_message(
+        env: Env,
+        caller: Address,
+        message: Bytes,
+        attestation: Bytes,
+    ) -> Result<bool, MtError> {
+        let token: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Token)
+            .ok_or(MtError::NotInitialized)?;
         if message.len() < (HEADER + 36) as u32 {
             return Err(MtError::MessageTooShort);
         }
@@ -96,7 +105,9 @@ impl TestMt {
         }
         // caller must be the destination caller named in the message
         let dc = read_bytes32(&env, &message, 108)?;
-        let caller_bytes = payload32(&AddressPayload::from_address(&caller).ok_or(MtError::CallerNotDestinationCaller)?);
+        let caller_bytes = payload32(
+            &AddressPayload::from_address(&caller).ok_or(MtError::CallerNotDestinationCaller)?,
+        );
         if caller_bytes != dc {
             return Err(MtError::CallerNotDestinationCaller);
         }
@@ -162,8 +173,8 @@ fn read_bytes32(env: &Env, b: &Bytes, at: usize) -> Result<BytesN<32>, MtError> 
         return Err(MtError::MessageTooShort);
     }
     let mut out = [0u8; 32];
-    for i in 0..32 {
-        out[i] = b.get((at + i) as u32).ok_or(MtError::MessageTooShort)?;
+    for (i, slot) in out.iter_mut().enumerate() {
+        *slot = b.get((at + i) as u32).ok_or(MtError::MessageTooShort)?;
     }
     Ok(BytesN::from_array(env, &out))
 }

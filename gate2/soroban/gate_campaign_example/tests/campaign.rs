@@ -31,7 +31,13 @@ mod test {
 
     /// CCTP V2 message (Circle's documented format) with a v1 hook whose
     /// recipient is `hook`.
-    fn message(env: &Env, claim32: &BytesN<32>, amount_6: u64, hook: &Address, nonce: u64) -> Bytes {
+    fn message(
+        env: &Env,
+        claim32: &BytesN<32>,
+        amount_6: u64,
+        hook: &Address,
+        nonce: u64,
+    ) -> Bytes {
         let mut out: std::vec::Vec<u8> = std::vec![];
         out.extend_from_slice(&1u32.to_be_bytes()); // header version
         out.extend_from_slice(&0u32.to_be_bytes()); // sourceDomain (Sepolia)
@@ -54,11 +60,12 @@ mod test {
         out.extend_from_slice(&[0u8; 32]); // maxFee
         out.extend_from_slice(&[0u8; 32]); // feeExecuted
         out.extend_from_slice(&[0u8; 32]); // expirationBlock
-        // hook v1
+                                           // hook v1
         let skey = hook.to_string().to_string();
-        for _ in 0..24 {
-            out.push(0);
-        }
+        // The hook's 24-byte zero pad. Written as an extend rather than a
+        // push loop so it reads as "a fixed pad", which is what it is - the
+        // loop form made it look like a value was meant to vary.
+        out.extend_from_slice(&[0u8; 24]);
         out.extend_from_slice(&1u32.to_be_bytes());
         let payload_len: u32 = 1 + 16 + 16 + 1 + skey.len() as u32;
         out.extend_from_slice(&payload_len.to_be_bytes());
@@ -102,7 +109,12 @@ mod test {
         let camp = env.register(Campaign, ());
         CampaignClient::new(&env, &camp).initialize(&gate);
         let owner = Address::generate(&env);
-        World { env, gate, camp, owner }
+        World {
+            env,
+            gate,
+            camp,
+            owner,
+        }
     }
 
     fn migrate(w: &World, amount_6: u64, nonce: u64) {
@@ -131,10 +143,16 @@ mod test {
         let client = CampaignClient::new(&w.env, &w.camp);
         w.env.mock_all_auths();
         let stranger = Address::generate(&w.env);
-        assert_eq!(client.try_claim_tier(&stranger), Err(Ok(CampError::NoMigration)));
+        assert_eq!(
+            client.try_claim_tier(&stranger),
+            Err(Ok(CampError::NoMigration))
+        );
         // and a migration below Bronze earns nothing
         migrate(&w, 9_000_000, 3); // 9 USDC: below Bronze
-        assert_eq!(client.try_claim_tier(&w.owner), Err(Ok(CampError::BelowBronze)));
+        assert_eq!(
+            client.try_claim_tier(&w.owner),
+            Err(Ok(CampError::BelowBronze))
+        );
     }
 
     // F3 boundary suite (the test HARDENING-2.0.md section 5.1 makes F3 hinge
@@ -249,22 +267,25 @@ mod test {
     #[test]
     fn tier_boundaries_are_inclusive_at_exact_and_exclusive_below() {
         for (amount, expect) in [
-            (9_999_999u64, None),                    // one below Bronze: nothing earned
-            (10_000_000, Some(Tier::Bronze)),        // exact boundary: included
-            (99_999_999, Some(Tier::Bronze)),        // one below Silver: stays Bronze
-            (100_000_000, Some(Tier::Silver)),       // exact: included
-            (999_999_999, Some(Tier::Silver)),       // one below Gold: stays Silver
-            (1_000_000_000, Some(Tier::Gold)),       // exact: included
+            (9_999_999u64, None),              // one below Bronze: nothing earned
+            (10_000_000, Some(Tier::Bronze)),  // exact boundary: included
+            (99_999_999, Some(Tier::Bronze)),  // one below Silver: stays Bronze
+            (100_000_000, Some(Tier::Silver)), // exact: included
+            (999_999_999, Some(Tier::Silver)), // one below Gold: stays Silver
+            (1_000_000_000, Some(Tier::Gold)), // exact: included
         ] {
             let w = world();
             w.env.mock_all_auths();
             migrate(&w, amount, 1);
             let client = CampaignClient::new(&w.env, &w.camp);
             match expect {
-                None => assert_eq!(client.try_claim_tier(&w.owner), Err(Ok(CampError::BelowBronze)),
-                                    "below-Bronze must earn nothing, got a tier at {}", amount),
-                Some(t) => assert_eq!(client.claim_tier(&w.owner), t,
-                                       "wrong tier at {}", amount),
+                None => assert_eq!(
+                    client.try_claim_tier(&w.owner),
+                    Err(Ok(CampError::BelowBronze)),
+                    "below-Bronze must earn nothing, got a tier at {}",
+                    amount
+                ),
+                Some(t) => assert_eq!(client.claim_tier(&w.owner), t, "wrong tier at {}", amount),
             }
         }
     }

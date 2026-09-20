@@ -24,6 +24,15 @@
 //! deposit/withdraw/forward,
 //!     sum over owners of balance_of(owner) == USDC.balance(gate_battery).
 #![no_std]
+#![allow(
+    deprecated,
+    reason = "soroban-sdk 28 deprecates Events::publish in favour of the \
+#[contractevent] macro. Moving to it changes the emitted event shape, and \
+these contracts are already deployed on testnet with indexers reading the \
+current topics - so the migration is a deliberate, separately verified \
+change, not something to slip into a CI fix. The allow is narrow (this one \
+lint) and stated here rather than left to -D warnings to erode."
+)]
 
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, Address, Env, Symbol, Val, Vec,
@@ -82,7 +91,12 @@ impl GateBattery {
     /// Anyone may top up anyone's battery: `from` authorizes the pull of
     /// `amount` USDC into the contract, and `owner`'s balance grows.
     /// The USDC and the balance move in the same atomic transaction.
-    pub fn deposit(env: Env, from: Address, owner: Address, amount: i128) -> Result<(), BatteryError> {
+    pub fn deposit(
+        env: Env,
+        from: Address,
+        owner: Address,
+        amount: i128,
+    ) -> Result<(), BatteryError> {
         if amount <= 0 {
             return Err(BatteryError::ZeroAmount);
         }
@@ -95,7 +109,9 @@ impl GateBattery {
         let bal: i128 = env.storage().persistent().get(&key).unwrap_or(0);
         let new_bal = bal.checked_add(amount).ok_or(BatteryError::Overflow)?;
         env.storage().persistent().set(&key, &new_bal);
-        env.storage().persistent().extend_ttl(&key, BUMP_THRESHOLD, BUMP_EXTEND);
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, BUMP_THRESHOLD, BUMP_EXTEND);
         env.events()
             .publish((soroban_sdk::symbol_short!("deposit"), from, owner), amount);
         Ok(())
@@ -118,7 +134,9 @@ impl GateBattery {
         }
         let new_bal = bal - amount;
         env.storage().persistent().set(&key, &new_bal);
-        env.storage().persistent().extend_ttl(&key, BUMP_THRESHOLD, BUMP_EXTEND);
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, BUMP_THRESHOLD, BUMP_EXTEND);
         soroban_sdk::token::Client::new(&env, &token).transfer(&here, &owner, &amount);
         env.events()
             .publish((soroban_sdk::symbol_short!("withdraw"), owner), amount);
@@ -142,6 +160,17 @@ impl GateBattery {
     /// 3. nonce unused by this owner (single use)
     /// 4. fee leaves the battery to the relayer, then target.fn(args) runs.
     ///    Atomic: a failing target call unwinds the fee payment with it.
+    // Ten arguments, deliberately. Every one of them is part of what the owner
+    // signs: fee and max_fee bound the relayer's claim, expiry and nonce stop
+    // replay, and target/fn_name/args pin exactly which call is authorised.
+    // Bundling them into a struct to satisfy the lint would not remove an
+    // argument, it would only hide the authorised set behind one name - and
+    // the whole safety property here is that the set is visible in the
+    // signature. The lint is answered rather than obeyed.
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "each argument is a field of the owner-signed authorisation; collapsing them would obscure the signed set"
+    )]
     pub fn forward(
         env: Env,
         owner: Address,
@@ -181,7 +210,9 @@ impl GateBattery {
         // reverts and the fee never left.
         let new_bal = bal - fee;
         env.storage().persistent().set(&key, &new_bal);
-        env.storage().persistent().extend_ttl(&key, BUMP_THRESHOLD, BUMP_EXTEND);
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, BUMP_THRESHOLD, BUMP_EXTEND);
         env.storage().persistent().set(&nkey, &());
         env.storage()
             .persistent()
@@ -189,7 +220,12 @@ impl GateBattery {
         soroban_sdk::token::Client::new(&env, &token).transfer(&here, &relayer, &fee);
         let _: Val = env.invoke_contract(&target, &fn_name, args.clone());
         env.events().publish(
-            (soroban_sdk::symbol_short!("forward"), owner, relayer, target),
+            (
+                soroban_sdk::symbol_short!("forward"),
+                owner,
+                relayer,
+                target,
+            ),
             fee,
         );
         Ok(())

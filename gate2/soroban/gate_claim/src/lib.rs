@@ -21,9 +21,9 @@
 //!   5. measure what actually arrived (the balance delta of this contract
 //!      around receive_message — 6 -> 7 decimals is measured, not assumed);
 //!   6. verify and distribute (all 6dp hook amounts x10 to 7dp):
-//!        relay_fee  -> relayer  (0 when the user sends their own claim)
-//!        battery    -> gate_battery.deposit(self, recipient, x)
-//!        remainder  -> recipient (mod 0) | gate_ticket (mod 1)
+//!      relay_fee  -> relayer  (0 when the user sends their own claim)
+//!      battery    -> gate_battery.deposit(self, recipient, x)
+//!      remainder  -> recipient (mod 0) | gate_ticket (mod 1)
 //!   7. mint the soulbound Migration Proof NFT + MigrationSummary to the
 //!      hook's recipient (the first recipient, whatever the mod).
 //!
@@ -33,12 +33,21 @@
 //! No admin, no upgrade, no custody: the contract holds USDC only inside
 //! the claim transaction and forwards exactly what it just received.
 #![no_std]
+#![allow(
+    deprecated,
+    reason = "soroban-sdk 28 deprecates Events::publish in favour of the \
+#[contractevent] macro. Moving to it changes the emitted event shape, and \
+these contracts are already deployed on testnet with indexers reading the \
+current topics - so the migration is a deliberate, separately verified \
+change, not something to slip into a CI fix. The allow is narrow (this one \
+lint) and stated here rather than left to -D warnings to erode."
+)]
 
 use soroban_sdk::{
     address_payload::AddressPayload,
     auth::{ContractContext, InvokerContractAuthEntry, SubContractInvocation},
-    contract, contracterror, contractimpl, contracttype, vec, Address, Bytes, BytesN, Env,
-    IntoVal, Symbol, Vec,
+    contract, contracterror, contractimpl, contracttype, vec, Address, Bytes, BytesN, Env, IntoVal,
+    Symbol, Vec,
 };
 
 /// CCTP V2 header, per Circle's documented "Message Format" (this is the
@@ -223,8 +232,8 @@ pub fn read_bytes32(env: &Env, b: &Bytes, at: u32) -> Result<BytesN<32>, GateErr
         return Err(GateError::MessageTooShort);
     }
     let mut out = [0u8; 32];
-    for i in 0..32 {
-        out[i] = b.get(at + i as u32).ok_or(GateError::MessageTooShort)?;
+    for (i, slot) in out.iter_mut().enumerate() {
+        *slot = b.get(at + i as u32).ok_or(GateError::MessageTooShort)?;
     }
     Ok(BytesN::from_array(env, &out))
 }
@@ -251,7 +260,9 @@ pub fn payload32(p: &AddressPayload) -> BytesN<32> {
 /// The 32-byte wire form of an address (contract hash for C..., ed25519 for
 /// G...) — the form CCTP messages carry.
 pub fn addr32(a: &Address) -> Result<BytesN<32>, GateError> {
-    AddressPayload::from_address(a).map(|p| payload32(&p)).ok_or(GateError::AddrForm)
+    AddressPayload::from_address(a)
+        .map(|p| payload32(&p))
+        .ok_or(GateError::AddrForm)
 }
 
 pub fn self32(env: &Env) -> Result<BytesN<32>, GateError> {
@@ -264,6 +275,14 @@ pub struct GateClaim;
 #[contractimpl]
 impl GateClaim {
     /// One-shot: bind every dependency. Nothing can change these again.
+    // Eight arguments because eight dependencies are bound here, once, for the
+    // life of the contract. There is no admin and no setter, so this call IS
+    // the configuration; grouping the addresses into a struct would hide which
+    // of them can never be changed again behind a single opaque parameter.
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "one-shot binding of every immutable dependency; the explicit list is the point"
+    )]
     pub fn initialize(
         env: Env,
         mt: Address,
@@ -507,7 +526,9 @@ impl GateClaim {
         };
         env.storage().persistent().set(&DataKey::Proof(id), &proof);
         env.storage().persistent().set(&DataKey::Meta(id), &meta);
-        env.storage().persistent().set(&DataKey::NftOwner(id), &h.recipient.clone());
+        env.storage()
+            .persistent()
+            .set(&DataKey::NftOwner(id), &h.recipient.clone());
         let mut ids: Vec<u64> = env
             .storage()
             .persistent()
@@ -543,8 +564,12 @@ impl GateClaim {
         }
         let mig_key = DataKey::Mig(h.recipient.clone());
         env.storage().persistent().set(&mig_key, &sum);
-        env.storage().persistent().extend_ttl(&mig_key, BUMP_THRESHOLD, BUMP_EXTEND);
-        env.storage().persistent().extend_ttl(&owner_key, BUMP_THRESHOLD, BUMP_EXTEND);
+        env.storage()
+            .persistent()
+            .extend_ttl(&mig_key, BUMP_THRESHOLD, BUMP_EXTEND);
+        env.storage()
+            .persistent()
+            .extend_ttl(&owner_key, BUMP_THRESHOLD, BUMP_EXTEND);
 
         env.events().publish(
             (soroban_sdk::symbol_short!("claim"), h.recipient.clone(), id),
@@ -597,15 +622,21 @@ impl GateClaim {
     pub fn bump(env: Env, owner: Address) {
         let mig = DataKey::Mig(owner.clone());
         if env.storage().persistent().has(&mig) {
-            env.storage().persistent().extend_ttl(&mig, BUMP_THRESHOLD, BUMP_EXTEND);
+            env.storage()
+                .persistent()
+                .extend_ttl(&mig, BUMP_THRESHOLD, BUMP_EXTEND);
         }
         let own = DataKey::Owner(owner.clone());
         if let Some(ids) = env.storage().persistent().get::<_, Vec<u64>>(&own) {
-            env.storage().persistent().extend_ttl(&own, BUMP_THRESHOLD, BUMP_EXTEND);
+            env.storage()
+                .persistent()
+                .extend_ttl(&own, BUMP_THRESHOLD, BUMP_EXTEND);
             for id in ids.iter() {
                 for k in [DataKey::Proof(id), DataKey::Meta(id), DataKey::NftOwner(id)] {
                     if env.storage().persistent().has(&k) {
-                        env.storage().persistent().extend_ttl(&k, BUMP_THRESHOLD, BUMP_EXTEND);
+                        env.storage()
+                            .persistent()
+                            .extend_ttl(&k, BUMP_THRESHOLD, BUMP_EXTEND);
                     }
                 }
             }
@@ -627,7 +658,12 @@ struct Hook {
 ///            | u128 relay_fee_cap (6dp) | u128 battery_amount (6dp)
 ///            | u8 len + recipient strkey
 ///            | [bit0] u8 len + name ([A-Za-z0-9 ], <= 24)
-pub fn parse_hook(env: &Env, hook: &Bytes) -> Result<Hook, GateError> {
+// Crate-private, matching `Hook` itself. It was `pub` while `Hook` was not,
+// which is a contradiction the compiler rejects: an outside caller could name
+// the function but not the type it returns. Narrowing the function is the
+// honest half of the fix - this is an internal decoder with one caller inside
+// this file, not part of the contract's surface.
+fn parse_hook(env: &Env, hook: &Bytes) -> Result<Hook, GateError> {
     if hook.len() < HOOK_PAD + 8 {
         return Err(GateError::BadHook);
     }
@@ -686,10 +722,8 @@ pub fn parse_hook(env: &Env, hook: &Bytes) -> Result<Hook, GateError> {
         let nb = hook.slice(p..nend);
         for i in 0..nlen {
             let c = nb.get(i).ok_or(GateError::BadHook)?;
-            let ok = (c >= b'a' && c <= b'z')
-                || (c >= b'A' && c <= b'Z')
-                || (c >= b'0' && c <= b'9')
-                || c == b' ';
+            let ok =
+                c.is_ascii_lowercase() || c.is_ascii_uppercase() || c.is_ascii_digit() || c == b' ';
             if !ok {
                 return Err(GateError::BadStarName);
             }

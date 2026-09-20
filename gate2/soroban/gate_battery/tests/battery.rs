@@ -26,6 +26,14 @@ mod test {
         env: Env,
         battery_id: Address,
         token: Address,
+        // Held, not read: the token contract needs an admin at construction
+        // and the World owns that address so the fixture stays self-contained.
+        // Dropping the field would mean re-deriving it wherever a test needs
+        // to mint, so it is marked rather than removed.
+        #[allow(
+            dead_code,
+            reason = "owned by the fixture for token setup, not asserted on"
+        )]
         admin: Address,
         owner: Address,
         relayer: Address,
@@ -36,13 +44,23 @@ mod test {
         let env = Env::default();
         env.mock_all_auths();
         let admin = Address::generate(&env);
-        let token = env.register_stellar_asset_contract_v2(admin.clone()).address();
+        let token = env
+            .register_stellar_asset_contract_v2(admin.clone())
+            .address();
         let battery_id = env.register(GateBattery, ());
         GateBatteryClient::new(&env, &battery_id).initialize(&token);
         let owner = Address::generate(&env);
         let relayer = Address::generate(&env);
         let target_id = env.register(Target, ());
-        World { env, battery_id, token, admin, owner, relayer, target_id }
+        World {
+            env,
+            battery_id,
+            token,
+            admin,
+            owner,
+            relayer,
+            target_id,
+        }
     }
 
     fn mint(w: &World, to: &Address, amount: i128) {
@@ -79,9 +97,15 @@ mod test {
         let again = client.try_initialize(&w.token);
         assert_eq!(again, Err(Ok(BatteryError::AlreadyInitialized)));
         mint(&w, &w.owner, D7);
-        assert_eq!(client.try_deposit(&w.owner, &w.owner, &0), Err(Ok(BatteryError::ZeroAmount)));
+        assert_eq!(
+            client.try_deposit(&w.owner, &w.owner, &0),
+            Err(Ok(BatteryError::ZeroAmount))
+        );
         client.deposit(&w.owner, &w.owner, &D7);
-        assert_eq!(client.try_withdraw(&w.owner, &0), Err(Ok(BatteryError::ZeroAmount)));
+        assert_eq!(
+            client.try_withdraw(&w.owner, &0),
+            Err(Ok(BatteryError::ZeroAmount))
+        );
         assert_eq!(
             client.try_withdraw(&w.owner, &(2 * D7)),
             Err(Ok(BatteryError::InsufficientBalance))
@@ -99,7 +123,7 @@ mod test {
         assert_eq!(vault_balance(&w), D7);
         let owner_usdc = soroban_sdk::token::Client::new(&w.env, &w.token).balance(&w.owner);
         assert_eq!(owner_usdc, 3 * D7); // 1 left in battery, 3 back in wallet
-        // drain it completely
+                                        // drain it completely
         client.withdraw(&w.owner, &D7);
         assert_eq!(client.balance_of(&w.owner), 0);
         assert_eq!(vault_balance(&w), 0);
@@ -115,8 +139,15 @@ mod test {
         client.deposit(&w.owner, &w.owner, &(10 * D7));
         let expiry = w.env.ledger().sequence() + 100;
         client.forward(
-            &w.owner, &w.relayer, &(2 * D7), &(2 * D7), &expiry, &7,
-            &w.target_id, &Symbol::new(&w.env, "work"), &vec![&w.env],
+            &w.owner,
+            &w.relayer,
+            &(2 * D7),
+            &(2 * D7),
+            &expiry,
+            &7,
+            &w.target_id,
+            &Symbol::new(&w.env, "work"),
+            &vec![&w.env],
         );
         assert_eq!(client.balance_of(&w.owner), 8 * D7);
         let relayer_usdc = soroban_sdk::token::Client::new(&w.env, &w.token).balance(&w.relayer);
@@ -132,13 +163,21 @@ mod test {
         client.deposit(&w.owner, &w.owner, &(10 * D7));
         let expiry = w.env.ledger().sequence() + 100;
         let res = client.try_forward(
-            &w.owner, &w.relayer, &(3 * D7), &(2 * D7), &expiry, &8,
-            &w.target_id, &Symbol::new(&w.env, "work"), &vec![&w.env],
+            &w.owner,
+            &w.relayer,
+            &(3 * D7),
+            &(2 * D7),
+            &expiry,
+            &8,
+            &w.target_id,
+            &Symbol::new(&w.env, "work"),
+            &vec![&w.env],
         );
         assert_eq!(res, Err(Ok(BatteryError::FeeAboveCap)));
         assert_eq!(client.balance_of(&w.owner), 10 * D7);
         assert_eq!(
-            soroban_sdk::token::Client::new(&w.env, &w.token).balance(&w.relayer), 0
+            soroban_sdk::token::Client::new(&w.env, &w.token).balance(&w.relayer),
+            0
         );
     }
 
@@ -150,18 +189,39 @@ mod test {
         client.deposit(&w.owner, &w.owner, &(10 * D7));
         let past = w.env.ledger().sequence();
         let res = client.try_forward(
-            &w.owner, &w.relayer, &D7, &(2 * D7), &past, &9,
-            &w.target_id, &Symbol::new(&w.env, "work"), &vec![&w.env],
+            &w.owner,
+            &w.relayer,
+            &D7,
+            &(2 * D7),
+            &past,
+            &9,
+            &w.target_id,
+            &Symbol::new(&w.env, "work"),
+            &vec![&w.env],
         );
         assert_eq!(res, Err(Ok(BatteryError::Expired)));
         let expiry = w.env.ledger().sequence() + 100;
         client.forward(
-            &w.owner, &w.relayer, &D7, &(2 * D7), &expiry, &9,
-            &w.target_id, &Symbol::new(&w.env, "work"), &vec![&w.env],
+            &w.owner,
+            &w.relayer,
+            &D7,
+            &(2 * D7),
+            &expiry,
+            &9,
+            &w.target_id,
+            &Symbol::new(&w.env, "work"),
+            &vec![&w.env],
         );
         let replay = client.try_forward(
-            &w.owner, &w.relayer, &D7, &(2 * D7), &expiry, &9,
-            &w.target_id, &Symbol::new(&w.env, "work"), &vec![&w.env],
+            &w.owner,
+            &w.relayer,
+            &D7,
+            &(2 * D7),
+            &expiry,
+            &9,
+            &w.target_id,
+            &Symbol::new(&w.env, "work"),
+            &vec![&w.env],
         );
         assert_eq!(replay, Err(Ok(BatteryError::NonceUsed)));
     }
@@ -175,13 +235,21 @@ mod test {
         let before = client.balance_of(&w.owner);
         let expiry = w.env.ledger().sequence() + 100;
         let res = client.try_forward(
-            &w.owner, &w.relayer, &D7, &(2 * D7), &expiry, &10,
-            &w.target_id, &Symbol::new(&w.env, "fail"), &vec![&w.env],
+            &w.owner,
+            &w.relayer,
+            &D7,
+            &(2 * D7),
+            &expiry,
+            &10,
+            &w.target_id,
+            &Symbol::new(&w.env, "fail"),
+            &vec![&w.env],
         );
         assert!(res.is_err(), "the failing target must trap the whole call");
         assert_eq!(client.balance_of(&w.owner), before, "fee must come back");
         assert_eq!(
-            soroban_sdk::token::Client::new(&w.env, &w.token).balance(&w.relayer), 0
+            soroban_sdk::token::Client::new(&w.env, &w.token).balance(&w.relayer),
+            0
         );
         assert_eq!(vault_balance(&w), before);
     }
@@ -199,13 +267,21 @@ mod test {
         let max_fee = 3 * D7;
         for nonce in 1u64..=10 {
             client.forward(
-                &w.owner, &w.relayer, &max_fee, &max_fee, &expiry, &nonce,
-                &w.target_id, &Symbol::new(&w.env, "work"), &vec![&w.env],
+                &w.owner,
+                &w.relayer,
+                &max_fee,
+                &max_fee,
+                &expiry,
+                &nonce,
+                &w.target_id,
+                &Symbol::new(&w.env, "work"),
+                &vec![&w.env],
             );
         }
         assert_eq!(client.balance_of(&w.owner), 70 * D7);
         assert_eq!(
-            soroban_sdk::token::Client::new(&w.env, &w.token).balance(&w.relayer), 30 * D7
+            soroban_sdk::token::Client::new(&w.env, &w.token).balance(&w.relayer),
+            30 * D7
         );
     }
 
@@ -215,8 +291,15 @@ mod test {
         let client = GateBatteryClient::new(&w.env, &w.battery_id);
         let expiry = w.env.ledger().sequence() + 100;
         let res = client.try_forward(
-            &w.owner, &w.relayer, &D7, &(2 * D7), &expiry, &11,
-            &w.target_id, &Symbol::new(&w.env, "work"), &vec![&w.env],
+            &w.owner,
+            &w.relayer,
+            &D7,
+            &(2 * D7),
+            &expiry,
+            &11,
+            &w.target_id,
+            &Symbol::new(&w.env, "work"),
+            &vec![&w.env],
         );
         assert_eq!(res, Err(Ok(BatteryError::InsufficientBalance)));
     }
@@ -247,13 +330,14 @@ mod test {
             match (op >> 6) % 3 {
                 0 => {
                     let amt = ((op % 9) as i128 + 1) * D7;
-                    if soroban_sdk::token::Client::new(&w.env, &w.token).balance(&owners[i]) >= amt {
+                    if soroban_sdk::token::Client::new(&w.env, &w.token).balance(&owners[i]) >= amt
+                    {
                         client.deposit(&owners[i], &owners[j], &amt);
                     }
                 }
                 1 => {
                     let bal = client.balance_of(&owners[j]);
-                    let amt = ((op % bal.max(1).max(1) as u32) as i128 + 1);
+                    let amt = (op % bal.max(1).max(1) as u32) as i128 + 1;
                     if amt >= 1 {
                         let take = if amt > bal { bal } else { amt };
                         if take > 0 {
@@ -269,8 +353,15 @@ mod test {
                         let expiry = w.env.ledger().sequence() + 100;
                         let nonce = (op % 10_000) as u64;
                         let res = client.try_forward(
-                            &owners[j], &w.relayer, &fee, &max_fee, &expiry, &nonce,
-                            &w.target_id, &Symbol::new(&w.env, "work"), &vec![&w.env],
+                            &owners[j],
+                            &w.relayer,
+                            &fee,
+                            &max_fee,
+                            &expiry,
+                            &nonce,
+                            &w.target_id,
+                            &Symbol::new(&w.env, "work"),
+                            &vec![&w.env],
                         );
                         if res.is_err() {
                             // a nonce collision is fine: it just means the
@@ -294,11 +385,15 @@ mod test {
         client.deposit(&w.owner, &w.owner, &(4 * D7));
         let sink = Address::generate(&w.env);
         // the owner spends all remaining wallet USDC
-        soroban_sdk::token::Client::new(&w.env, &w.token)
-            .transfer(&w.owner, &sink, &(6 * D7));
+        soroban_sdk::token::Client::new(&w.env, &w.token).transfer(&w.owner, &sink, &(6 * D7));
         assert_eq!(
-            soroban_sdk::token::Client::new(&w.env, &w.token).balance(&w.owner), 0
+            soroban_sdk::token::Client::new(&w.env, &w.token).balance(&w.owner),
+            0
         );
-        assert_eq!(client.balance_of(&w.owner), 4 * D7, "battery must be untouched");
+        assert_eq!(
+            client.balance_of(&w.owner),
+            4 * D7,
+            "battery must be untouched"
+        );
     }
 }

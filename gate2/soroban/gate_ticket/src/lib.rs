@@ -27,12 +27,21 @@
 //!     If Circle freezes the vault (the USDC issuer or this contract id),
 //!     every ticket is affected - a concentrated risk, written in the README.
 #![no_std]
+#![allow(
+    deprecated,
+    reason = "soroban-sdk 28 deprecates Events::publish in favour of the \
+#[contractevent] macro. Moving to it changes the emitted event shape, and \
+these contracts are already deployed on testnet with indexers reading the \
+current topics - so the migration is a deliberate, separately verified \
+change, not something to slip into a CI fix. The allow is narrow (this one \
+lint) and stated here rather than left to -D warnings to erode."
+)]
 
-    use soroban_sdk::{
-        auth::{ContractContext, InvokerContractAuthEntry, SubContractInvocation},
-        contract, contracterror, contractimpl, contracttype, vec, Address, BytesN, Env, IntoVal,
-        String, Symbol, Vec,
-    };
+use soroban_sdk::{
+    auth::{ContractContext, InvokerContractAuthEntry, SubContractInvocation},
+    contract, contracterror, contractimpl, contracttype, vec, Address, BytesN, Env, IntoVal,
+    String, Symbol, Vec,
+};
 
 const BUMP_THRESHOLD: u32 = 100_000;
 const BUMP_EXTEND: u32 = 400_000;
@@ -145,7 +154,7 @@ impl GateTicket {
         if amount <= 0 {
             return Err(TicketError::ZeroAmount);
         }
-        validate_star_name(&env, &star_name)?;
+        validate_star_name(&star_name)?;
         let minter: Address = env
             .storage()
             .instance()
@@ -154,15 +163,8 @@ impl GateTicket {
         // The minter authorizing itself is the ONLY way past this line.
         minter.require_auth();
         Self::require_initialized(&env)?;
-        let id = Self::store_new_ticket(
-            &env,
-            &to,
-            amount,
-            source_domain,
-            msg_hash,
-            star_name,
-            true,
-        )?;
+        let id =
+            Self::store_new_ticket(&env, &to, amount, source_domain, msg_hash, star_name, true)?;
         env.events()
             .publish((soroban_sdk::symbol_short!("minted"), to, id), amount);
         Ok(id)
@@ -210,21 +212,30 @@ impl GateTicket {
                 .get(&DataKey::LiveTotal)
                 .ok_or(TicketError::NotInitialized)?;
             let new_total = total.checked_add(amount).ok_or(TicketError::Overflow)?;
-            env.storage().instance().set(&DataKey::LiveTotal, &new_total);
+            env.storage()
+                .instance()
+                .set(&DataKey::LiveTotal, &new_total);
         }
         for k in [tkey, okey, ikey] {
-            env.storage().persistent().extend_ttl(&k, BUMP_THRESHOLD, BUMP_EXTEND);
+            env.storage()
+                .persistent()
+                .extend_ttl(&k, BUMP_THRESHOLD, BUMP_EXTEND);
         }
         Ok(id)
     }
 
-    fn burn_internal(env: &Env, owner: &Address, id: u64, ticket: &Ticket) -> Result<(), TicketError> {
+    fn burn_internal(
+        env: &Env,
+        owner: &Address,
+        id: u64,
+        ticket: &Ticket,
+    ) -> Result<(), TicketError> {
         let tkey = DataKey::Ticket(id);
         env.storage().persistent().remove(&tkey);
         let okey = DataKey::OwnerOf(id);
         env.storage().persistent().remove(&okey);
         let ikey = DataKey::Index(owner.clone());
-        if let Some(mut v) = env.storage().persistent().get::<_, Vec<u64>>(&ikey) {
+        if let Some(v) = env.storage().persistent().get::<_, Vec<u64>>(&ikey) {
             let mut filtered: Vec<u64> = Vec::new(env);
             for t in v.iter() {
                 if t != id {
@@ -238,8 +249,12 @@ impl GateTicket {
             .instance()
             .get(&DataKey::LiveTotal)
             .ok_or(TicketError::NotInitialized)?;
-        let new_total = total.checked_sub(ticket.amount).ok_or(TicketError::Overflow)?;
-        env.storage().instance().set(&DataKey::LiveTotal, &new_total);
+        let new_total = total
+            .checked_sub(ticket.amount)
+            .ok_or(TicketError::Overflow)?;
+        env.storage()
+            .instance()
+            .set(&DataKey::LiveTotal, &new_total);
         Ok(())
     }
 
@@ -258,9 +273,11 @@ impl GateTicket {
             return Err(TicketError::NotOwner);
         }
         env.storage().persistent().set(&okey, &to);
-        env.storage().persistent().extend_ttl(&okey, BUMP_THRESHOLD, BUMP_EXTEND);
+        env.storage()
+            .persistent()
+            .extend_ttl(&okey, BUMP_THRESHOLD, BUMP_EXTEND);
         let from_ids = DataKey::Index(from.clone());
-        if let Some(mut v) = env.storage().persistent().get::<_, Vec<u64>>(&from_ids) {
+        if let Some(v) = env.storage().persistent().get::<_, Vec<u64>>(&from_ids) {
             let mut filtered: Vec<u64> = Vec::new(&env);
             for t in v.iter() {
                 if t != id {
@@ -310,8 +327,10 @@ impl GateTicket {
         // and the ticket is still alive at the end of the failed tx.
         soroban_sdk::token::Client::new(&env, &usdc).transfer(&here, &to, &ticket.amount);
         Self::burn_internal(&env, &owner, id, &ticket)?;
-        env.events()
-            .publish((soroban_sdk::symbol_short!("redeemed"), owner, to, id), ticket.amount);
+        env.events().publish(
+            (soroban_sdk::symbol_short!("redeemed"), owner, to, id),
+            ticket.amount,
+        );
         Ok(())
     }
 
@@ -360,13 +379,16 @@ impl GateTicket {
                 sub_invocations: vec![&env],
             }),
         ]);
-        let _: () = env.invoke_contract(&battery, &soroban_sdk::symbol_short!("deposit"), deposit_args);
+        let _: () = env.invoke_contract(
+            &battery,
+            &soroban_sdk::symbol_short!("deposit"),
+            deposit_args,
+        );
         Self::burn_internal(&env, &owner, id, &ticket)?;
-        env.events()
-            .publish(
-                (soroban_sdk::symbol_short!("to_batt"), owner, id),
-                ticket.amount,
-            );
+        env.events().publish(
+            (soroban_sdk::symbol_short!("to_batt"), owner, id),
+            ticket.amount,
+        );
         Ok(())
     }
 
@@ -441,7 +463,7 @@ impl GateTicket {
         env.storage()
             .persistent()
             .get::<_, Vec<u64>>(&DataKey::Index(owner))
-            .map(|v| v.len() as u32)
+            .map(|v| v.len())
             .unwrap_or(0)
     }
 
@@ -454,7 +476,11 @@ impl GateTicket {
             .get(&DataKey::Index(owner))
             .unwrap_or(Vec::new(&env));
         for id in ids.iter() {
-            if let Some(t) = env.storage().persistent().get::<_, Ticket>(&DataKey::Ticket(id)) {
+            if let Some(t) = env
+                .storage()
+                .persistent()
+                .get::<_, Ticket>(&DataKey::Ticket(id))
+            {
                 sum = sum.saturating_add(t.amount);
             }
         }
@@ -464,7 +490,10 @@ impl GateTicket {
     /// Running sum of all live tickets. Must always equal
     /// USDC.balance(gate_ticket); the property test proves it.
     pub fn live_total(env: Env) -> i128 {
-        env.storage().instance().get(&DataKey::LiveTotal).unwrap_or(0)
+        env.storage()
+            .instance()
+            .get(&DataKey::LiveTotal)
+            .unwrap_or(0)
     }
 
     /// The vault balance, independently readable: USDC.balance_of(this).
@@ -531,17 +560,15 @@ impl GateTicket {
     }
 }
 
-fn validate_star_name(env: &Env, name: &String) -> Result<(), TicketError> {
+fn validate_star_name(name: &String) -> Result<(), TicketError> {
     let bytes = name.to_bytes();
     if bytes.len() > MAX_NAME_LEN {
         return Err(TicketError::NameTooLong);
     }
     for i in 0..bytes.len() {
         let c = bytes.get(i).unwrap_or(0);
-        let ok = (c >= b'a' && c <= b'z')
-            || (c >= b'A' && c <= b'Z')
-            || (c >= b'0' && c <= b'9')
-            || c == b' ';
+        let ok =
+            c.is_ascii_lowercase() || c.is_ascii_uppercase() || c.is_ascii_digit() || c == b' ';
         if !ok {
             return Err(TicketError::BadName);
         }
@@ -602,7 +629,11 @@ fn push_bytes32(buf: &mut [u8; 512], n: &mut u32, b: &BytesN<32>) {
 /// 7-decimal amount -> "X.YYYYYY" (6 decimal places) appended to buf.
 fn push_div6(buf: &mut [u8; 512], n: &mut u32, amount: i128) {
     let whole = amount / 1_000_000;
-    let rem = (amount % 1_000_000).abs() as u64;
+    // unsigned_abs, not abs(): i128::MIN has no positive counterpart, so
+    // abs() would overflow on it. The remainder cannot reach MIN in practice,
+    // but the cast is what makes that a silent assumption rather than a
+    // checked one - unsigned_abs removes the sharp edge entirely.
+    let rem = (amount % 1_000_000).unsigned_abs() as u64;
     push_i128(buf, n, whole);
     push_u8(buf, n, b'.');
     let mut x = rem;

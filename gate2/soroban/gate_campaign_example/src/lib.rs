@@ -7,8 +7,19 @@
 //! Upgrades are free and one-way; there is nothing to steal here because
 //! there is nothing here.
 #![no_std]
+#![allow(
+    deprecated,
+    reason = "soroban-sdk 28 deprecates Events::publish in favour of the \
+#[contractevent] macro. Moving to it changes the emitted event shape, and \
+these contracts are already deployed on testnet with indexers reading the \
+current topics - so the migration is a deliberate, separately verified \
+change, not something to slip into a CI fix. The allow is narrow (this one \
+lint) and stated here rather than left to -D warnings to erode."
+)]
 
-use soroban_sdk::{contract, contracterror, contractimpl, contracttype, vec, Address, Env, IntoVal, Symbol};
+use soroban_sdk::{
+    contract, contracterror, contractimpl, contracttype, vec, Address, Env, IntoVal, Symbol,
+};
 
 /// USDC amounts at 6 decimals.
 const BRONZE: i128 = 10 * 1_000_000;
@@ -68,7 +79,11 @@ impl Campaign {
     /// only: a recorded tier never drops, because the record never shrinks.
     pub fn claim_tier(env: Env, owner: Address) -> Result<Tier, CampError> {
         owner.require_auth();
-        let gate: Address = env.storage().instance().get(&DataKey::Gate).ok_or(CampError::NotInitialized)?;
+        let gate: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Gate)
+            .ok_or(CampError::NotInitialized)?;
         let total: i128 = env
             .invoke_contract::<Option<MigrationSummaryView>>(
                 &gate,
@@ -100,7 +115,8 @@ impl Campaign {
                 earned
             }
         };
-        env.events().publish((Symbol::new(&env, "tier"), owner), granted as u32);
+        env.events()
+            .publish((Symbol::new(&env, "tier"), owner), granted as u32);
         Ok(granted)
     }
 

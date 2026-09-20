@@ -7,13 +7,11 @@
 #![cfg(test)]
 #[cfg(test)]
 mod test {
-    use gate_ticket::*;
     use gate_battery::GateBatteryClient;
+    use gate_ticket::*;
     use soroban_sdk::testutils::{Address as _, MockAuth, MockAuthInvoke};
     use soroban_sdk::IntoVal as _;
-    use soroban_sdk::{
-        contract, contractimpl, token, vec, Address, BytesN, Env, String, Vec,
-    };
+    use soroban_sdk::{contract, contractimpl, token, vec, Address, BytesN, Env, String, Vec};
 
     const D7: i128 = 1_000_000; // 1 USDC at 7 decimals
 
@@ -39,6 +37,12 @@ mod test {
 
     #[contractimpl]
     impl MockMinter {
+        // Mirrors the real minter's signature. A test double that took fewer
+        // arguments would stop standing in for the thing it doubles.
+        #[allow(
+            clippy::too_many_arguments,
+            reason = "mirrors the production mint entry point it stands in for"
+        )]
         pub fn mint(
             env: Env,
             ticket: Address,
@@ -49,14 +53,22 @@ mod test {
             seed: u64,
             star_name: String,
         ) -> u64 {
-            token::Client::new(&env, &usdc)
-                .transfer(&env.current_contract_address(), &ticket, &amount);
+            token::Client::new(&env, &usdc).transfer(
+                &env.current_contract_address(),
+                &ticket,
+                &amount,
+            );
             let mut arr = [0u8; 32];
             arr[0] = (seed & 0xff) as u8;
             arr[1] = ((seed >> 8) & 0xff) as u8;
             let hash = BytesN::from_array(&env, &arr);
-            GateTicketClient::new(&env, &ticket)
-                .mint_ticket(&to, &amount, &source_domain, &hash, &star_name)
+            GateTicketClient::new(&env, &ticket).mint_ticket(
+                &to,
+                &amount,
+                &source_domain,
+                &hash,
+                &star_name,
+            )
         }
     }
 
@@ -249,10 +261,7 @@ mod test {
             .is_err());
         // vault untouched by the failed attempts
         assert_eq!(vault(&w), 0);
-        assert_eq!(
-            GateTicketClient::new(&w.env, &w.ticket_id).live_total(),
-            0
-        );
+        assert_eq!(GateTicketClient::new(&w.env, &w.ticket_id).live_total(), 0);
     }
 
     // ---- transfer ----
@@ -311,10 +320,7 @@ mod test {
         fund_minter(&w, 10 * D7);
         let id = mint_ticket(&w, &w.a, 10 * D7, 0, 5, "");
         client.redeem(&id, &w.a);
-        assert_eq!(
-            token::Client::new(&w.env, &w.token).balance(&w.a),
-            10 * D7
-        );
+        assert_eq!(token::Client::new(&w.env, &w.token).balance(&w.a), 10 * D7);
         assert_eq!(client.get_ticket(&id), None);
         assert_eq!(client.live_total(), 0);
         assert_eq!(vault(&w), 0);
@@ -340,7 +346,12 @@ mod test {
         }
 
         pub fn transfer(env: Env, from: Address, _to: Address, _amount: i128) {
-            if env.storage().instance().get::<_, bool>(&"poisoned").unwrap_or(false) {
+            if env
+                .storage()
+                .instance()
+                .get::<_, bool>(&"poisoned")
+                .unwrap_or(false)
+            {
                 panic!("no trustline");
             }
             from.require_auth();
@@ -475,7 +486,7 @@ mod test {
 
     #[test]
     fn invariant_live_total_equals_vault_balance() {
-        let mut w = world();
+        let w = world();
         // the property under test is ACCOUNTING (1:1 support), not auth;
         // the owner signatures here are incidental, so allow non-root auth.
         w.env.mock_all_auths_allowing_non_root_auth();
@@ -487,51 +498,55 @@ mod test {
             match (op >> 4) % 5 {
                 0 => {
                     // mint
-                    let who = if op % 2 == 0 { &w.a } else { &w.b };
-                    mint_ticket(&w, who, ((op % 20) as i128 + 1) * D7, (op % 2) as u32, round as u64, "");
+                    let who = if op.is_multiple_of(2) { &w.a } else { &w.b };
+                    mint_ticket(
+                        &w,
+                        who,
+                        ((op % 20) as i128 + 1) * D7,
+                        op % 2,
+                        round as u64,
+                        "",
+                    );
                 }
                 1 => {
                     // transfer
-                    let from = if op % 2 == 0 { &w.a } else { &w.b };
-                    let to = if op % 2 == 0 { &w.b } else { &w.a };
+                    let from = if op.is_multiple_of(2) { &w.a } else { &w.b };
+                    let to = if op.is_multiple_of(2) { &w.b } else { &w.a };
                     let ids = client.tickets_of(from);
                     if !ids.is_empty() {
-                        let id = ids.get((op % ids.len()) as u32).unwrap();
+                        let id = ids.get(op % ids.len()).unwrap();
                         client.transfer(from, to, &id);
                     }
                 }
                 2 => {
                     // redeem (to a trusted account so it succeeds)
-                    let from = if op % 2 == 0 { &w.a } else { &w.b };
+                    let from = if op.is_multiple_of(2) { &w.a } else { &w.b };
                     w.env.mock_all_auths();
                     token::StellarAssetClient::new(&w.env, &w.token).trust(from);
                     let ids = client.tickets_of(from);
                     if !ids.is_empty() {
-                        let id = ids.get((op % ids.len()) as u32).unwrap();
+                        let id = ids.get(op % ids.len()).unwrap();
                         client.redeem(&id, from);
                     }
                 }
                 3 => {
                     // redeem_to_battery
-                    let from = if op % 2 == 0 { &w.a } else { &w.b };
+                    let from = if op.is_multiple_of(2) { &w.a } else { &w.b };
                     let ids = client.tickets_of(from);
                     if !ids.is_empty() {
-                        let id = ids.get((op % ids.len()) as u32).unwrap();
+                        let id = ids.get(op % ids.len()).unwrap();
                         client.redeem_to_battery(&id);
                     }
                 }
                 _ => {
                     // split
-                    let from = if op % 2 == 0 { &w.a } else { &w.b };
+                    let from = if op.is_multiple_of(2) { &w.a } else { &w.b };
                     let ids = client.tickets_of(from);
                     if !ids.is_empty() {
-                        let id = ids.get((op % ids.len()) as u32).unwrap();
+                        let id = ids.get(op % ids.len()).unwrap();
                         let t = client.get_ticket(&id).unwrap();
                         if t.amount >= 2 * D7 {
-                            client.split(
-                                &id,
-                                &vec![&w.env, t.amount / 2, t.amount - t.amount / 2],
-                            );
+                            client.split(&id, &vec![&w.env, t.amount / 2, t.amount - t.amount / 2]);
                         }
                     }
                 }
@@ -551,6 +566,4 @@ mod test {
         let vb = client.value_of(&w.b);
         assert_eq!(va + vb, vault(&w));
     }
-
-
 }
