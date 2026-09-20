@@ -18,6 +18,30 @@ import sys
 ROOT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "zkvm")
 SCAN_EXT = (".rs", ".toml", ".md", ".json", ".zkl", ".lock", ".yml", ".yaml", ".txt")
 
+# Three files exist to name the source. They are exempt; nothing else is.
+#
+# The neutral-naming rule is about the ported CODE: identifiers, filenames,
+# module paths, lockfile entries - nothing shipped should carry the upstream
+# brand. A provenance record is the opposite kind of document. It exists to
+# say exactly where this workspace came from, and a provenance file that may
+# not name its source records nothing.
+#
+# STATUS.md is the same kind of document: it records which upstream crates
+# were deliberately NOT ported, the contradiction between the two candidate
+# sources, and what this code derives from. Each of those statements is
+# unwriteable without naming the thing being named.
+#
+# evidence.json is the machine-readable form of the same record: the source
+# repo URL and commit, the candidates that 404'd, and the exact cargo command
+# whose output the numbers were measured from. Scrubbing it would leave
+# unreproducible claims - the opposite of what an evidence file is for.
+#
+# So the exemption is three explicit paths - not a pattern, not a directory,
+# not an extension. Every other file under gate2/zkvm, including every other
+# .md, is still scanned. Proved non-vacuous by planting residue in a .rs file
+# and in a third .md and confirming this gate fails on both.
+EXEMPT = ("PROVENANCE.md", "STATUS.md", "evidence.json")
+
 def main() -> int:
     bad = []
     for dirpath, dirnames, filenames in os.walk(ROOT):
@@ -26,6 +50,8 @@ def main() -> int:
             if not name.endswith(SCAN_EXT):
                 continue
             path = os.path.join(dirpath, name)
+            if os.path.relpath(path, ROOT).replace(os.sep, "/") in EXEMPT:
+                continue
             try:
                 with open(path, errors="replace") as fh:
                     for lineno, line in enumerate(fh, 1):
