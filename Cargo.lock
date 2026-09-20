@@ -1076,6 +1076,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "gate_campaign_example"
+version = "0.0.0"
+
+[[package]]
+name = "gate_claim"
+version = "0.0.0"
+
+[[package]]
 name = "gate_vm"
 version = "0.1.0"
 dependencies = [

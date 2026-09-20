@@ -1,0 +1,19 @@
+{
+  "schema": "gate-2.0-manifest-skeleton/v0",
+  "created_utc": "2026-09-21T00:40:00Z",
+  "status": "F0 skeleton \u2014 sections fill up as F1..F12 run; empty array means NOT YET, never NOTHING FOUND",
+  "spikes": [],
+  "receipts": [],
+  "negative_probes": [],
+  "findings": [
+    {
+      "id": "f0-directive-ascii",
+      "note": "repo-gate check 3 (1.0, frozen) greps tracked file CONTENTS for localised letters; the 2.0 directive is Turkish with diacritics, so DIRECTIVE.md is stored with diacritics transliterated to ASCII and the 2.0 phase reports keep prose in the operator's wording; renaming DIRECTIVE.md per F0 additionally collides with the frozen 'exactly one directive file' rule \u2014 the 2.0 gate re-tune (F12) owns resolution, 1.0 scripts are untouched."
+    },
+    {
+      "id": "f0-branch-scope",
+      "note": "F0 changes only: DIRECTIVE rename+header, gate2/ skeleton, root Cargo.toml members, deployments/testnet-2.0.json. No 1.0 file edited."
+    }
+  ],
+  "superseded": []
+}
