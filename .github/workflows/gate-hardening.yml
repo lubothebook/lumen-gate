@@ -68,10 +68,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          # the runner's minimal profile ships no clippy; the zkvm panic gates live IN its lints,
-          # so the job without the component tests everything and proves nothing (first CI run caught exactly this)
-          components: clippy
+      - name: "ensure clippy exists: `rustup toolchain install --component` is a NO-OP when the runner image already carries that exact toolchain version, so an explicit add is the only reliable form (both attempts failed before this line learned it)"
+        run: rustup component add clippy
       - name: gate2/zkvm independent workspace - build, full test suite, clippy with its own panic gates (lib+test targets)
         run: |
           cd gate2/zkvm
