@@ -1295,14 +1295,21 @@ async function cashoutApi(query, { method = 'GET', body, anchorToken = null } = 
 }
 
 function cashoutPaintInstructions(instructions) {
-  const rows = instructions
-    ? [
-        ['treasury', short(instructions.treasury, 8)],
-        ['memo', `${instructions.memo} (${instructions.memo_type})`],
-        ['amount', `${instructions.amount} ${instructions.asset_code}`],
-        ['transaction', instructions.transaction_id],
-      ]
-    : [['treasury', 'not opened yet']];
+  const rows = !instructions
+    ? [['treasury', 'not opened yet']]
+    : instructions.treasury
+      ? [
+          ['treasury', short(instructions.treasury, 8)],
+          ['memo', `${instructions.memo} (${instructions.memo_type})`],
+          ['amount', `${instructions.amount} ${instructions.asset_code}`],
+          ['transaction', instructions.transaction_id],
+        ]
+      : [
+          ['treasury', 'held by the anchor until its form is done'],
+          ['amount', `${instructions.amount} ${instructions.asset_code}`],
+          ['transaction', instructions.transaction_id],
+          ['status', instructions.status || 'incomplete'],
+        ];
   // Built as nodes rather than as an HTML string: these values come from an
   // external anchor, and interpolating an external string into markup is how a
   // page ends up rendering somebody else's tags.
@@ -1319,7 +1326,12 @@ function cashoutPaintInstructions(instructions) {
     row.append(left, right);
     container.append(row);
   }
-  $('cashoutPayBtn').disabled = !instructions;
+  // Pay is only live once the anchor has actually named a treasury address.
+  // A real anchor opens a withdrawal "incomplete" and withholds the address
+  // until its own form is done, so an open withdrawal is not the same thing as
+  // a payable one - enabling Pay on `instructions` alone would offer to send
+  // money to nowhere.
+  $('cashoutPayBtn').disabled = !(instructions && instructions.treasury);
   $('cashoutStatusBtn').disabled = !CASHOUT.transactionId;
   // The note the two buttons point at is written for the state they are in:
   // with an open withdrawal it is the anchor's own instruction (pay this
@@ -1327,6 +1339,9 @@ function cashoutPaintInstructions(instructions) {
   if (!instructions) {
     $('cashoutActionNote').textContent =
       'Read the anchor and open a withdrawal first: the payment address, the memo and the amount all come from the anchor, so there is nothing to pay or poll until it has answered.';
+  } else if (!instructions.treasury) {
+    $('cashoutActionNote').textContent =
+      `The anchor opened withdrawal ${instructions.transaction_id} but will not name a payment address until you finish its own form. Open the link above, complete it, then press Check status: the address and memo appear here the moment the anchor releases them.`;
   } else if (!CASHOUT.transactionId) {
     $('cashoutActionNote').textContent =
       "The withdrawal is open but the anchor has not returned a transaction id yet, so there is nothing to poll: pay first, then check the status.";
@@ -1409,7 +1424,18 @@ async function cashoutStart() {
   CASHOUT.instructions = result.payload;
   CASHOUT.transactionId = result.payload.transaction_id;
   cashoutPaintInstructions(result.payload);
-  log(`Withdrawal ${result.payload.transaction_id} is open: pay ${result.payload.amount} ${result.payload.asset_code} to ${short(result.payload.treasury, 8)} with memo ${result.payload.memo}.`, 'ok');
+  if (result.payload.treasury) {
+    log(`Withdrawal ${result.payload.transaction_id} is open: pay ${result.payload.amount} ${result.payload.asset_code} to ${short(result.payload.treasury, 8)} with memo ${result.payload.memo}.`, 'ok');
+  } else {
+    // Not a failure: this is the anchor doing its job. Say what it wants and
+    // where, rather than reporting an open withdrawal as if it were payable.
+    log(`Withdrawal ${result.payload.transaction_id} is open but not payable yet: the anchor collects its own details first.`, 'warn');
+    if (result.payload.interactive_url) {
+      log(`Finish it at ${result.payload.interactive_url}`, '');
+      const link = $('cashoutPayHint');
+      if (link) link.textContent = `The anchor's form: ${result.payload.interactive_url}`;
+    }
+  }
 }
 
 async function cashoutPay() {
@@ -1450,6 +1476,13 @@ async function cashoutStatus() {
   if (!result.ok) return log(`Status check failed: ${failureText(result.payload)}`, 'bad');
   const payload = result.payload;
   log(`Anchor reports ${payload.status}${payload.amount_out ? `, paid out ${payload.amount_out}` : ''}${payload.external_transaction_id ? `, reference ${payload.external_transaction_id}` : ''}.`, payload.status === 'completed' ? 'ok' : '');
+  // The address can arrive on any poll. When it does, fold it into the open
+  // withdrawal so Pay becomes live without the user starting again.
+  if (payload.treasury && CASHOUT.instructions && !CASHOUT.instructions.treasury) {
+    CASHOUT.instructions = { ...CASHOUT.instructions, treasury: payload.treasury, memo: payload.memo, memo_type: payload.memo_type };
+    cashoutPaintInstructions(CASHOUT.instructions);
+    log(`The anchor released its payment address: ${short(payload.treasury, 8)} with memo ${payload.memo}. Pay is now live.`, 'ok');
+  }
 }
 
 function wire() {
