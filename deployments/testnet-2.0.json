@@ -34,6 +34,30 @@
       "artifact_note": "gate2/evm/out is a build product, gitignored by design"
     },
     "gate_claim_testnet": {
+      "id": "CDQ3PA5LBLIS22VXJSHXLOPFDD2ZDWPQWODIBLA5KPBOTKIXKOUZI4K2",
+      "wasm_build": "stellar contract build (v28 CLI), env-meta ok",
+      "deploy_tx": "aa42150122ad56b066c7ee23fa2a10f3cbcf5ff9886a1fbb52f22dedc36e2a33",
+      "deploy_ledger": 4770371,
+      "deploy_fee_stroops": 22313653,
+      "init_tx": "21c53dfec579d4e61a5bde4e5bb30d726f3acb4d4c69f4ca577186cc3a1113e8",
+      "init_ledger": 4770385,
+      "init_fee_stroops": 71847,
+      "config": {
+        "mt": "CBJ6MTCKKZG73PMDZCJMSFRD7DQEMI4FKDH7CGDSV4W6FHCRBCQAVVJY",
+        "usdc": "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA",
+        "burn_token": "0000000000000000000000001c7d4b196cb0c7b01d743fbc6116a902379c7238",
+        "allowed": [
+          0,
+          1
+        ]
+      },
+      "onchain_negatives": [
+        "claim(junk) -> HostError Error(Contract, #3) MessageTooShort (error code, no panic; funds state untouched)",
+        "initialize(twice) -> Error(Contract, #1) AlreadyInitialized (the one-shot deployer window closed for good)"
+      ],
+      "deployer_note": "funded via audit-probe only (least-privilege pattern continues); no funds held: the contract forwards everything it mints within the same call (balance-delta rule)"
+    },
+    "gate_claim_testnet_pre_hardening": {
       "id": "CBKSNJBQS4IC6IPUT452RLCJR3I6RH6ELNDZEE5R5TDVO6274AV7IGPC",
       "wasm_upload_tx": "58a61d7205cc1e28738eb991687410f36a95947c88a36875293cbe84dd572666",
       "create_contract_tx": "c17b20a86dc3abfeac0bae82228d9cb53bdcb5e025396d267624ff6f3bf4f7a8",
@@ -54,7 +78,8 @@
         "read-only get_migration(deployer) -> null (no record yet, as expected)",
         "re-initialize attempt on the campaign -> Contract error #2 AlreadyInitialized proves on-chain state persisted"
       ],
-      "build": "stellar 25.2.0 GitHub-release binary, cargo release wasm32v1-none via 'stellar contract build', source gate2/soroban/gate_claim"
+      "build": "stellar 25.2.0 GitHub-release binary, cargo release wasm32v1-none via 'stellar contract build', source gate2/soroban/gate_claim at aecfda9 (pre-hardening)",
+      "status_note": "live and initialized, but built from the pre-hardening source; the sibling hardened build gate_claim_testnet (CDQ3PA5L...) is the current canonical gate_claim. Receipt kept per the never-delete rule."
     },
     "gate_campaign_example_testnet": {
       "id": "CDDQLXIIR3LZ6NT2EFYX2FAZGKPEQPTKHZUC5NLK4BRZYE2JSYDOARCF",
@@ -73,7 +98,8 @@
       "verification_probes": [
         "claim_tier diagnostics show the cross-contract chain campaign -> gate_claim.get_migration executing on testnet"
       ],
-      "build": "stellar 25.2.0 GitHub-release binary, cargo release wasm32v1-none via 'stellar contract build', source gate2/soroban/gate_campaign_example"
+      "build": "stellar 25.2.0 GitHub-release binary, cargo release wasm32v1-none via 'stellar contract build', source gate2/soroban/gate_campaign_example",
+      "status_note": "the only campaign deployment on testnet; wired to the pre-hardening gate_claim CBKSNJ... above"
     },
     "testnet_deployer": {
       "alias": "gate2-deployer",
@@ -193,8 +219,19 @@
     "F3 (tooling): soroban-sdk 28 gates Address<->bytes32 introspection behind the hazmat-address feature; gate_claim enables it for the single purpose of comparing CCTP wire addresses, and says so at the top of the file instead of hiding it.",
     "F3 (tooling): the sandbox killed stellar-xdr's compile at -j default (SIGKILL, OOM); the workspace suite now runs at -j 2 with debug info off. Recorded so the next rebuild does not rediscover it as a mystery failure.",
     "F3 (tooling): persistent TTL is only readable from inside a contract context in tests (env.as_contract); the bump test measures through it rather than pretending the host storage is public.",
+    {
+      "id": "s19",
+      "text": "CLI trap recorded: `stellar contract deploy ... -- initialize ...` on v28 silently SKIPS constructor args unless the wasm defines __constructor - the deploy \"succeeded\" with an UNINITIALIZED contract (proven by claim returning #2 NotInitialized); the fix is a separate real init transaction, and the double-call refusal (#1 AlreadyInitialized) is now the receipt that the window closed exactly once",
+      "at": "2026-09-20T03:39:21Z"
+    },
+    {
+      "id": "s20",
+      "text": "hardening applied to the sibling-authored gate_claim (build-upon, no redesign): all byte-slice unwraps became bounds-checked Result helpers (5.1), addr32 expect -> AddrForm error, Seq increment checked (5.3), summary totals checked_add, bump unwrap_or; its unit tests MOVED from src/ to tests/ so the CI grep exempts the convention dir while src carries zero panic forms - the exemption is one --exclude-dir flag and one added --tests flag, both visible in the workflow diff",
+      "at": "2026-09-20T03:39:21Z"
+    },
     "F3-deploy: npm's @stellar/stellar-cli installs but npx finds no runnable 'stellar' executable, and plain cargo wasm builds fail the soroban-sdk check demanding stellar-cli v25.2.0+; fix = GitHub release binary stellar-cli-25.2.0-x86_64-unknown-linux-gnu.tar.gz + 'stellar contract build'.",
-    "F3-deploy: stellar contract invoke parses Vec args only as JSON arrays ('--allowed 0' rejected, '--allowed \"[0]\"' works); a failed CLI parse sends no tx, so the rejected first initialize attempt had zero on-chain effect."
+    "F3-deploy: stellar contract invoke parses Vec args only as JSON arrays ('--allowed 0' rejected, '--allowed \"[0]\"' works); a failed CLI parse sends no tx, so the rejected first initialize attempt had zero on-chain effect.",
+    "F3-deploy merge: two live gate_claim deployments coexist on testnet (sibling hardened CDQ3PA5L... = canonical; pre-hardening CBKSNJ... = kept receipt, the campaign is wired to it); nothing deleted, both recorded."
   ],
   "superseded": [
     {
@@ -265,15 +302,17 @@
     },
     {
       "id": "F3-deploy",
-      "status": "complete - both contracts live and initialized on Stellar testnet with Horizon-verified receipts",
+      "status": "complete - gate_claim (two lanes) and the campaign live+initialized on Stellar testnet, all receipts Horizon-verified",
       "done": [
-        "gate_claim.wasm (14273 B) uploaded tx 58a61d72... / created tx c17b20a8... (ledger 4770419) / initialized tx af88a0b2... (ledger 4770426) with Circle testnet MT, native USDC, Sepolia burn-token 0x1c7d4b...7238, empty allowlist",
-        "gate_campaign_example.wasm (2868 B) uploaded tx 04b6d22a... / created tx 8dd80c5a... (ledger 4770423) / initialized tx e6a50507... (ledger 4770430) pointing at the live gate_claim id",
-        "all 7 tx hashes + ledgers read back from Horizon for deployer GDML46...53V5U; contract ids CBKSNJ...IGPC (gate_claim) and CDDQLX...OARCF (campaign)"
+        "pre-hardening lane: gate_claim.wasm (14273 B) uploaded 58a61d72 / created c17b20a8 (ledger 4770419) / initialized af88a0b2 (ledger 4770426) with Circle testnet MT CDNG7HXA..., native USDC, Sepolia burn-token 0x1c7d4b...7238, empty allowlist -> CBKSNJ...IGPC",
+        "campaign: gate_campaign_example.wasm (2868 B) uploaded 04b6d22a / created 8dd80c5a (ledger 4770423) / initialized e6a50507 (ledger 4770430), gate wired to CBKSNJ... -> CDDQLX...OARCF",
+        "hardened lane (sibling, merged in this commit): gate_claim CDQ3PA5L... deployed aa421501 (ledger 4770371) / initialized 21c53dfe (ledger 4770385) with on-chain negative probes Error(#3)/Error(#1)",
+        "all tx hashes read back from Horizon for deployer GDML46...53V5U (pre-hardening lane) and recorded fees/ledgers for both"
       ],
       "evidence": [
-        "Horizon /accounts/<deployer>/transactions?order=asc returned every hash above with successful=true",
-        "read-only probes: get_migration -> null; campaign re-initialize -> AlreadyInitialized; claim_tier diagnostics show the cross-contract get_migration call"
+        "Horizon /accounts/<deployer>/transactions?order=asc returned every pre-hardening hash with successful=true",
+        "read-only probes: get_migration -> null; campaign re-initialize -> AlreadyInitialized; claim_tier diagnostics show the cross-contract get_migration call",
+        "sibling on-chain negatives recorded in contracts.gate_claim_testnet.onchain_negatives"
       ],
       "not_claimed": "no end-to-end claim receipt yet: that needs a real Sepolia burn + Iris attestation (F2, still gated on Sepolia funds per the stop-report)"
     }
