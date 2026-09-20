@@ -36,6 +36,24 @@ sunucusuna proxy'ler, yani yerel deneyim production'ın birebir aynısıdır.
 Böylece gerçekte test edilebilir olan her şey **o uygulamadan** test
 edilebilir: neyin canlı neyin bloke olduğu aşağıda dürüstçe listelenmiştir.
 
+## Banka havalesi girişi — Stello (Seyit Ali Değirmen’in kiti)
+
+TRY banka havalesinin Soroban `on_deposit` çağrısına dönüşmesi **Stello** ile
+yapılır. Kullandığımız kit Seyit Ali Değirmen’indir. Stellar elçisi Ezgin
+Akyürek bu entegrasyonu incelemiş; tavsiye edenlerle birlikte düzeltilmiştir.
+[`stello-sdk`](https://www.npmjs.com/package/stello-sdk), kaynak
+[`sayweer/stello`](https://github.com/sayweer/stello), belgeler
+[stello-web-rho.vercel.app/en](https://stello-web-rho.vercel.app/en).
+
+Konsol **`/stello/`** altındadır. Stello’nun paylaşılan testnet router’ına ve
+yayımlanmış piggy-bank örneğine (route 2) konuşur. Lumen Gate henüz kendi
+route’unu kaydetmedi; `stello/contracts/deposit_target` uygulama tarafı
+kontratıdır ve zincirde değildir.
+
+Dürüst sınırlar, Stello’nun kendi belgelerinden: yalnızca Stellar **testnet**;
+**sahte** Türk anchor’ı (havale ve KYC simüle); **relay güvenilen bir taraftır**.
+Bu bir Gate 1.0 uzlaşma iddiası değildir.
+
 ---
 
 ## BÖLÜM I — Gate 1.0: Tarafsız finalite katmanı (donduruldu)
@@ -332,13 +350,21 @@ cd frontend && npm run dev                 # http://localhost:5173
 cd gate2/web && npm install && npm run dev # http://localhost:5174/gate2/
                                            # (proxy ile: 5173/gate2/)
 
+# Stello (Seyit Ali Değirmen’in kiti)
+cd stello/web && npm install && npm run dev # http://localhost:5175/stello/
+
 # Kanıt harness'ları
 node tools/check-live-page.js              # 1.0: 31 kontrol
 node gate2/scripts/check-gate2-web.mjs     # 2.0: 16 kontrol, canlı zincir
 cargo test --workspace --lib               # regresyon kapısı
 ```
 
+## Krediler
+
+- **Seyit Ali Değirmen** — Stello kiti (`stello-sdk`, [`sayweer/stello`](https://github.com/sayweer/stello), MIT). Banka havalesi → kontrat yolu bu kiti kullanır. Router’ı, SDK’yı ve sahte anchor’ı biz yazmadık.
+- **Ezgin Akyürek**, Stellar elçisi — bu entegrasyonu incelemiştir. Tavsiye edenlerle birlikte düzeltilmiştir.
+
 ## Lisans
 
 Depo kodu, bir dosya aksi söylemedikçe MIT'dir. İçe aktarılan devre
-artefaktları kendi lisanslarını korur.
+artefaktları kendi lisanslarını korur. Stello kendi MIT lisansı altındadır.

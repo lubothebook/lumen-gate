@@ -1,8 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
-  "installCommand": "npm install && cd frontend && npm install && cd ../gate2/web && npm install",
-  "buildCommand": "cd frontend && npm run build && cd ../gate2/web && npm run build -- --base=/gate2/ && mkdir -p ../../frontend/dist/gate2 && cp -r dist/. ../../frontend/dist/gate2/",
+  "installCommand": "npm install && cd frontend && npm install && cd ../gate2/web && npm install && cd ../../stello/web && npm install",
+  "buildCommand": "cd frontend && npm run build && cd ../gate2/web && npm run build -- --base=/gate2/ && mkdir -p ../../frontend/dist/gate2 && cp -r dist/. ../../frontend/dist/gate2/ && cd ../../stello/web && npm run build -- --base=/stello/ && mkdir -p ../../frontend/dist/stello && cp -r dist/. ../../frontend/dist/stello/",
   "outputDirectory": "frontend/dist",
   "functions": {
     "api/*.js": {
@@ -17,7 +17,7 @@
       "destination": "/api/:path*"
     },
     {
-      "source": "/((?!api/|gate2/).*)",
+      "source": "/((?!api/|gate2/|stello/).*)",
       "destination": "/index.html"
     }
   ],

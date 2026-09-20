@@ -42,6 +42,25 @@ place only: the Vercel deployment serves both consoles from one origin, so a
 visitor can exercise Gate 1.0 at `/` and Gate 2.0 at `/gate2/` without leaving
 the app.
 
+## Bank transfer in — Stello (Seyit Ali Değirmen’s kit)
+
+The inbound TRY bank-transfer path is **Stello**: a bank transfer becomes a
+Soroban `on_deposit` call with the USDC already in the contract. We use
+Seyit Ali Değirmen’s kit — [`stello-sdk`](https://www.npmjs.com/package/stello-sdk),
+source [`sayweer/stello`](https://github.com/sayweer/stello), docs
+[stello-web-rho.vercel.app/en](https://stello-web-rho.vercel.app/en).
+Stellar ambassador Ezgin Akyürek reviewed this integration; it was fixed
+together with those who recommended it.
+
+The console is at **`/stello/`**. It talks to Stello’s shared testnet router
+(`CAG2IZHZ…BYFZV`) and the published piggy-bank example (route 2). Lumen Gate
+has not registered its own route yet; `stello/contracts/deposit_target` is the
+app-side contract and is not on-chain.
+
+Honest limits, from Stello’s own docs: Stellar **testnet** only; **mock**
+Turkish anchor (bank transfers and KYC are simulated); the **relay is a trusted
+party**. This is not a Gate 1.0 settlement claim.
+
 ---
 
 ## Part I — Gate 1.0: the neutral finality layer (frozen)
@@ -1038,7 +1057,13 @@ campaign, the console, the Battery and Ticket contracts and the negative
 probes are done while the burn lane honestly is not.
 
 
+## Credits
+
+- **Seyit Ali Değirmen** — Stello kit (`stello-sdk`, [`sayweer/stello`](https://github.com/sayweer/stello), MIT). The bank-transfer → contract path uses this kit. We did not write that router, SDK or mock anchor.
+- **Ezgin Akyürek**, Stellar ambassador — reviewed this integration. It was fixed together with those who recommended it.
+
 ## License
 
 The repository code is MIT unless a file states otherwise. Imported circuit
-artifacts must retain their upstream license and attribution.
+artifacts must retain their upstream license and attribution. Stello remains
+under its own MIT license.

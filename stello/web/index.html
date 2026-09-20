@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lumen Gate — bank transfer in (Stello)</title>
+  <link rel="stylesheet" href="./src/style.css" />
+</head>
+<body>
+  <header class="top">
+    <a class="word" href="/">Lumen Gate</a>
+    <nav>
+      <a href="/">1.0</a>
+      <a href="/gate2/">2.0</a>
+      <a href="/stello/" aria-current="true">Stello</a>
+    </nav>
+  </header>
+
+  <main>
+    <p class="eyebrow">TESTNET · mock Turkish anchor · not a production on-ramp</p>
+    <h1>One bank transfer. One contract call.</h1>
+    <p class="lead">
+      This console uses <strong>Stello</strong> — Seyit Ali Değirmen’s kit
+      (<a href="https://github.com/sayweer/stello">sayweer/stello</a>,
+      <a href="https://stello-web-rho.vercel.app/en">docs</a>) —
+      so a TRY bank transfer can call a Soroban contract with the USDC already there.
+      Stellar ambassador Ezgin Akyürek reviewed this integration; it was fixed
+      together with those who recommended it.
+      Bank transfers and KYC are <em>simulated</em>. The relay is a trusted party.
+      This is not a Lumen Gate 1.0 settlement claim.
+    </p>
+
+    <section class="card">
+      <h2>Account</h2>
+      <p class="note" id="keyNote">A Stellar key is created in this browser and kept in localStorage. Clearing site data loses it. This is not Freighter.</p>
+      <p class="mono" id="pubKey">—</p>
+      <button type="button" id="newKeyBtn">Replace with a new key</button>
+    </section>
+
+    <section class="card">
+      <h2>Deposit by bank transfer</h2>
+      <label>
+        Amount in TRY
+        <input id="amountTry" type="text" inputmode="decimal" value="100" />
+      </label>
+      <p class="note">Route 2 is Stello’s published piggy-bank example on testnet, not a Lumen Gate contract. <code>arg[0] = 1</code> credits the piggy; <code>0</code> refuses and refunds.</p>
+      <div class="row">
+        <button type="button" class="primary" id="requestBtn">Request deposit</button>
+        <button type="button" id="simulateBtn" disabled>Simulate bank transfer</button>
+        <button type="button" id="waitBtn" disabled>Wait for the contract</button>
+      </div>
+      <dl id="payKv" class="kv"></dl>
+    </section>
+
+    <section class="card">
+      <h2>Log</h2>
+      <pre id="log" class="log">nothing yet in this session.</pre>
+    </section>
+
+    <p class="foot">
+      Router <span class="mono">CAG2IZHZK6VLNW3ASXENFLCL6SN6KS72JMLNF4GO2ZIFV5WURN2BYFZV</span>
+      · piggy bank (route 2) <span class="mono">CDF6WDCS3M36RN6ERREM4B5ZT74RL5SU3I2TLJ2JXB5DCODMHPP266UH</span>
+      · kit by Seyit Ali Değirmen · reviewed by Stellar ambassador Ezgin Akyürek · MIT
+    </p>
+  </main>
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>

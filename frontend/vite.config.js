@@ -58,6 +58,11 @@ const sourceProxy = {
     changeOrigin: true,
     ws: false,
   },
+  '/stello': {
+    target: process.env.VITE_STELLO_ORIGIN || 'http://127.0.0.1:5175',
+    changeOrigin: true,
+    ws: false,
+  },
 };
 
 export default defineConfig({
