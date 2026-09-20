@@ -892,6 +892,14 @@
               <a class="link-btn" id="walletLink" href="https://stellar.expert/explorer/testnet" target="_blank" rel="noreferrer" hidden>Open in explorer</a>
             </div>
             <p class="note" id="walletNote" style="margin-top:14px; font-size:0.8125rem">A wallet is optional here: receiving needs none. Connect one to read your own balances and to burn.</p>
+            <!-- Declared here, hidden until it is true. A browser extension is
+                 never injected into an iframe, so inside an embedded preview
+                 the only way to connect is to open this console top-level;
+                 app.js unhides this when it detects that case. It lives in the
+                 markup rather than being created on the fly so every id the
+                 code looks up is one a reader can find in the page. -->
+            <a id="walletTabLink" href="#" target="_blank" rel="noopener noreferrer" hidden
+               style="display:none; margin-top:8px; color:inherit; text-decoration:underline; font-size:0.8125rem">Open this console in a new tab</a>
           </div>
 
           <div class="card">
