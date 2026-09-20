@@ -50,11 +50,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: foundry toolchain (foundryup is pinned in gate2/evm/TOOLCHAIN.md)
-        run: curl -L https://foundry.paradigm.xyz | bash && ~/.foundry/bin/foundryup
+        # both install dirs: new foundryup writes to $HOME/.config/.foundry/bin (XDG),
+        # old ones to $HOME/.foundry/bin - the first CI red was exactly this assumption
+        run: |
+          curl -fsSL https://foundry.paradigm.xyz | bash
+          export PATH="$HOME/.config/.foundry/bin:$HOME/.foundry/bin:$PATH"
+          foundryup
       - name: forge-std for the test layer only
         run: git clone --depth 1 https://github.com/foundry-rs/forge-std gate2/evm/lib/forge-std
       - name: BurnRouter conformance suite (HARDENING-2.0.md section 4; suite was written red-first)
-        run: cd gate2/evm && ~/.foundry/bin/forge test
+        run: |
+          export PATH="$HOME/.config/.foundry/bin:$HOME/.foundry/bin:$PATH"
+          cd gate2/evm && forge test
 
   rust-advisories:
     runs-on: ubuntu-latest
