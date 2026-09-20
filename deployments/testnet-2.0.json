@@ -237,6 +237,11 @@
       "title": "campaign claim_tier returned `earned` while storage kept the recorded (higher) tier; unreachable while migration totals only grow, but the fix grants and announces ONE value so the 'never drops' doc is true by construction, not by assumption",
       "status": "fixed with the boundary suite (tests/campaign.rs) proving inclusive-at-exact on all three tiers: 10_000_000->Bronze, 99_999_999->Bronze, 100_000_000->Silver, 999_999_999->Silver, 1_000_000_000->Gold, 9_999_999->BelowBronze-err"
     },
+    {
+      "id": "s22",
+      "title": "directive-version divergence: repo carried an F0-F8 'Proof of Migration' stub; the operator's canonical F0-F11 'Pasaport + Batarya + Bilet' text (2026-09-20) restores gate_battery, gate_ticket, the v1 hook payload, swap/minOut in F4 and the soulbound-NFT half of F3",
+      "status": "DIRECTIVE.md replaced with the transliterated canonical text (ASCII: sigma/arrow/times transliterated too); h_gates F3 CLOSED->QUALIFIED, F4 rescoped, F5-F7 opened; nothing deleted - every earlier evidence tx remains valid for what it covered"
+    },
     "F6: @stellar/stellar-sdk v12 exports no addressToScVal; nativeToScVal(addr.toScAddress(), {type:'address'}) double-wraps and RPC rejects it ('cannot interpret value as ScVal'). Correct: new Address(g).toScVal().",
     "F6 harness: puppeteer real-mouse clicks get swallowed when auto-scroll puts a button under the position:sticky header (hit-test lies because it runs pre-scroll); drive handlers with element.click() via page.$eval instead.",
     "F6-vercel: vercel.json and frontend/index.html are Gate 1.0 frozen territory under DIRECTIVE 2.0; the operator explicitly ordered the Vercel app to cover both gates ('vercel app de de tum front end dizayni bu ikisine uygun olsun'), which lifts the freeze for exactly these touches: build pipeline, SPA rewrite exclusion, header link, 2.0 track-box text. Nothing else in 1.0 was edited; check-live-page still green (31 controls).",

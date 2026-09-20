@@ -108,23 +108,11 @@
       "gate": "reentrancy/deadline/balance-delta tests",
       "status": "F4-BurnRouter: conformance suite 23/23 local+CI, slither triaged with evidence, NOT deployed yet (deployment belongs after the F2 lane); F2: acceptance = funded manual burn, still awaiting operator funds - the only missing input"
     },
-    "F3": "CLOSED: gate_claim deployed live (id CDQ3PA5L..., init tx 21c53dfe..., on-chain negatives as error codes #3/#1 - see testnet manifest s19); src panic-form grep green with tests/ exempt zone (s20); suites gate_claim 7/7 + campaign 3/3 including the required tier-boundary matrix (BRONZE/SILVER/GOLD at exact and exact-minus-one, fresh world per probe) + a claim_tier grant/announce consistency fix; CI 7/7 on the same commit lineage",
-    "F4": {
-      "gate": "slither/mythril/token-class fuzz",
-      "status": "F4-BurnRouter: conformance suite 23/23 local+CI, slither triaged with evidence, NOT deployed yet (deployment belongs after the F2 lane); F2: acceptance = funded manual burn, still awaiting operator funds - the only missing input"
-    },
-    "F5": {
-      "gate": "threshold boundary tests",
-      "status": "not-started (campaign crate is a skeleton)"
-    },
-    "F6": {
-      "gate": "npm audit/CSP/SRI/attestation-wait UI",
-      "status": "not-started (no web app yet); the gate2/scripts/package-lock.json that DOES exist is pinned exact majors with a lockfile committed"
-    },
-    "F7": {
-      "gate": "mutation score in manifest",
-      "status": "not-started; cargo-mutants not installed - same environment note as F4"
-    },
+    "F3": "QUALIFIED (was CLOSED): query-surface half stands (live deploy CDQ3PA5L..., init tx 21c53dfe..., negatives #3/#1, tier-boundary matrix, CI 7/7 on eec2a76); the operator's canonical directive adds soulbound-NFT + chain-generated token_uri to F3 acceptance - NOT implemented (passport is a storage record, no NFT mint). Remaining: S5 spike (OZ non-fungible Base+overrides), then the NFT half.",
+    "F4": "IN PROGRESS, rescoped by canonical directive: BurnRouter 23/23 (zero-balance, donation-proof, errors, dispatch-level adminless) covers the implemented subset; sec5.1 additionally requires swap+minOut, version-1 hook payload (flags|relay_fee_cap|battery_amount|recipient|name), mod field, gas-share protection. Hook today is plain 88B strkey (Circle-native v0). v1 payload is ADDITIVE at GateClaim: recipient stays at offset 32, deployed contract keeps parsing v1 without redeploy.",
+    "F5": "OPEN - gate_battery not written (canonical directive restored it; deposit/withdraw/forward + FeeForwarder semantics; S8/S9 spikes first)",
+    "F6": "OPEN - gate_ticket not written (S11/S12 spikes first; redeem/battery invariants per sec5.4)",
+    "F7": "OPEN - web decision-flow sec5.5 unbuilt; the F1 two-page dual-verification + README sec7 note already satisfy the docs half",
     "F8": {
       "gate": "proof-lint required mode + anomaly watch in self-audit",
       "status": "not-started; proof-lint exists and runs in warning stance now"
