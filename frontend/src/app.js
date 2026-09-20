@@ -761,13 +761,79 @@ async function requestWalletAddress(freighter) {
 // reader who is holding the wallet inside a preview frame would blame them
 // for the frame. The note names the frame instead, and a watcher catches the
 // extension when it injects after the page has booted.
-function freighterProvider() {
-  if (window.freighterApi) return window.freighterApi;
-  if (window.freighter) return window.freighter;
-  if (window.stellar && (window.stellar.freighter || window.stellar.Freighter)) {
-    return window.stellar.freighter || window.stellar.Freighter;
+// The npm module is the second door, and for recent Freighter builds it is the
+// only one. Those versions stopped putting anything on `window`; they speak
+// over postMessage to the content script instead. 1.0 only ever looked at
+// `window`, so a reader with a perfectly good wallet installed was told it was
+// "not installed" and had nothing to click. 2.0 already learned this - the
+// same shape is applied here.
+//
+// The module is loaded lazily so a browser with no wallet at all pays nothing
+// for it, and so a failure to load degrades to "no wallet" instead of breaking
+// the page.
+let officialApi = null;
+let officialLoad = null;
+async function loadOfficialFreighter() {
+  if (officialApi) return officialApi;
+  if (!officialLoad) {
+    officialLoad = import('@stellar/freighter-api')
+      .then((m) => {
+        officialApi = {
+          isConnected: m.isConnected,
+          requestAccess: m.requestAccess,
+          getAddress: m.getAddress,
+          getNetwork: m.getNetwork,
+          signTransaction: m.signTransaction,
+          setAllowed: m.setAllowed,
+          __official: true,
+        };
+        return officialApi;
+      })
+      .catch(() => null);
+  }
+  return officialLoad;
+}
+
+function injectedFreighter() {
+  const injected =
+    window.freighterApi ||
+    window.freighter ||
+    (window.stellar && (window.stellar.freighter || window.stellar.Freighter)) ||
+    null;
+  // A registry entry that cannot be asked for access is not a usable door.
+  if (injected && (typeof injected.requestAccess === 'function' || typeof injected.getPublicKey === 'function')) {
+    return injected;
   }
   return null;
+}
+
+function freighterProvider() {
+  return injectedFreighter() || officialApi;
+}
+
+/**
+ * Is Freighter actually reachable?
+ *
+ * Injected wins immediately. Otherwise ask the npm module: importing it always
+ * succeeds, so the module's presence proves nothing - only isConnected() does,
+ * and it is raced against a timeout because without a content script on the
+ * other end it never settles.
+ */
+async function detectFreighter() {
+  const injected = injectedFreighter();
+  if (injected) return { available: true, api: injected, via: 'injected' };
+  const api = await loadOfficialFreighter();
+  if (!api) return { available: false, api: null, via: 'none' };
+  try {
+    const status = await Promise.race([
+      api.isConnected(),
+      new Promise((resolve) => setTimeout(() => resolve({ isConnected: false, timedOut: true }), 2500)),
+    ]);
+    const ok = Boolean(status && (status.isConnected === true || status === true));
+    return { available: ok, api: ok ? api : null, via: ok ? 'official' : 'none' };
+  } catch {
+    return { available: false, api: null, via: 'none' };
+  }
 }
 function embeddedFrame() {
   try { return window.top !== window.self; } catch (error) { return true; }
@@ -800,7 +866,11 @@ function watchForFreighter() {
 }
 
 async function connectWallet() {
-  const freighter = freighterProvider();
+  // Ask both doors before giving up: injected first, then the npm module.
+  // Deciding on `window` alone is what made a wallet that only speaks over
+  // postMessage look absent.
+  const found = await detectFreighter();
+  const freighter = found.api;
   if (!freighter) {
     $('walletNote').textContent = walletAbsenceNote();
     log(walletAbsenceNote(), 'warn');
@@ -823,7 +893,7 @@ async function connectWallet() {
     $('walletChip').textContent = short(address, 6);
     $('connectBtn').textContent = 'Reconnect';
     $('walletKind').textContent = 'connected · Freighter · Stellar testnet';
-    log(`Wallet connected via ${via}: ${address}`, 'ok');
+    log(`Wallet connected via ${found.via}/${via}: ${address}`, 'ok');
     // An advisory network check: a wallet pointed at Mainnet can still be
     // read here, but every signature it makes would be for the wrong
     // passphrase, and the failure would only surface much later.
@@ -882,6 +952,22 @@ async function refreshWallet() {
         ? 'This is the deployment manifest\'s demo account, read straight from Horizon. It is read-only: connecting your own wallet is still the only way to sign a burn.'
         : 'This Freighter account is not on Stellar testnet yet. Fund it with Friendbot, then refresh.';
       log('This account is not on Stellar testnet yet.', 'warn');
+      return;
+    }
+    // Horizon answers 404 for a valid-but-unfunded account, which is handled
+    // above. Everything else it refuses - a malformed key is a 400, an
+    // overloaded instance a 429 or 504 - comes back as a problem document with
+    // no `balances` at all. Reading .find() off that threw
+    // "Cannot read properties of undefined", so a connected wallet reported a
+    // TypeError instead of what Horizon actually said.
+    if (!accountRes.ok || !Array.isArray(account.balances)) {
+      const reason = account.detail || account.title || `Horizon answered ${accountRes.status}`;
+      const body = $('walletKv');
+      body.textContent = '';
+      body.append(el('tr', {}, [el('td', { text: 'Account' }), el('td', { class: 'warn', text: 'balances unavailable' })]));
+      paintWalletKind();
+      $('walletNote').textContent = `Connected as ${short(state.wallet, 6)}, but Horizon would not return balances: ${reason}`;
+      log(`Horizon refused the balance read: ${reason}`, 'warn');
       return;
     }
     const native = account.balances.find((b) => b.asset_type === 'native');
