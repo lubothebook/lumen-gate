@@ -4,7 +4,7 @@
 mod test {
     use gate_battery::*;
     use soroban_sdk::testutils::Address as _;
-    use soroban_sdk::{contract, contractimpl, vec, Address, Env, Symbol, Val};
+    use soroban_sdk::{contract, contractimpl, vec, Address, Env, Symbol};
 
     const D7: i128 = 1_000_000; // 1 USDC at 7 decimals
 

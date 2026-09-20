@@ -11,9 +11,8 @@ mod test {
     use gate_battery::GateBatteryClient;
     use soroban_sdk::testutils::{Address as _, MockAuth, MockAuthInvoke};
     use soroban_sdk::IntoVal as _;
-    use soroban_sdk::auth::{ContractContext, InvokerContractAuthEntry, SubContractInvocation};
     use soroban_sdk::{
-        contract, contractimpl, token, vec, Address, BytesN, Env, String, Symbol, Vec,
+        contract, contractimpl, token, vec, Address, BytesN, Env, String, Vec,
     };
 
     const D7: i128 = 1_000_000; // 1 USDC at 7 decimals
