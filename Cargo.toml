@@ -1,16 +1,17 @@
 [workspace]
 members = [
     "crates/gate_vm",
-  "gate2/soroban/gate_claim",
-  "gate2/soroban/gate_campaign_example",
-  "contracts/finality_registry",
-  "contracts/settlement_gateway",
-  "crates/source_simulator",
-  "crates/relayer",
-  "crates/domain_adapter",
-  "crates/execution_vm",
-  "gate2/soroban/gate_claim",
-  "gate2/soroban/gate_campaign_example",
+    "contracts/finality_registry",
+    "contracts/settlement_gateway",
+    "crates/source_simulator",
+    "crates/relayer",
+    "crates/domain_adapter",
+    "crates/execution_vm",
+    "gate2/soroban/gate_claim",
+    "gate2/soroban/gate_battery",
+    "gate2/soroban/gate_ticket",
+    "gate2/soroban/gate_campaign_example",
+    "gate2/soroban/test_mt",
 ]
 resolver = "2"
 

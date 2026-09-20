@@ -1,80 +1,73 @@
 // Tests for the campaign demo contract, living outside src/ so the production
 // file is panic-form-free for the CI grep (HARDENING-2.0.md 5.1 pattern, same
-// trade made for gate_claim; tests/ is the exempt zone and the mock traps
-// keep their natural panic form here).
+// trade made for gate_claim; tests/ is the exempt zone).
+//
+// The demo is tested against the REAL GateClaim v2 (Design G, CCTP V2 wire
+// format, 3-argument MessageTransmitter), not a double: the point is that an
+// independent consumer contract interoperates through the fixed query
+// surface. The CCTP leg is doubled by test_mt, which mirrors the deployed
+// MessageTransmitter's observable behavior; live receipts belong to the
+// manifest, not here.
 #![cfg(test)]
 #[cfg(test)]
 mod test {
     use gate_campaign_example::*;
-    use soroban_sdk::{
-        address_payload::AddressPayload, contract, contractimpl,
-        testutils::{Address as _, Ledger as _}, Address,
-    };
-    use soroban_sdk::testutils::Address as _;
-    use soroban_sdk::{Bytes, BytesN, Env};
-
-    // The demo is tested against the real GateClaim, not a double: the point
-    // of F5 is that two independent contracts interoperate through the fixed
-    // query surface. The CCTP leg under GateClaim is doubled as in its own
-    // suite; testnet receipts belong to F5's manifest entry, not here.
     use gate_claim::{GateClaim, GateClaimClient};
+    use gate_ticket::GateTicketClient;
+    use soroban_sdk::testutils::Address as _;
+    use soroban_sdk::{address_payload::AddressPayload, vec, Address, Bytes, BytesN, Env};
+    use test_mt::TestMt;
 
-    #[contract]
-    pub struct MockMt;
+    const BURN_TOKEN: [u8; 32] = [0xab; 32];
+    const FAKE_ROUTER: [u8; 32] = [0x77; 32];
+    const ATT65: [u8; 65] = [0x11; 65];
 
-    #[contractimpl]
-    impl MockMt {
-        pub fn setup(env: Env, token: Address) {
-            env.storage().instance().set(&soroban_sdk::symbol_short!("token"), &token);
-        }
-        pub fn receive_message(env: Env, message: Bytes, attestation: Bytes) -> bool {
-            assert!(attestation.get(0).unwrap() == 0xA7);
-            let body = message.slice(116u32..);
-            let mut raw = [0u8; 32];
-            for i in 0..32 {
-                raw[i] = body.get((36 + i) as u32).unwrap();
-            }
-            let recipient = soroban_sdk::address_payload::AddressPayload::ContractIdHash(BytesN::from_array(&env, &raw)).to_address(&env);
-            let mut amount_6: u64 = 0;
-            for i in 92u32..100 {
-                amount_6 = (amount_6 << 8) | u64::from(body.get(i).unwrap());
-            }
-            let token: Address = env.storage().instance().get(&soroban_sdk::symbol_short!("token")).unwrap();
-            soroban_sdk::token::StellarAssetClient::new(&env, &token).mint(&recipient, &(amount_6 as i128 * 10));
-            true
-        }
-    }
-
-    fn field32(env: &Env, a: &Address) -> BytesN<32> {
-        use soroban_sdk::address_payload::AddressPayload;
+    fn field32(a: &Address) -> BytesN<32> {
         match AddressPayload::from_address(a).expect("no 32 byte form") {
             AddressPayload::ContractIdHash(id) => id,
             AddressPayload::AccountIdPublicKeyEd25519(id) => id,
         }
     }
 
-    fn message(env: &Env, caller: &BytesN<32>, amount_6: u64, hook: &Address, nonce: u64) -> Bytes {
-        let burn_token = BytesN::from_array(env, &[7u8; 32]);
-        let mut m = Bytes::new(env);
-        m.extend_from_slice(&1u32.to_be_bytes());
-        m.extend_from_slice(&0u32.to_be_bytes());
-        m.extend_from_slice(&27u32.to_be_bytes());
-        m.extend_from_slice(&nonce.to_be_bytes());
-        m.extend_from_slice(&[9u8; 32]);
-        m.extend_from_slice(&caller.to_array());
-        m.extend_from_slice(&caller.to_array());
-        m.extend_from_slice(&1u32.to_be_bytes());
-        m.extend_from_slice(&burn_token.to_array());
-        m.extend_from_slice(&caller.to_array());
-        m.extend_from_slice(&[0u8; 24]);
-        m.extend_from_slice(&amount_6.to_be_bytes());
-        m.extend_from_slice(&[8u8; 32]);
-        m.extend_from_slice(&[0u8; 24]);
-        m.extend_from_slice(&0u32.to_be_bytes());
-        let sb = hook.to_string().to_bytes();
-        m.extend_from_slice(&(sb.len() as u32).to_be_bytes());
-        m.append(&sb);
-        m
+    /// CCTP V2 message (Circle's documented format) with a v1 hook whose
+    /// recipient is `hook`.
+    fn message(env: &Env, claim32: &BytesN<32>, amount_6: u64, hook: &Address, nonce: u64) -> Bytes {
+        let mut out: std::vec::Vec<u8> = std::vec![];
+        out.extend_from_slice(&1u32.to_be_bytes()); // header version
+        out.extend_from_slice(&0u32.to_be_bytes()); // sourceDomain (Sepolia)
+        out.extend_from_slice(&27u32.to_be_bytes());
+        let mut n = [0u8; 32];
+        n[..8].copy_from_slice(&nonce.to_be_bytes());
+        out.extend_from_slice(&n);
+        out.extend_from_slice(&[0xee; 32]); // sender
+        out.extend_from_slice(&claim32.to_array()); // recipient
+        out.extend_from_slice(&claim32.to_array()); // destinationCaller
+        out.extend_from_slice(&0u32.to_be_bytes()); // minFinalityThreshold
+        out.extend_from_slice(&0u32.to_be_bytes()); // finalityThresholdExecuted
+        out.extend_from_slice(&1u32.to_be_bytes()); // body version
+        out.extend_from_slice(&BURN_TOKEN);
+        out.extend_from_slice(&claim32.to_array()); // mintRecipient
+        let mut amt = [0u8; 32];
+        amt[24..].copy_from_slice(&amount_6.to_be_bytes());
+        out.extend_from_slice(&amt);
+        out.extend_from_slice(&FAKE_ROUTER); // messageSender
+        out.extend_from_slice(&[0u8; 32]); // maxFee
+        out.extend_from_slice(&[0u8; 32]); // feeExecuted
+        out.extend_from_slice(&[0u8; 32]); // expirationBlock
+        // hook v1
+        let skey = hook.to_string().to_string();
+        for _ in 0..24 {
+            out.push(0);
+        }
+        out.extend_from_slice(&1u32.to_be_bytes());
+        let payload_len: u32 = 1 + 16 + 16 + 1 + skey.len() as u32;
+        out.extend_from_slice(&payload_len.to_be_bytes());
+        out.push(0u8); // flags
+        out.extend_from_slice(&1_000u128.to_be_bytes()); // relay_fee_cap
+        out.extend_from_slice(&0u128.to_be_bytes()); // battery_amount
+        out.push(skey.len() as u8);
+        out.extend_from_slice(skey.as_bytes());
+        Bytes::from_slice(env, &out)
     }
 
     struct World {
@@ -86,14 +79,26 @@ mod test {
 
     fn world() -> World {
         let env = Env::default();
-        let mt = env.register(MockMt, ());
+        let mt = env.register(TestMt, ());
         let token = env.register_stellar_asset_contract_v2(mt.clone()).address();
-        MockMtClient::new(&env, &mt).setup(&token);
+        test_mt::TestMtClient::new(&env, &mt).initialize(&token);
+        let battery = env.register(gate_battery::GateBattery, ());
+        gate_battery::GateBatteryClient::new(&env, &battery).initialize(&token);
+        let ticket = env.register(gate_ticket::GateTicket, ());
+        GateTicketClient::new(&env, &ticket).initialize(&token, &battery);
         let gate = env.register(GateClaim, ());
-        let burn_token = BytesN::from_array(&env, &[7u8; 32]);
-        let mut allowed = soroban_sdk::Vec::new(&env);
-        allowed.push_back(0u32);
-        GateClaimClient::new(&env, &gate).initialize(&mt, &token, &burn_token, &allowed);
+        let burn_router = BytesN::from_array(&env, &FAKE_ROUTER);
+        let allowed = vec![&env, 0u32];
+        GateClaimClient::new(&env, &gate).initialize(
+            &mt,
+            &token,
+            &BytesN::from_array(&env, &BURN_TOKEN),
+            &burn_router,
+            &battery,
+            &ticket,
+            &allowed,
+        );
+        GateTicketClient::new(&env, &ticket).init_minter(&gate);
         let camp = env.register(Campaign, ());
         CampaignClient::new(&env, &camp).initialize(&gate);
         let owner = Address::generate(&env);
@@ -101,10 +106,11 @@ mod test {
     }
 
     fn migrate(w: &World, amount_6: u64, nonce: u64) {
-        let me = field32(&w.env, &w.gate);
+        let me = field32(&w.gate);
         let msg = message(&w.env, &me, amount_6, &w.owner, nonce);
-        let att = Bytes::from_slice(&w.env, &[0xA7; 65]);
-        GateClaimClient::new(&w.env, &w.gate).claim(&msg, &att);
+        let att = Bytes::from_slice(&w.env, &ATT65);
+        let relayer = Address::generate(&w.env);
+        GateClaimClient::new(&w.env, &w.gate).claim(&msg, &att, &relayer, &0i128);
     }
 
     #[test]
@@ -134,18 +140,18 @@ mod test {
     // F3 boundary suite (the test HARDENING-2.0.md section 5.1 makes F3 hinge
     // on): the operator named it because the implementation's >= vs > choice
     // is the whole semantics at these lines. BRONZE is 10 USDC = 10_000_000
-    // stroops; each tier is tested at exact-minus-one and exact, fresh world
-    // per probe so the gate's monotonically-increasing total cannot mask a
-    // boundary by accumulation.
+    // micro-USDC; each tier is tested at exact-minus-one and exact, fresh
+    // world per probe so the gate's monotonically-increasing total cannot
+    // mask a boundary by accumulation.
     #[test]
     fn tier_boundaries_are_inclusive_at_exact_and_exclusive_below() {
         for (amount, expect) in [
-            (9_999_999u64, None),                    // one stroop below Bronze: nothing earned
+            (9_999_999u64, None),                    // one below Bronze: nothing earned
             (10_000_000, Some(Tier::Bronze)),        // exact boundary: included
             (99_999_999, Some(Tier::Bronze)),        // one below Silver: stays Bronze
             (100_000_000, Some(Tier::Silver)),       // exact: included
             (999_999_999, Some(Tier::Silver)),       // one below Gold: stays Silver
-            (1_000_000_000, Some(Tier::Gold)),        // exact: included
+            (1_000_000_000, Some(Tier::Gold)),       // exact: included
         ] {
             let w = world();
             w.env.mock_all_auths();
