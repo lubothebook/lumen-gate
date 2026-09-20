@@ -44,6 +44,7 @@ const state = {
   lock: null,
   operatorToken: store.get('lumen.operatorToken'),
   wallet: null,
+  walletSource: null,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -729,6 +730,7 @@ async function requestWalletAddress(freighter) {
   const attempts = [];
   const doors = [
     ['requestAccess', 'requestAccess', () => freighter.requestAccess()],
+    ['getAddress', 'getAddress', () => freighter.getAddress()],
     ['getPublicKey', 'getPublicKey', () => freighter.getPublicKey()],
     ['setAllowed+getPublicKey', 'setAllowed', async () => {
       await freighter.setAllowed();
@@ -814,8 +816,10 @@ async function connectWallet() {
       return null;
     }
     state.wallet = address;
+    state.walletSource = 'freighter';
     $('walletChip').textContent = short(address, 6);
     $('connectBtn').textContent = 'Reconnect';
+    $('walletKind').textContent = 'connected · Freighter · Stellar testnet';
     log(`Wallet connected via ${via}: ${address}`, 'ok');
     // An advisory network check: a wallet pointed at Mainnet can still be
     // read here, but every signature it makes would be for the wrong
@@ -841,16 +845,42 @@ async function connectWallet() {
   }
 }
 
+function paintWalletKind() {
+  if (state.walletSource === 'demo-read-only') {
+    $('walletKind').textContent = 'read-only demo view';
+    return;
+  }
+  if (state.wallet && state.walletSource === 'freighter') {
+    $('walletKind').textContent = 'connected · Freighter · Stellar testnet';
+    return;
+  }
+  $('walletKind').textContent = 'Stellar testnet · connect Freighter to sign';
+}
+
 async function refreshWallet() {
   if (!state.wallet) {
-    $('walletNote').textContent = 'Connect a wallet to read your own balances. You do not need one to receive.';
+    $('walletNote').textContent = 'Connect Freighter to read your own Stellar testnet balances. You do not need a wallet to receive.';
+    paintWalletKind();
+    if ($('fundBtn')) $('fundBtn').hidden = true;
     return;
   }
   const horizon = state.status?.chain?.horizon || 'https://horizon-testnet.stellar.org';
   const asset = state.status?.contracts?.asset || 'wSRC';
   try {
-    const account = await (await fetch(`${horizon}/accounts/${state.wallet}`)).json();
-    if (account.status === 404) throw new Error('this account is not funded on testnet');
+    const accountRes = await fetch(`${horizon}/accounts/${state.wallet}`);
+    const account = await accountRes.json();
+    if (accountRes.status === 404 || account.status === 404) {
+      const body = $('walletKv');
+      body.textContent = '';
+      body.append(el('tr', {}, [el('td', { text: 'Account' }), el('td', { class: 'warn', text: 'not on Stellar testnet yet' })]));
+      if ($('fundBtn')) $('fundBtn').hidden = state.walletSource === 'demo-read-only';
+      paintWalletKind();
+      $('walletNote').textContent = state.walletSource === 'demo-read-only'
+        ? 'This is the deployment manifest\'s demo account, read straight from Horizon. It is read-only: connecting your own wallet is still the only way to sign a burn.'
+        : 'This Freighter account is not on Stellar testnet yet. Fund it with Friendbot, then refresh.';
+      log('This account is not on Stellar testnet yet.', 'warn');
+      return;
+    }
     const native = account.balances.find((b) => b.asset_type === 'native');
     const wrapped = account.balances.find((b) => b.asset_code === asset);
     const reserve = ((2 + (account.subentry_count || 0)) * 0.5).toFixed(7);
@@ -875,16 +905,50 @@ async function refreshWallet() {
     const wrappedAmount = wrapped ? fmtAmount(wrapped.balance) : null;
     body.append(row(asset, 'wrapped asset', wrappedAmount ? wrappedAmount.ui : `no trustline for ${asset}`, wrapped ? '' : 'warn', wrappedAmount ? wrappedAmount.full : null));
 
-    $('walletKind').textContent = 'connected: you can burn, and receive';
+    paintWalletKind();
+    if ($('fundBtn')) $('fundBtn').hidden = true;
     const link = $('walletLink');
     link.hidden = false;
     link.setAttribute('href', `https://stellar.expert/explorer/testnet/account/${state.wallet}`);
     link.textContent = 'Open in explorer';
-    $('walletNote').textContent = "Balances read from Horizon. Spendable XLM is what is left after the account's own reserve, and receiving does not need any of it.";
+    if (state.walletSource === 'demo-read-only') {
+      $('walletNote').textContent = 'This is the deployment manifest\'s demo account, read straight from Horizon. It is read-only: connecting your own wallet is still the only way to sign a burn.';
+    } else {
+      $('walletNote').textContent = "Balances from Horizon testnet. Spendable XLM is what is left after the account's own reserve. Receiving does not need any of it; burning needs this Freighter key.";
+    }
   } catch (error) {
     log(`Balance read failed: ${error}`, 'bad');
-    $('walletNote').textContent = `Could not read balances: ${error}`;
+    if (!($('walletNote').textContent || '').includes('Friendbot')) {
+      $('walletNote').textContent = `Could not read balances: ${error}`;
+    }
   }
+}
+
+async function fundWithFriendbot() {
+  if (!state.wallet || state.walletSource === 'demo-read-only') {
+    log('Connect Freighter first. Friendbot funds your testnet account, not the demo view.', 'warn');
+    return;
+  }
+  log(`Calling Friendbot for ${state.wallet}…`);
+  const res = await fetch(`https://friendbot.stellar.org/?addr=${encodeURIComponent(state.wallet)}`);
+  const text = await res.text();
+  let payload;
+  try { payload = JSON.parse(text); } catch { payload = { raw: text.slice(0, 180) }; }
+  if (!res.ok) {
+    log(`Friendbot: ${res.status} — ${payload.detail || payload.error || payload.raw || 'the account may already be funded'}.`, 'warn');
+    await refreshWallet();
+    return;
+  }
+  log(`Friendbot funded this account on Stellar testnet${payload.hash ? `: ${payload.hash}` : '.'}`, 'ok');
+  await refreshWallet();
+}
+
+async function requireFreighter() {
+  if (state.wallet && state.walletSource === 'freighter') return state.wallet;
+  if (state.walletSource === 'demo-read-only') {
+    log('The demo account cannot sign. Opening Freighter for Stellar testnet.', 'warn');
+  }
+  return connectWallet();
 }
 
 // ------------------------------------------------------------------ amounts
@@ -1069,12 +1133,12 @@ async function copyCommand() {
 
 // ------------------------------------------------------- outbound (burn)
 async function burn() {
-  if (!state.wallet) {
-    const address = await connectWallet();
-    if (!address) return;
-  }
+  const address = await requireFreighter();
+  if (!address) return;
   const amount = toBaseUnits($('burnAmount').value);
   if (amount === null) return log(`Amount must be a number with up to 7 decimal places: "${$('burnAmount').value.trim()}" cannot be sent.`, 'bad');
+  const recipient = ($('burnRecipient').value || '').trim();
+  if (!recipient) return log('Recipient on the source chain is required.', 'bad');
   const gateway = state.status?.contracts?.gateway;
   const targetDomain = state.status?.domain?.key;
   if (!gateway || !targetDomain) return log('Deployment addresses are not loaded yet.', 'warn');
@@ -1083,7 +1147,10 @@ async function burn() {
   try {
     const module = await import('./soroban.ts');
     const prepared = await module.buildBurnAndRelayTx(gateway, String(amount), recipient, targetDomain, state.wallet);
-    const freighter = window.freighterApi || window.freighter;
+    const freighter = freighterProvider();
+    if (!freighter || typeof freighter.signTransaction !== 'function') {
+      throw new Error('Freighter is not available to sign');
+    }
     const signed = await freighter.signTransaction(prepared.toXDR(), { networkPassphrase: NETWORK_PASSPHRASE, address: state.wallet });
     const xdr = typeof signed === 'string' ? signed : signed.signedTxXdr;
     if (!xdr) throw new Error('Freighter returned no signed transaction');
@@ -1294,16 +1361,13 @@ async function cashoutReadAnchor() {
 }
 
 async function cashoutAuthenticate() {
-  if (!state.wallet) {
-    const address = await connectWallet();
-    if (!address) return null;
-  }
+  if (!(await requireFreighter())) return null;
   const challenge = await cashoutApi(`?action=challenge&account=${encodeURIComponent(state.wallet)}`);
   if (!challenge.ok) {
     log(`No challenge: ${failureText(challenge.payload)}`, 'bad');
     return null;
   }
-  const freighter = window.freighterApi || window.freighter;
+  const freighter = freighterProvider();
   if (!freighter) {
     log('Freighter is required to sign the anchor challenge.', 'bad');
     return null;
@@ -1363,7 +1427,10 @@ async function cashoutPay() {
       CASHOUT.instructions.memo,
       state.wallet
     );
-    const freighter = window.freighterApi || window.freighter;
+    const freighter = freighterProvider();
+    if (!freighter || typeof freighter.signTransaction !== 'function') {
+      throw new Error('Freighter is not available to sign');
+    }
     const signed = await freighter.signTransaction(prepared.toXDR(), { networkPassphrase: NETWORK_PASSPHRASE, address: state.wallet });
     const xdr = typeof signed === 'string' ? signed : signed.signedTxXdr;
     if (!xdr) throw new Error('Freighter returned no signed transaction');
@@ -1411,6 +1478,9 @@ function wire() {
     if (pub) $('lockRecipient').value = pub;
   }));
   $('connectBtn').addEventListener('click', () => withBusy($('connectBtn'), () => connectWallet()));
+  if ($('fundBtn')) {
+    $('fundBtn').addEventListener('click', () => withBusy($('fundBtn'), () => fundWithFriendbot()));
+  }
   watchForFreighter();
   // Connecting needs the Freighter extension; this does not. The deployment
   // manifest names the gasless demo account, so the card can show that account's
