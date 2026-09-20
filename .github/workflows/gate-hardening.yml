@@ -27,6 +27,8 @@ jobs:
           node-version: 20
       - name: claim/proof alignment (Ek A section 12; warning stance until the operator flips PROOF_LINT_REQUIRED=1)
         run: node gate2/scripts/proof-lint.mjs --json
+      - name: "read path - simulations build their account locally, submitted transactions fetch the real one (a read that depends on one funded account turns a single dead account into dozens of simultaneous failures)"
+        run: node gate2/scripts/check-read-path.mjs
 
   panic-grep:
     runs-on: ubuntu-latest
