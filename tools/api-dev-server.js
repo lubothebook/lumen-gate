@@ -19,6 +19,10 @@ const ROUTES = {
   '/api/finality': 'finality.js',
   '/api/source': 'source.js',
   '/api/relay': 'relay.js',
+  // The cash-out panel posts here as well; the route used to be missing from
+  // this stand-in while the deployed function list had it, so every cash-out
+  // button died with a 404 in development and worked in production.
+  '/api/cashout': 'cashout.js',
 };
 
 function readBody(req) {

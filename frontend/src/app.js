@@ -151,9 +151,11 @@ const FRAME_PX = 4;
 // which is the part of the design that is about blocks; the number of elements
 // is the part that is about cost, and this is where that cost is decided.
 function latticeStride() {
-  const width = window.innerWidth || 0;
-  if (width >= 1600) return 4;
-  if (width >= 900) return 2;
+  // The wall is contiguous: the tile's own 60px is the only rhythm, and every
+  // cube on the screen is a real element at the tile's own size. Sparsifying
+  // the grid once saved elements nobody missed and broke the artwork's
+  // cadence - isolated flowers floating in black read as giant cubes instead
+  // of a lattice, which is exactly what the operator asked to remove.
   return 1;
 }
 
@@ -196,10 +198,13 @@ const LATTICE_BLOCKERS = [
   '.boundary',
   '.band',
   '.card',
+  '.win',
   '.steps',
+  '.stats',
+  '.trust-grid',
   '.lane',
   '.log-wrap',
-  'main > section.strip > .shell > *',
+  '.row-strip',
 ];
 
 function cubeUnderPointer(stack) {
@@ -413,6 +418,16 @@ function renderReceipts(status) {
   }
 }
 
+// A closed finding is one line: the id and the first sentence of what went
+// wrong, ellipsised. The operator's rule is exact - the list must not lecture
+// anybody before they ask: details live behind the door, one door at a time,
+// and each door opens on its own without closing its neighbours.
+function firstLineOf(text) {
+  const clean = String(text || '').replace(/\s+/g, ' ').trim();
+  const sentence = clean.match(/^[^.!?]*[.!?]/);
+  return sentence ? sentence[0] : clean;
+}
+
 function renderFindings(status) {
   const list = $('findingsList');
   const findings = status.findings || [];
@@ -420,13 +435,36 @@ function renderFindings(status) {
   $('findingsCount').textContent = `${findings.length} recorded`;
   $('findingsSummary').textContent = findings.length === 0
     ? 'Nothing is recorded, which for a build this size usually means nobody looked.'
-    : 'A build with no recorded defects is a build where nobody looked. These are the real ones, kept in the deployment manifest instead of edited out of it.';
+    : 'A build with no recorded defects is a build where nobody looked. These are the real ones, kept in the deployment manifest instead of edited out of it. Each row is one line until you open it.';
   for (const finding of findings) {
-    const block = el('div', { class: 'finding' });
-    block.append(el('span', { class: 'id', text: finding.id }));
-    block.append(el('p', { text: finding.found }));
-    block.append(el('p', {}, [el('b', { text: 'Fix. ' }), document.createTextNode(finding.fix)]));
-    list.append(block);
+    const door = el('details', { class: 'finding' });
+    door.append(
+      el('summary', {}, [
+        el('span', { class: 'id', text: finding.id }),
+        el('span', { class: 'first-line', text: firstLineOf(finding.found), title: finding.found }),
+        el('span', { class: 'fx', 'aria-hidden': 'true' }),
+      ]),
+      el('div', { class: 'finding-body' }, [
+        el('p', { text: finding.found }),
+        el('p', {}, [el('b', { text: 'Fix. ' }), document.createTextNode(finding.fix)]),
+      ])
+    );
+    list.append(door);
+  }
+}
+
+// --------------------------------------------------------- window panels
+// The audit and receipts cards are windows: the bar folds the body, the state
+// lives on the window element, and the bar keeps telling the truth about it
+// through aria-expanded so a screen reader hears the window shut.
+function wireWindows() {
+  for (const win of document.querySelectorAll('[data-win]')) {
+    const bar = win.querySelector('.win-bar');
+    if (!bar) continue;
+    bar.addEventListener('click', () => {
+      const closed = win.classList.toggle('win-closed');
+      bar.setAttribute('aria-expanded', String(!closed));
+    });
   }
 }
 
@@ -1020,7 +1058,9 @@ function renderInterfaceFacts() {
   const has = (node) => node && typeof node === 'object';
 
   if (typeof document.querySelectorAll === 'function') {
-    const rows = [...document.querySelectorAll('main > section.strip > .shell > *')];
+    // Strips belong to text rows only, so the count is the count of ribbons,
+    // not of every child a strip section happens to carry.
+    const rows = [...document.querySelectorAll('main > section.strip > .shell > .row-strip')];
     const count = $('ifaceStripCount');
     if (count) count.textContent = String(rows.length);
   }
@@ -1531,6 +1571,7 @@ async function renderLanes() {
 
 renderLanes().catch(() => {});
 wire();
+wireWindows();
 watchSections();
 buildLattice();
 initLatticeFrame();

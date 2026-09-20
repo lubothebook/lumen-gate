@@ -153,6 +153,13 @@
      the page look calmer also changed the artist's pixels. Contrast is the
      text's job instead. */
   .hero { position: relative; }
+  /* The first screen carries no cubes: the operator asked the main page to be
+     clean of them, so the hero fades the lattice into the page background and
+     the wall starts speaking only after the boundary line. */
+  .hero::before {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(180deg, var(--bg) 0%, var(--bg) 72%, rgba(5, 6, 4, 0.92) 88%, rgba(5, 6, 4, 0.4) 100%);
+  }
   .hero > .shell { position: relative; z-index: 1; }
   main > section:not(.hero):not(.band-wrap) { position: relative; }
   main > section:not(.hero):not(.band-wrap) > .shell { position: relative; z-index: 1; }
@@ -233,7 +240,10 @@
   .sec-head { display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-end; justify-content: space-between; }
   .sec-head > div { max-width: 62ch; }
   .card {
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.04));
+    /* a dark base under the glass gradient: cards no longer sit on a strip, so
+       the lattice behind them must not shine through the prose */
+    background-color: rgba(6, 7, 5, 0.95);
+    background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.04));
     border: 1px solid rgba(255, 255, 255, 0.09); border-radius: var(--r-xl);
     padding: 28px; min-width: 0;
     box-shadow: var(--shadow-card);
@@ -281,11 +291,16 @@
   .hero-panel h1 { margin: 12px auto 0; }
   .hero-panel .lead { margin: 16px auto 0; }
   .hero-panel .cta { margin-top: 24px; justify-content: center; }
-  .trust-grid { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--line-2); text-align: left; }
-  /* these two blocks are rows of a strip now: the row gap separates them, so
-     they must not carry a margin of their own on top of it */
-  main > section.strip .trust-grid, main > section.strip .stats { margin-top: 0; }
-  .trust-grid > div { padding: 22px 26px 2px 26px; border-left: 1px solid var(--line); }
+  /* The trust grid is a box, so it wears no strip: it carries its own surface
+     and sits on the lattice like the stat shelf beside it. */
+  .trust-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); text-align: left;
+    background-color: rgba(6, 7, 5, 0.94);
+    background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.03));
+    border: 1px solid rgba(255, 255, 255, 0.09); border-radius: var(--r-xl);
+    overflow: hidden; box-shadow: var(--shadow-card);
+  }
+  .trust-grid > div { padding: 22px 26px 20px 26px; border-left: 1px solid var(--line); }
   .trust-grid > div:first-child { border-left: 0; padding-left: 0; }
   .trust-grid strong { display: block; font-size: 0.875rem; font-weight: 600; letter-spacing: -0.006em; }
   .trust-grid p { font-size: 0.9375rem; color: var(--muted); margin-top: 5px; line-height: 1.55; }
@@ -294,7 +309,7 @@
   .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
   .stat {
     border: 1px solid rgba(255, 255, 255, 0.09); border-radius: var(--r-lg);
-    padding: 22px 24px; background: rgba(5, 6, 4, 0.74);
+    padding: 22px 24px; background: rgba(6, 7, 5, 0.93);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
     transition: border-color var(--dur) var(--ease);
   }
@@ -308,7 +323,7 @@
   .steps {
     display: grid; grid-template-columns: repeat(3, 1fr);
     border: 1px solid rgba(255, 255, 255, 0.09); border-radius: var(--r-xl);
-    overflow: hidden; margin-top: 36px; background: rgba(5, 6, 4, 0.74);
+    overflow: hidden; margin-top: 36px; background: rgba(6, 7, 5, 0.93);
   }
   .step { padding: 28px; border-right: 1px solid var(--line); }
   .step:last-child { border-right: 0; }
@@ -460,11 +475,77 @@
     margin-right: 8px; background: currentColor;
   }
 
-  .finding { border-top: 1px solid var(--line); padding: 16px 0; }
-  .finding:first-child { border-top: 0; padding-top: 0; }
-  .finding .id { font-family: var(--mono); font-size: 0.8125rem; color: var(--faint); }
-  .finding p { margin-top: 6px; font-size: 0.9375rem; color: var(--muted); max-width: 92ch; }
-  .finding p b { color: var(--ink); font-weight: 600; }
+  /* ---------------------------------------------------- the findings accordion
+     Seventeen defects, seventeen doors. Closed, a finding is one line: its id
+     and the first sentence of what went wrong, ellipsised, nothing more. Each
+     door opens on its own - no group behaviour - and only an open door shows
+     the whole story and its fix. */
+  .finding { border-top: 1px solid var(--line); }
+  .finding:first-child { border-top: 0; }
+  .finding summary {
+    display: flex; align-items: baseline; gap: 12px; cursor: pointer;
+    padding: 12px 6px; list-style: none; border-radius: 10px;
+    transition: background var(--dur) var(--ease);
+  }
+  .finding summary:hover { background: rgba(255, 255, 255, 0.045); }
+  .finding summary::-webkit-details-marker { display: none; }
+  /* the page-wide details rule paints its own +/- into every summary; the
+     finding row carries its own grip, so the borrowed one is switched off */
+  .finding summary::after { content: none; }
+  .finding .id {
+    flex: none; font-family: var(--mono); font-size: 0.6875rem; letter-spacing: 0.08em;
+    color: var(--muted); border: 1px solid var(--line-2); border-radius: 999px; padding: 2px 9px;
+  }
+  .finding .first-line {
+    flex: 1 1 auto; min-width: 0; font-size: 0.9375rem; color: var(--muted);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    transition: color var(--dur) var(--ease);
+  }
+  .finding summary:hover .first-line { color: var(--ink); }
+  .finding[open] .first-line { color: var(--ink); }
+  .finding[open] .id { color: #000; background: rgba(255, 255, 255, 0.92); border-color: transparent; }
+  .finding .fx { flex: none; font-family: var(--mono); color: var(--faint); font-size: 0.875rem; }
+  .finding .fx::after { content: "+"; }
+  .finding[open] .fx::after { content: "\2212"; }
+  .finding-body { padding: 2px 6px 16px; }
+  .finding-body p { font-size: 0.9375rem; color: var(--muted); max-width: 92ch; line-height: 1.6; }
+  .finding-body p + p { margin-top: 8px; }
+  .finding-body p b { color: var(--ink); font-weight: 600; }
+
+  /* --------------------------------------------------------- window panels
+     A card that behaves like a window: a title bar with three quiet dots and
+     a grip, and a body that folds shut. The fold is a grid-row animation, so
+     the content keeps its own height and never jumps. */
+  .win { padding: 0; overflow: hidden; }
+  .win-bar {
+    appearance: none; font: inherit; color: inherit; text-align: left; cursor: pointer;
+    display: flex; align-items: center; gap: 12px; width: 100%;
+    padding: 15px 20px; background: rgba(255, 255, 255, 0.045);
+    border: 0; border-bottom: 1px solid var(--line);
+    transition: background var(--dur) var(--ease);
+  }
+  .win-bar:hover { background: rgba(255, 255, 255, 0.075); }
+  .win-dots { display: inline-flex; gap: 5px; flex: none; }
+  .win-dots i { width: 9px; height: 9px; border-radius: 50%; background: rgba(255, 255, 255, 0.16); transition: background var(--dur) var(--ease); }
+  .win-bar:hover .win-dots i { background: rgba(255, 255, 255, 0.3); }
+  .win-dots i:first-child { background: rgba(255, 255, 255, 0.34); }
+  .win-title { flex: 1 1 auto; min-width: 0; font-size: 0.9375rem; letter-spacing: -0.006em; }
+  .win-hint { font-size: 0.75rem; color: var(--faint); font-family: var(--mono); letter-spacing: 0.04em; }
+  .win-grip { flex: none; width: 22px; height: 10px; opacity: 0.5;
+    background:
+      linear-gradient(rgba(255,255,255,0.5), rgba(255,255,255,0.5)) center 2px / 18px 1px no-repeat,
+      linear-gradient(rgba(255,255,255,0.34), rgba(255,255,255,0.34)) center 6px / 12px 1px no-repeat;
+    transition: transform var(--dur) var(--ease), opacity var(--dur) var(--ease);
+  }
+  .win-bar:hover .win-grip { opacity: 0.9; }
+  .win-closed .win-grip { transform: rotate(180deg); }
+  .win-body { display: grid; grid-template-rows: 1fr; transition: grid-template-rows 0.3s var(--ease); }
+  .win-closed .win-body { grid-template-rows: 0fr; }
+  .win-closed .win-bar { border-bottom-color: transparent; }
+  .win-clip { overflow: hidden; min-height: 0; }
+  .win-clip > .win-pad { padding: 20px 22px 22px; }
+  .win-clip table { margin-top: 0; }
+  @media (prefers-reduced-motion: reduce) { .win-body { transition: none; } }
 
   details { border-top: 1px solid var(--line); padding: 18px 0; }
   details:first-of-type { border-top: 1px solid var(--line-2); }
@@ -510,15 +591,32 @@
     margin: clamp(40px, 5vw, 84px) 0;
     padding: clamp(4px, 0.6vw, 10px) 0;
   }
-  main > section.strip > .shell > * {
-    background: rgba(2, 2, 2, 0.94);
+  /* One rhythm for every child of a strip section, boxes and text rows alike. */
+  main > section.strip > .shell > * { margin-top: var(--row-gap) !important; margin-bottom: 0 !important; }
+  main > section.strip > .shell > :first-child { margin-top: 0 !important; }
+  /* The strip belongs to text rows only. A box - card, window, step rail,
+     stat shelf - keeps its own surface and sits on the lattice like every
+     other object; only a row of prose carries a full-bleed band. The band
+     fades out at both edges instead of ending on a hard cut, so it reads as
+     a ribbon laid over the wall rather than a hole punched in it. */
+  main > section.strip > .shell > .row-strip {
+    background: linear-gradient(180deg, rgba(2, 2, 2, 0.96), rgba(2, 2, 2, 0.9));
     border-top: 1px solid var(--line-2); border-bottom: 1px solid var(--line-2);
     border-radius: 0;
     margin-left: calc(50% - 50vw); margin-right: calc(50% - 50vw);
-    padding: clamp(13px, 1.4vw, 18px) calc(50vw - 50%);
-    margin-top: var(--row-gap) !important; margin-bottom: 0 !important;
+    padding: clamp(14px, 1.6vw, 22px) calc(50vw - 50%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), inset 0 -1px 0 rgba(255, 255, 255, 0.03);
+    -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 clamp(20px, 3.4vw, 56px), #000 calc(100% - clamp(20px, 3.4vw, 56px)), transparent 100%);
+    mask-image: linear-gradient(90deg, transparent 0, #000 clamp(20px, 3.4vw, 56px), #000 calc(100% - clamp(20px, 3.4vw, 56px)), transparent 100%);
   }
-  main > section.strip > .shell > :first-child { margin-top: 0 !important; }
+  /* a text row on a ribbon gets one quiet ornament: a rule in front of the
+     eyebrow, so the band is never four walls around bare prose */
+  .row-strip .eyebrow { display: flex; align-items: center; gap: 10px; color: var(--muted); }
+  .row-strip .eyebrow::before {
+    content: ""; flex: none; width: 26px; height: 1px;
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0.06));
+  }
+  .row-strip .note { color: var(--muted); }
   .console, .grid-3, .grid-2, .stats, .trust-lanes { align-items: start; }
   .band { margin: clamp(44px, 5.5vw, 92px) 0; }
   footer { margin-top: clamp(44px, 5.5vw, 92px); }
@@ -904,7 +1002,7 @@
 
   <section id="how" class="strip">
     <div class="shell">
-      <div class="sec-head">
+      <div class="sec-head row-strip">
         <div>
           <p class="eyebrow">Three steps, two of them cryptographic</p>
           <h2 style="margin-top:14px">How a transfer actually settles</h2>
@@ -979,7 +1077,7 @@
   <!-- -------------------------------------------------------------- evidence -->
   <section id="evidence" class="strip">
     <div class="shell">
-      <div class="sec-head">
+      <div class="sec-head row-strip">
         <div>
           <p class="eyebrow">Evidence</p>
           <h2 style="margin-top:14px">Ask the contracts, not the website</h2>
@@ -1037,30 +1135,49 @@
         <dl class="kv" id="finalityKv"><dt>Result</dt><dd>not queried yet</dd></dl>
       </div>
 
+      <!-- Two windows, not two walls: each bar folds its own body shut and the
+           other window does not care. The bar is a real button, so a keyboard
+           folds the window from the same place a pointer does. -->
       <div class="cols" style="margin-top:20px">
-        <div class="card">
-          <div class="card-head">
-            <h3>Self-audit rounds</h3>
-            <span class="hint" id="auditStamp"></span>
+        <section class="card win" id="auditWin" data-win>
+          <button class="win-bar" type="button" aria-expanded="true" aria-controls="auditWinBody">
+            <span class="win-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+            <h3 class="win-title">Self-audit rounds</h3>
+            <span class="win-hint" id="auditStamp"></span>
+            <span class="win-grip" aria-hidden="true"></span>
+          </button>
+          <div class="win-body" id="auditWinBody">
+            <div class="win-clip">
+              <div class="win-pad">
+                <table class="audit-table">
+                  <thead><tr><th>Round</th><th>Finished</th><th>Checks</th><th>Verdict</th></tr></thead>
+                  <tbody id="auditRows"><tr><td colspan="4" class="muted">loading</td></tr></tbody>
+                </table>
+                <p class="note" style="margin-top:18px; font-size:0.8125rem">The loop submits fresh evidence to the live registry every round and holds no mint authority. It asks questions and writes down the answers, including the rounds that failed.</p>
+              </div>
+            </div>
           </div>
-          <table class="audit-table">
-            <thead><tr><th>Round</th><th>Finished</th><th>Checks</th><th>Verdict</th></tr></thead>
-            <tbody id="auditRows"><tr><td colspan="4" class="muted">loading</td></tr></tbody>
-          </table>
-          <p class="note" style="margin-top:18px; font-size:0.8125rem">The loop submits fresh evidence to the live registry every round and holds no mint authority. It asks questions and writes down the answers, including the rounds that failed.</p>
-        </div>
+        </section>
 
-        <div class="card">
-          <div class="card-head">
-            <h3>Receipts</h3>
-            <span class="hint">recorded on testnet</span>
+        <section class="card win" id="receiptsWin" data-win>
+          <button class="win-bar" type="button" aria-expanded="true" aria-controls="receiptsWinBody">
+            <span class="win-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+            <h3 class="win-title">Receipts</h3>
+            <span class="win-hint">recorded on testnet</span>
+            <span class="win-grip" aria-hidden="true"></span>
+          </button>
+          <div class="win-body" id="receiptsWinBody">
+            <div class="win-clip">
+              <div class="win-pad">
+                <table>
+                  <thead><tr><th>Step</th><th>Transaction</th></tr></thead>
+                  <tbody id="receiptRows"><tr><td colspan="2" class="muted">loading</td></tr></tbody>
+                </table>
+                <p class="note" style="margin-top:18px; font-size:0.8125rem">Every hash opens on Stellar Expert. Where a step is a simulation it burned no fee, because it never left the host.</p>
+              </div>
+            </div>
           </div>
-          <table>
-            <thead><tr><th>Step</th><th>Transaction</th></tr></thead>
-            <tbody id="receiptRows"><tr><td colspan="2" class="muted">loading</td></tr></tbody>
-          </table>
-          <p class="note" style="margin-top:18px; font-size:0.8125rem">Every hash opens on Stellar Expert. Where a step is a simulation it burned no fee, because it never left the host.</p>
-        </div>
+        </section>
       </div>
 
       <div class="card" style="margin-top:20px">
@@ -1097,14 +1214,14 @@
   <!-- ----------------------------------------------------------------- about -->
   <section id="about" class="strip">
     <div class="shell">
-      <div class="sec-head">
+      <div class="sec-head row-strip">
         <div>
           <p class="eyebrow">About</p>
           <h2 style="margin-top:14px">What the anchor is for, and what it is not</h2>
         </div>
       </div>
 
-      <div class="cols" style="margin-top:36px">
+      <div class="cols row-strip" style="margin-top:36px">
         <div class="stack">
           <p class="lead">The anchor facade is an integration surface, not the trust anchor. It is the part other software talks to: discovery, a machine-readable manifest, the audit record, and an operator trigger. It holds no custody, no mint authority and no verification keys. If it disappeared, settlement would keep working &mdash; you would lose the window, not the rule.</p>
           <table>
@@ -1186,7 +1303,7 @@
         </div>
       </div>
 
-      <div class="stack" id="faq" style="margin-top:44px">
+      <div class="stack row-strip" id="faq" style="margin-top:44px">
         <details>
           <summary>Is this a zkVM?</summary>
           <p><strong>There is a small machine here now, and it has a budget.</strong> One of the three Groth16 lanes proves the step-by-step execution of a committed program on a register machine with eleven opcodes, eight registers, sixteen memory words and twenty rows per proof: the program is a public input, every row decodes against it, memory is carried row to row, and the run is replayed by an interpreter in this repository before it becomes witness data. A proof of a sixteen-step run was accepted by a registry on testnet. It is not a general-purpose zkVM: a program that needs a twenty-first step has no proof in this circuit, there are no syscalls, and the guest is assembled from a listing rather than compiled. The other two lanes are statement proofs &mdash; a quorum of approval bits bound to three roots, and a chained state transition &mdash; and none of the three is a signature verifier, which is why settlement still anchors on the BLS lane, whose aggregate signature does cover the event root.</p>
@@ -1214,18 +1331,18 @@
        not written, so its button says so rather than pretending to be a door. -->
   <section id="roadmap" class="strip">
     <div class="shell">
-      <div class="sec-head">
+      <div class="sec-head row-strip">
         <div>
           <p class="eyebrow">Roadmap</p>
           <h2 style="margin-top:14px">What 1.0 is, and what 2.0 would be.</h2>
         </div>
         <p class="note" style="max-width:46ch">Everything on this page is 1.0. The number is here so the two are never confused for one another.</p>
       </div>
-      <div class="version-row" role="group" aria-label="Which system to open">
+      <div class="version-row row-strip" role="group" aria-label="Which system to open">
         <button class="version-btn" id="versionOneBtn" type="button" aria-pressed="true">1.0 &middot; this system</button>
         <button class="version-btn" id="versionTwoBtn" type="button" aria-pressed="false" aria-describedby="versionNote" disabled>2.0 &middot; the next system</button>
       </div>
-      <p class="note version-note" id="versionNote"><span class="measure">1.0 is everything above: the settlement boundary, the wallet and the receipts. 2.0 is a separate system whose design is not written yet, so its button states that instead of pretending to be a door.</span></p>
+      <p class="note version-note row-strip" id="versionNote"><span class="measure">1.0 is everything above: the settlement boundary, the wallet and the receipts. 2.0 is a separate system whose design is not written yet, so its button states that instead of pretending to be a door.</span></p>
     </div>
   </section>
 </main>
