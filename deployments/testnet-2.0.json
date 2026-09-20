@@ -32,6 +32,54 @@
       "size_runtime_bytes": 3716,
       "tests": "23/23 local and CI (evm-tests job)",
       "artifact_note": "gate2/evm/out is a build product, gitignored by design"
+    },
+    "gate_claim_testnet": {
+      "id": "CBKSNJBQS4IC6IPUT452RLCJR3I6RH6ELNDZEE5R5TDVO6274AV7IGPC",
+      "wasm_upload_tx": "58a61d7205cc1e28738eb991687410f36a95947c88a36875293cbe84dd572666",
+      "create_contract_tx": "c17b20a86dc3abfeac0bae82228d9cb53bdcb5e025396d267624ff6f3bf4f7a8",
+      "initialize_tx": "af88a0b2c2843c43cee726c4e150698aea09843f03f697b5dc02b94a6ab0e009",
+      "ledgers": {
+        "create_contract": 4770419,
+        "initialize": 4770426
+      },
+      "wasm_bytes": 14273,
+      "wasm_sha256": "36ae46bdcb48744a25cf5d59532d1bad97261a6990396167d05f75f375948033",
+      "init_args": {
+        "mt": "CDNG7HXAPBWICI2E3AUBP3YZWZELJLYSB6F5CC7WLDTLTHVM74SLRTHP",
+        "usdc": "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA",
+        "burn_token": "1c7d4b196cb0c7b01d743fbc6116a902379c7238",
+        "allowed": []
+      },
+      "verification_probes": [
+        "read-only get_migration(deployer) -> null (no record yet, as expected)",
+        "re-initialize attempt on the campaign -> Contract error #2 AlreadyInitialized proves on-chain state persisted"
+      ],
+      "build": "stellar 25.2.0 GitHub-release binary, cargo release wasm32v1-none via 'stellar contract build', source gate2/soroban/gate_claim"
+    },
+    "gate_campaign_example_testnet": {
+      "id": "CDDQLXIIR3LZ6NT2EFYX2FAZGKPEQPTKHZUC5NLK4BRZYE2JSYDOARCF",
+      "wasm_upload_tx": "04b6d22a162416a03e2f76a9591b16a9380232208c25863ba5efdf0110145911",
+      "create_contract_tx": "8dd80c5a52ccfd85a9424497dc05cbeb92444a295f7463ddbf1388b74cca6649",
+      "initialize_tx": "e6a505072ce40ac08f230e610113cc26038030b0f8a11669c8bc7aeb4dfc8458",
+      "ledgers": {
+        "create_contract": 4770423,
+        "initialize": 4770430
+      },
+      "wasm_bytes": 2868,
+      "wasm_sha256": "76f6f156626ee64fdcf22acf0ab40b3ab4d95849c858a52229d88d3d520dada8",
+      "init_args": {
+        "gate": "CBKSNJBQS4IC6IPUT452RLCJR3I6RH6ELNDZEE5R5TDVO6274AV7IGPC"
+      },
+      "verification_probes": [
+        "claim_tier diagnostics show the cross-contract chain campaign -> gate_claim.get_migration executing on testnet"
+      ],
+      "build": "stellar 25.2.0 GitHub-release binary, cargo release wasm32v1-none via 'stellar contract build', source gate2/soroban/gate_campaign_example"
+    },
+    "testnet_deployer": {
+      "alias": "gate2-deployer",
+      "public_key": "GDML46BD7KOLEB57D4GW4FNPML6UZKOKSPXAVFG5KTGKQO6E3OI53V5U",
+      "funded_by": "friendbot (stellar keys generate --fund), testnet XLM only",
+      "key_storage": "private key lives ONLY in the sandbox at ~/.config/stellar/identity/gate2-deployer.toml; never committed, never referenced by the repo"
     }
   },
   "spikes": [
@@ -144,7 +192,9 @@
     },
     "F3 (tooling): soroban-sdk 28 gates Address<->bytes32 introspection behind the hazmat-address feature; gate_claim enables it for the single purpose of comparing CCTP wire addresses, and says so at the top of the file instead of hiding it.",
     "F3 (tooling): the sandbox killed stellar-xdr's compile at -j default (SIGKILL, OOM); the workspace suite now runs at -j 2 with debug info off. Recorded so the next rebuild does not rediscover it as a mystery failure.",
-    "F3 (tooling): persistent TTL is only readable from inside a contract context in tests (env.as_contract); the bump test measures through it rather than pretending the host storage is public."
+    "F3 (tooling): persistent TTL is only readable from inside a contract context in tests (env.as_contract); the bump test measures through it rather than pretending the host storage is public.",
+    "F3-deploy: npm's @stellar/stellar-cli installs but npx finds no runnable 'stellar' executable, and plain cargo wasm builds fail the soroban-sdk check demanding stellar-cli v25.2.0+; fix = GitHub release binary stellar-cli-25.2.0-x86_64-unknown-linux-gnu.tar.gz + 'stellar contract build'.",
+    "F3-deploy: stellar contract invoke parses Vec args only as JSON arrays ('--allowed 0' rejected, '--allowed \"[0]\"' works); a failed CLI parse sends no tx, so the rejected first initialize attempt had zero on-chain effect."
   ],
   "superseded": [
     {
@@ -212,6 +262,20 @@
         "cargo test --workspace --lib (2026-09-20): gate_claim 7/7, gate_campaign_example 2/2, 1.0 suites unchanged at 61/17/11/20/28"
       ],
       "not_claimed": "no testnet claim receipt exists yet; NFT metadata from a live chain read belongs to F3's acceptance and waits on the F2 burn, which waits on Sepolia funds"
+    },
+    {
+      "id": "F3-deploy",
+      "status": "complete - both contracts live and initialized on Stellar testnet with Horizon-verified receipts",
+      "done": [
+        "gate_claim.wasm (14273 B) uploaded tx 58a61d72... / created tx c17b20a8... (ledger 4770419) / initialized tx af88a0b2... (ledger 4770426) with Circle testnet MT, native USDC, Sepolia burn-token 0x1c7d4b...7238, empty allowlist",
+        "gate_campaign_example.wasm (2868 B) uploaded tx 04b6d22a... / created tx 8dd80c5a... (ledger 4770423) / initialized tx e6a50507... (ledger 4770430) pointing at the live gate_claim id",
+        "all 7 tx hashes + ledgers read back from Horizon for deployer GDML46...53V5U; contract ids CBKSNJ...IGPC (gate_claim) and CDDQLX...OARCF (campaign)"
+      ],
+      "evidence": [
+        "Horizon /accounts/<deployer>/transactions?order=asc returned every hash above with successful=true",
+        "read-only probes: get_migration -> null; campaign re-initialize -> AlreadyInitialized; claim_tier diagnostics show the cross-contract get_migration call"
+      ],
+      "not_claimed": "no end-to-end claim receipt yet: that needs a real Sepolia burn + Iris attestation (F2, still gated on Sepolia funds per the stop-report)"
     }
   ]
 }
