@@ -227,9 +227,13 @@ const USDC_ISSUER_FALLBACK = 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3Z
  * beyond adding a signature, because an anchor verifies a signature over the
  * exact transaction it issued.
  */
-export async function signAnchorChallenge(challengeXdr: string, account: string): Promise<string> {
+export async function signAnchorChallenge(challengeXdr: string, account: string, walletProvider?: any): Promise<string> {
   const transaction = StellarSdk.TransactionBuilder.fromXDR(challengeXdr, NETWORK_PASSPHRASE);
-  const freighter = (window as any).freighterApi
+  // The provider the connect flow verified is the one that signs: the caller
+  // passes it in (it may be the official @stellar/freighter-api module, which
+  // exposes no window global), with the legacy injected globals as fallback.
+  const freighter = walletProvider
+    || (window as any).freighterApi
     || (window as any).freighter
     || (window as any).stellar?.freighter
     || (window as any).stellar?.Freighter;
@@ -238,8 +242,14 @@ export async function signAnchorChallenge(challengeXdr: string, account: string)
     networkPassphrase: NETWORK_PASSPHRASE,
     address: account,
   });
-  const xdr = typeof signed === 'string' ? signed : signed.signedTxXdr;
-  if (!xdr) throw new Error('Freighter returned no signed challenge');
+  // The official module answers { signedTxXdr, signerAddress } or an error
+  // object; older injected builds answer the XDR string. An error object is
+  // not a signature - say what the wallet said instead of submitting "".
+  const xdr = typeof signed === 'string' ? signed : signed?.signedTxXdr || signed?.xdr;
+  if (!xdr) {
+    const reason = (signed?.error && (signed?.error.message || signed?.error)) || signed?.message;
+    throw new Error(reason ? `Freighter refused the challenge: ${reason}` : 'Freighter returned no signed challenge');
+  }
   return xdr;
 }
 

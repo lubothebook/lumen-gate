@@ -151,7 +151,10 @@ await walletPage.evaluateOnNewDocument(() => {
     getAddress: async () => ({ address: addr }),
     getPublicKey: async () => addr,
     getNetwork: async () => ({ network: "TESTNET", networkPassphrase: "Test SDF Network ; September 2015" }),
-    signTransaction: async (xdr) => xdr,
+    signTransaction: async (xdr) => {
+      window.__freighterSign = (window.__freighterSign || 0) + 1;
+      return xdr;
+    },
   };
 });
 await walletPage.goto(BASE, { waitUntil: "networkidle2", timeout: 30000 });
@@ -168,6 +171,39 @@ const walletText = await walletPage.$eval("#wallet-state", (n) => n.textContent)
 const accessCalls = await walletPage.evaluate(() => window.__freighterRequestAccess || 0);
 check("connect click calls requestAccess", accessCalls >= 1, `calls=${accessCalls} state=${walletText}`);
 check("connect with mocked Freighter shows address", /GDML46BD/.test(walletText) || walletText.includes("bağlı"), walletText);
+
+// 9 — the session address: once Connect has verified the address, an action
+// button signs with it and must NOT open the wallet again. A second
+// requestAccess mid-page is the bug that re-popped the wallet on every
+// button (and got refused), so the counts are asserted, not assumed.
+// (The mock signs the prepared tx unchanged; the RPC then rejects the
+// unsigned bytes — the point of the check is the wallet call pattern,
+// and nothing lands on the ledger.)
+const accessBeforeAction = await walletPage.evaluate(() => window.__freighterRequestAccess || 0);
+await jsClick(walletPage, "#btn-bump");
+// Wait for a POST-sign log line, not the pre-sign "Waiting for bump
+// signature…" line, so the sign counter is read after the signature.
+await walletPage.waitForFunction(
+  () => {
+    const t = document.getElementById("acct-log")?.textContent || "";
+    return /bump accepted|bump submitted|bump error|Blocked before|Action error/.test(t);
+  },
+  { timeout: 90000 }
+).catch(() => null);
+const walletCallsAfterAction = {
+  access: await walletPage.evaluate(() => window.__freighterRequestAccess || 0),
+  sign: await walletPage.evaluate(() => window.__freighterSign || 0),
+};
+check(
+  "signed action reuses the session address (no second requestAccess)",
+  walletCallsAfterAction.access === accessBeforeAction && accessBeforeAction === 1,
+  `access=${walletCallsAfterAction.access} (before ${accessBeforeAction})`
+);
+check(
+  "signed action actually asked Freighter to sign",
+  walletCallsAfterAction.sign >= 1,
+  `sign=${walletCallsAfterAction.sign}`
+);
 await walletPage.close();
 
 await browser.close();

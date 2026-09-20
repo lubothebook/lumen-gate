@@ -108,20 +108,22 @@ async function connectWallet() {
     acctLog(`Connected. Expert: ${addr.slice(0, 8)}…`);
     if (typeof f.getNetwork === "function") {
       try {
-        const net = await f.getNetwork();
-        const name = typeof net === "string" ? net : net && (net.network || net.networkPassphrase);
-        if (name && !/test/i.test(String(name))) {
-          setWalletState(`Connected, but Freighter is on ${name}. Action buttons stay closed on mainnet.`, "error");
+        const verdict = walletNetworkVerdict(await f.getNetwork());
+        if (verdict !== "testnet") {
           walletWritesAllowed = false;
           $("btn-tier-send").disabled = true;
           $("btn-burn").disabled = true;
-          setWalletActions(
-            false,
-            `Freighter is on ${name} — this console only signs on testnet. Switch the wallet to Stellar testnet.`
+          setWalletActions(false, "This console only signs on Stellar testnet. Switch the wallet there and connect again.");
+          setWalletState(
+            verdict === "unknown"
+              ? "Connected, but the wallet network could not be verified. Action buttons stay closed."
+              : `Connected, but Freighter is on ${verdict === "mainnet" ? "mainnet" : "another network"}. Action buttons stay closed here.`,
+            "error"
           );
         }
       } catch {
-        /* getNetwork is advisory; some builds refuse it until unlocked */
+        // getNetwork is advisory at connect time (some builds refuse it
+        // while locked); the point-of-use assertTestnet is fail-closed.
       }
     }
     return addr;
@@ -211,28 +213,60 @@ async function withButton(id, pendingText, work) {
   }
 }
 
-// Point-of-use network guard: the connect-time check can go stale if the user
-// switches the wallet's network afterwards, so every signing action re-checks
-// right before it asks Freighter to sign.
+// The wallet's own answer, classified against the one network this console
+// signs for. The check is exact — the testnet passphrase the contracts were
+// deployed to — not a guess from a display name, and an answer we cannot
+// verify is "unknown", which the write path treats as a refusal.
+function walletNetworkVerdict(net) {
+  const name = typeof net === "string" ? net : net && (net.network || net.networkPassphrase);
+  const text = String(name || "").toLowerCase();
+  if (/mainnet|public network|public global stellar/.test(text)) return "mainnet";
+  if (name === CONFIG.networkPassphrase || /testnet|test sdf network|stellar testnet/.test(text)) return "testnet";
+  return "unknown";
+}
+
+// Point-of-use network guard, fail-closed: the connect-time check can go
+// stale if the user switches the wallet's network (or its active account)
+// afterwards, so every signing action re-checks right before it asks
+// Freighter to sign. Anything that is not a verified match for the exact
+// testnet passphrase blocks the signature — an unverifiable wallet must not
+// sign, and the block is spoken out loud.
 async function assertTestnet() {
   const f = getFreighter();
-  if (!f || typeof f.getNetwork !== "function") return true; // advisory
+  if (!f) return false;
   try {
-    const net = await f.getNetwork();
-    const name = typeof net === "string" ? net : net && (net.network || net.networkPassphrase);
-    if (name && !/test/i.test(String(name))) {
+    if (typeof f.getAddress === "function") {
+      const answer = await f.getAddress();
+      const current = answer && (typeof answer === "string" ? answer : answer.address || answer.publicKey || answer.public_key);
+      if (connectedAddress && current && current !== connectedAddress) {
+        connectedAddress = null;
+        walletWritesAllowed = false;
+        setWalletState("The active wallet account changed. Connect again to continue.", "error");
+        setWalletActions(false, "The active Freighter account changed — connect again before signing.");
+        acctLog("Blocked before signing: the active wallet account changed; connect again.");
+        return false;
+      }
+    }
+    const verdict = walletNetworkVerdict(typeof f.getNetwork === "function" ? await f.getNetwork() : null);
+    if (verdict !== "testnet") {
       walletWritesAllowed = false;
-      setWalletState(`Freighter is on ${name}. Action buttons stay closed on mainnet.`, "error");
-      setWalletActions(
-        false,
-        `Freighter is on ${name} — this console only signs on testnet. Switch the wallet to Stellar testnet.`
+      setWalletState(
+        verdict === "unknown"
+          ? "Wallet network could not be verified. Action buttons stay closed until Freighter reports Stellar testnet."
+          : `Freighter is on ${verdict === "mainnet" ? "mainnet" : "another network"}. Action buttons stay closed here.`,
+        "error"
       );
-      acctLog(`Blocked: wallet is on ${name}; this console only signs on testnet.`);
+      setWalletActions(false, "This console only signs on Stellar testnet. Switch the wallet there and connect again.");
+      acctLog(`Blocked before signing: wallet network verdict is "${verdict}".`);
       return false;
     }
     return true;
-  } catch {
-    return true; // some builds refuse getNetwork until unlocked — stay advisory
+  } catch (e) {
+    walletWritesAllowed = false;
+    setWalletState("Wallet check failed. Action buttons stay closed.", "error");
+    setWalletActions(false, "The Freighter session check failed — connect again before signing.");
+    acctLog(`Blocked before signing: ${e?.message || e}`);
+    return false;
   }
 }
 
@@ -443,7 +477,7 @@ $("btn-tier-send").addEventListener("click", () =>
     if (!(await assertTestnet())) return null;
     $("res-tier").textContent = "Waiting for Freighter signature…";
     try {
-      const r = await sendWithFreighter(f, CONFIG.campaign, "claim_tier", [
+      const r = await sendWithFreighter(f, connectedAddress, CONFIG.campaign, "claim_tier", [
         { scVal: addrScVal(connectedAddress) },
       ]);
       $("res-tier").innerHTML = "";
@@ -486,7 +520,7 @@ async function runTrustOpen() {
   if (!(await assertTestnet())) return;
   acctLog("Waiting for Freighter (USDC trustline)…");
   try {
-    const r = await openUsdcTrustline(f);
+    const r = await openUsdcTrustline(f, connectedAddress);
     if (r.ok && r.hash) {
       acctLog("Trustline opened — visible in Freighter and Expert.", r.hash);
       await refreshBalances(connectedAddress);
@@ -535,7 +569,7 @@ $("btn-stamp")?.addEventListener("click", () =>
     acctLog("TESTNET stamp — waiting for Freighter (not a CCTP Passport).");
     try {
       // The contract is stamp(owner: Address) — the caller stamps themselves.
-      const r = await sendWithFreighter(f, CONFIG.stamp, "stamp", [
+      const r = await sendWithFreighter(f, connectedAddress, CONFIG.stamp, "stamp", [
         { scVal: addrScVal(connectedAddress) },
       ]);
       if (r.ok) {
@@ -560,7 +594,7 @@ $("btn-bump")?.addEventListener("click", () =>
     if (!(await assertTestnet())) return null;
     acctLog("Waiting for bump signature…");
     try {
-      const r = await sendWithFreighter(f, CONFIG.gateClaimCanonical, "bump", [
+      const r = await sendWithFreighter(f, connectedAddress, CONFIG.gateClaimCanonical, "bump", [
         { scVal: addrScVal(connectedAddress) },
       ]);
       if (r.ok) {
@@ -854,7 +888,7 @@ $("btn-battery-deposit")?.addEventListener("click", () =>
       return;
     }
     const f = getFreighter();
-    const r = await sendWithFreighter(f, CONFIG.battery, "deposit", [
+    const r = await sendWithFreighter(f, connectedAddress, CONFIG.battery, "deposit", [
       { scVal: addrScVal(connectedAddress) },
       { scVal: addrScVal(connectedAddress) },
       { value: amount.units, type: "i128" },
@@ -881,7 +915,7 @@ $("btn-battery-withdraw")?.addEventListener("click", () =>
       return;
     }
     const f = getFreighter();
-    const r = await sendWithFreighter(f, CONFIG.battery, "withdraw", [
+    const r = await sendWithFreighter(f, connectedAddress, CONFIG.battery, "withdraw", [
       { scVal: addrScVal(connectedAddress) },
       { value: amount.units, type: "i128" },
     ]);

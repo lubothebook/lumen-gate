@@ -364,8 +364,15 @@
 
   /* ------------------------------------------------------------ the band */
   /* The wallet band comes first now, directly under the wordmark: the boundary
-     line it opens with is still the page's one literal edge. */
+     line it opens with is still the page's one literal edge.
+     The band carries the only wallet controls on the page, so it must sit
+     above the decorative lattice: the lattice is painted behind the page, and
+     a band that does not lift is the one that eats clicks. The lift is stated
+     on .band itself, not only in the combined rule below the hero, so a
+     refactor of that rule cannot silently drop it (regression: 2026-09-20). */
   .band {
+    position: relative;
+    z-index: 1;
     background: var(--band);
     border-top: 1px solid var(--line-2);
     border-bottom: 1px solid var(--line-2);
@@ -647,7 +654,10 @@
   }
   .row-strip .note { color: var(--muted); }
   .console, .grid-3, .grid-2, .stats, .trust-lanes { align-items: start; }
-  .band { margin: clamp(40px, 4.5vw, 68px) 0; }
+  /* No top margin: the band's boundary line is the hero's bottom edge, and a
+     second gap above it only pushed the wallet console closer to the fold.
+     The breathing room lives below the band, where the next section follows. */
+  .band { margin: 0 0 clamp(44px, 5.5vw, 92px); }
   footer { margin-top: clamp(44px, 5.5vw, 92px); }
 
   .trust-lanes { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 22px; }

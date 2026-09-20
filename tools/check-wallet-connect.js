@@ -35,6 +35,14 @@ function expect(condition, message) {
 // fail loudly if a test ever drove a path that needs it.
 app = app.replace(/await import\(/g, 'await __import(');
 
+// The official @stellar/freighter-api module is a real browser import; in the
+// vm it is answered by the per-test stub installed on the sandbox, so the
+// official path can be driven without an extension and with a call counter.
+app = app.replace(
+  /import\s*\{[\s\S]*?\}\s*from\s*'@stellar\/freighter-api';/,
+  `const { requestAccess: officialRequestAccess, isConnected: officialIsConnected, getAddress: officialGetAddress, getNetwork: officialGetNetwork, signTransaction: officialSignTransaction, setAllowed: officialSetAllowed } = __officialFreighter;`
+);
+
 // ------------------------------------------------------------------ DOM stub
 class El {
   constructor(tag) {
@@ -177,8 +185,21 @@ function makeFetch() {
   };
 }
 
+// The default official stub models a page with no extension at all: the
+// module is present (it is bundled with the page) but nothing answers it, so
+// every call reports "not installed". Tests that exercise the official path
+// pass their own stub with a requestAccess call counter.
+const noWalletOfficial = {
+  requestAccess: async () => ({ address: '', error: { code: -1, message: 'The Stellar Freighter extension is not installed. Install it, then reconnect.' } }),
+  isConnected: async () => ({ isConnected: false }),
+  getAddress: async () => ({ address: '' }),
+  getNetwork: async () => ({ network: '', networkPassphrase: '' }),
+  signTransaction: async () => ({ signedTxXdr: '', signerAddress: '', error: { code: -1, message: 'Freighter is not installed' } }),
+  setAllowed: async () => true,
+};
+
 // ------------------------------------------------------------------ boot
-async function boot(freighter) {
+async function boot(freighter, official) {
   const elsById = new Map(ids.map((id) => [id, new El(`#${id}`)]));
   const timeouts = [];
   const session = new Map();
@@ -198,6 +219,7 @@ async function boot(freighter) {
   const sandbox = {
     window: win,
     document: makeDocument(elsById),
+    __officialFreighter: official || noWalletOfficial,
     navigator: { clipboard: { writeText: async () => {} } },
     fetch: makeFetch(),
     localStorage: win.sessionStorage,
@@ -355,12 +377,53 @@ const allText = (el) => flatten(el).map((n) => (n instanceof El ? n.text : n.tex
   );
 
   // ------------------------------------------------------- the missing wallet path
+  // No injected global and no extension answering the official module: the
+  // note must say exactly what is missing, with the module's own words.
   const noWallet = await boot(undefined);
   noWallet.elsById.get('connectBtn').click();
   await noWallet.flush();
-  expect(noWallet.elsById.get('walletNote').textContent.includes('Freighter is not installed'), 'without the extension the page must say exactly what is missing');
+  expect(noWallet.elsById.get('walletNote').textContent.includes('is not installed'), 'without the extension the page must say exactly what is missing');
+  expect(!noWallet.elsById.get('walletNote').textContent.includes('undefined'), 'the absence note must not render "undefined"');
 
-  console.log(`wallet contract: boot reaches the network (${want} cubes coded), connect click -> address shown for both extension shapes (requestAccess and getPublicKey), demo account readable with no extension at all, balances rounded with exact titles, trust evidence in full, audit badge live | refusal and absence both speak`);
+  // ------------------------------------------------- the official npm path
+  // Newer Freighter builds expose no window global at all: the only door is
+  // the @stellar/freighter-api module. The connect must open requestAccess
+  // exactly once - a second access request in one click is the bug that made
+  // the 2.0 action buttons re-pop the wallet and get refused - and it must
+  // show the address and log the door it used.
+  let officialAccessCalls = 0;
+  const officialRun = await boot(undefined, {
+    requestAccess: async () => {
+      officialAccessCalls += 1;
+      return { address: PUB };
+    },
+    isConnected: async () => ({ isConnected: true }),
+    getAddress: async () => ({ address: PUB }),
+    getNetwork: async () => ({ network: 'Test SDF Network ; September 2015', networkPassphrase: 'Test SDF Network ; September 2015' }),
+    signTransaction: async (xdr) => ({ signedTxXdr: xdr, signerAddress: PUB }),
+    setAllowed: async () => true,
+  });
+  officialRun.elsById.get('connectBtn').click();
+  await officialRun.flush();
+  expect(officialAccessCalls === 1, `the official connect must call requestAccess exactly once, called it ${officialAccessCalls} times`);
+  expect(officialRun.elsById.get('walletChip').textContent.includes(PUB.slice(0, 6)), `the official connect must show the address, got "${officialRun.elsById.get('walletChip').textContent}"`);
+  expect(officialRun.elsById.get('connectBtn').textContent === 'Reconnect', 'the official connect must reflect the connected state');
+  expect(allText(officialRun.elsById.get('txLog')).includes('Wallet connected via requestAccess:'), 'the official connect must log the door it used');
+
+  // A declined official popup resolves with an error object, not a throw:
+  // the note must carry the wallet's own words, not "undefined".
+  const officialRefused = await boot(undefined, {
+    requestAccess: async () => ({ address: '', error: { code: 4001, message: 'User rejected the request' } }),
+    isConnected: async () => ({ isConnected: false }),
+    getAddress: async () => ({ address: '' }),
+    getNetwork: async () => ({ network: '', networkPassphrase: '' }),
+  });
+  officialRefused.elsById.get('connectBtn').click();
+  await officialRefused.flush();
+  expect(officialRefused.elsById.get('walletNote').textContent.includes('User rejected the request'), `an official refusal must carry the wallet's own words, got "${officialRefused.elsById.get('walletNote').textContent}"`);
+  expect(!officialRefused.elsById.get('walletNote').textContent.includes('undefined'), 'an official refusal must not render "undefined"');
+
+  console.log(`wallet contract: boot reaches the network (${want} cubes coded), connect click -> address shown for the injected builds and the official module (requestAccess exactly once), demo account readable with no extension at all, balances rounded with exact titles, trust evidence in full, audit badge live | refusal and absence both speak with their own words`);
   if (problems.length === 0) {
     console.log('wallet connect: proven against the real app.js and the real markup, not asserted in prose');
     process.exit(0);

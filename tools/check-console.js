@@ -98,6 +98,16 @@ if (disabledButtons.length > 0 && painted.size === 0) {
   problems.push('the page disables buttons, so DISABLED_REASONS must exist and cover them');
 }
 
+// Regression gate for the 2026-09-20 live-page bug: the decorative lattice
+// must not be able to paint over the wallet console. The lift is required on
+// .band itself as a standalone rule (position: relative before z-index: 1),
+// not only in the combined selector near the hero, so a refactor of that
+// selector cannot silently drop it and eat the wallet's clicks again.
+const bandLift = [...html.matchAll(/\.band\s*\{[^}]*position\s*:\s*relative\s*;[^}]*z-index\s*:\s*1\s*;/g)];
+if (bandLift.length !== 1) {
+  problems.push('index.html must lift the wallet band above the lattice: a standalone .band rule carrying position: relative and z-index: 1');
+}
+
 // The page carries its two images as base64 so it renders with no network at
 // all (a sandboxed preview, an offline reviewer). That guarantee only holds if
 // the embedded bytes are still the bytes in frontend/public.

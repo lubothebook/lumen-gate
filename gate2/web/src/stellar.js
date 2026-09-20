@@ -97,6 +97,7 @@ function walletReasonFrom(answer) {
 }
 
 const officialFreighter = {
+  __lumenOfficial: true,
   requestAccess: officialRequestAccess,
   getAddress: officialGetAddress,
   getNetwork: officialGetNetwork,
@@ -173,6 +174,36 @@ export function watchFreighter(cb) {
 }
 
 export async function freighterConnect(f) {
+  if (f.__lumenOfficial && typeof f.isConnected === "function") {
+    // The official module has exactly one door that opens the wallet:
+    // requestAccess(). Asking it through several doors would open the popup
+    // several times, so it is asked once. Without an extension it never
+    // answers (the module only times out its *status* call, not its access
+    // call), so the status call carries the "not installed" signal: it
+    // resolves through the module's own two-second timeout, and a status
+    // that arrives that slowly is that timeout. A fast status means the
+    // extension is present and the access popup is the decision.
+    const started = Date.now();
+    try {
+      const answer = await Promise.race([
+        Promise.resolve()
+          .then(() => f.isConnected())
+          .then((status) => {
+            if (status && status.isConnected) return new Promise(() => {});
+            if (Date.now() - started >= 1900) {
+              throw new Error("The Stellar Freighter extension is not installed. Install it, then reconnect.");
+            }
+            return new Promise(() => {});
+          }),
+        f.requestAccess(),
+      ]);
+      const address = walletAddressFrom(answer);
+      if (!address) throw new Error(walletReasonFrom(answer) || "requestAccess returned no address");
+      return address;
+    } catch (error) {
+      throw new Error(error && error.message ? error.message : String(error));
+    }
+  }
   const attempts = [];
   const doors = [
     ["requestAccess", "requestAccess", () => f.requestAccess()],
@@ -203,6 +234,13 @@ async function signXdr(f, xdr, addr) {
     address: addr,
     networkPassphrase: CONFIG.networkPassphrase,
   });
+  // A wallet refusal can come back as { error } instead of a rejection;
+  // reading signedTxXdr from it would hand "" to the chain, so the error
+  // shape is separated before the XDR is read.
+  const reason = signedXdr?.error?.message
+    || (signedXdr?.error ? String(signedXdr.error) : null)
+    || signedXdr?.message;
+  if (reason) throw new Error(`Freighter refused to sign: ${reason}`);
   const signed = typeof signedXdr === "string" ? signedXdr : signedXdr?.signedTxXdr || signedXdr?.xdr;
   if (!signed) throw new Error("Freighter did not return a signed XDR");
   return signed;
@@ -223,11 +261,18 @@ export async function waitSoroban(hash, timeoutMs = 45000) {
   return { ok: false, status: "TIMEOUT" };
 }
 
-export async function sendWithFreighter(f, contractId, method, args = []) {
+/**
+ * Signs and sends one contract call with the session address Connect
+ * verified. The address is a parameter, never re-asked: calling
+ * requestAccess again from an action button re-opens the wallet popup (and a
+ * second access request mid-page is exactly what the browser refuses), so
+ * the session address is what signs.
+ */
+export async function sendWithFreighter(f, addr, contractId, method, args = []) {
+  if (!addr) throw new Error("Connect Freighter first");
   const contract = new Contract(contractId);
   const scArgs = args.map((a) => (a.scVal !== undefined ? a.scVal : nativeToScVal(a.value, a.type)));
   const raw = contract.call(method, ...scArgs);
-  const addr = await freighterConnect(f);
   const account = await server.getAccount(addr);
   const tx = new TransactionBuilder(account, {
     fee: "100000",
@@ -253,8 +298,8 @@ export async function sendWithFreighter(f, contractId, method, args = []) {
   };
 }
 
-export async function openUsdcTrustline(f) {
-  const addr = await freighterConnect(f);
+export async function openUsdcTrustline(f, addr) {
+  if (!addr) throw new Error("Connect Freighter first");
   const account = await horizon.loadAccount(addr);
   const tx = new TransactionBuilder(account, {
     fee: "100000",
