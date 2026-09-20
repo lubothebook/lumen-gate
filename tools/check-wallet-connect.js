@@ -103,6 +103,7 @@ class El {
   }
   addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); }
   click() { for (const fn of this.listeners.click || []) fn({}); }
+  fire(type, event = {}) { for (const fn of this.listeners[type] || []) fn(event); }
   focus() {}
   select() {}
   showModal() {}
@@ -246,10 +247,30 @@ const allText = (el) => flatten(el).map((n) => (n instanceof El ? n.text : n.tex
   expect(els.get('auditBadge').textContent === 'Self-audit: 12/12', `the audit badge must read the live result, got "${els.get('auditBadge').textContent}"`);
   expect(els.get('auditBadgeDot').classList.contains('ok'), 'the audit badge dot must be green when the latest round passed');
 
-  // the coded cube wall: 1280x800 at dpr 1 => 22 x 14 individually coded cubes
-  const want = Math.ceil(1280 / 60) * Math.ceil(800 / 60);
+  // the coded cube wall: 1280x800 at dpr 1 is two tiles apart, so 11 x 7
+  // individually coded cubes - one element per pitch, not one per tile
+  const stride = 1280 >= 1600 ? 4 : 1280 >= 900 ? 2 : 1;
+  const want = Math.ceil(1280 / (60 * stride)) * Math.ceil(800 / (60 * stride));
   const wallChildren = els.get('cubeLattice').children.length;
   expect(wallChildren === want, `the wall must carry exactly ${want} coded cubes for this viewport, got ${wallChildren}`);
+
+  // the demo account can be read without any wallet extension: the card must
+  // show live balances and say, in the chip and in the note, that it is read-only
+  els.get('demoWalletBtn').click();
+  await run.flush();
+  expect(/read-only/i.test(els.get('walletChip').textContent), `the demo view must label itself in the chip, got "${els.get('walletChip').textContent}"`);
+  const demoKv = flatten(els.get('walletKv')).map((n) => (n.textContent || '').trim()).join(' ').replace(/\s+/g, ' ');
+  expect(/\d/.test(demoKv), `the demo view must read real balances, got "${demoKv}"`);
+  expect(/read-only/i.test(els.get('walletNote').textContent), `the demo view must say what it cannot do, got "${els.get('walletNote').textContent}"`);
+
+  // amounts are typed the way a wallet shows them, and the base-unit integer is
+  // stated rather than silently multiplied
+  els.get('lockAmount').value = '13.7';
+  els.get('lockAmount').fire('input');
+  expect(/\b137,000,000\b/.test(els.get('lockAmountHint').textContent), `13.7 must state its base-unit integer, got "${els.get('lockAmountHint').textContent}"`);
+  els.get('lockAmount').value = '12.12345678';
+  els.get('lockAmount').fire('input');
+  expect(!/base units/.test(els.get('lockAmountHint').textContent), `an eighth decimal place cannot be sent, got "${els.get('lockAmountHint').textContent}"`);
 
   // the click a user performs
   els.get('connectBtn').click();
@@ -281,13 +302,34 @@ const allText = (el) => flatten(el).map((n) => (n instanceof El ? n.text : n.tex
   expect(allText(refused.elsById.get('txLog')).includes('not approved'), 'the refusal must land in the log, not be swallowed');
   expect(!refused.elsById.get('walletChip').textContent.includes('undefined'), 'a refusal must never render "undefined" as the address');
 
+  // ------------------------------------- the two shapes a real extension answers in
+  // Freighter's newer builds answer requestAccess() with { address }, older ones
+  // answer getPublicKey() with the string itself. Both are the extension talking,
+  // and neither may end in "wallet connection failed".
+  for (const [label, injected] of [
+    ['requestAccess with an address', { requestAccess: async () => ({ address: PUB }), getNetwork: async () => ({ network: 'TESTNET' }) }],
+    ['getPublicKey with a string', { getPublicKey: async () => PUB, getNetwork: async () => 'TESTNET' }],
+  ]) {
+    const run2 = await boot(injected);
+    run2.elsById.get('connectBtn').click();
+    await run2.flush();
+    expect(
+      run2.elsById.get('walletChip').textContent.includes(PUB.slice(0, 6)),
+      `a wallet answering as "${label}" must connect, got "${run2.elsById.get('walletChip').textContent}"`
+    );
+    expect(
+      !allText(run2.elsById.get('txLog')).includes('Wallet connection failed'),
+      `a wallet answering as "${label}" must not be reported as a failure`
+    );
+  }
+
   // ------------------------------------------------------- the missing wallet path
   const noWallet = await boot(undefined);
   noWallet.elsById.get('connectBtn').click();
   await noWallet.flush();
   expect(noWallet.elsById.get('walletNote').textContent.includes('Freighter is not installed'), 'without the extension the page must say exactly what is missing');
 
-  console.log(`wallet contract: boot reaches the network (${want} cubes coded), connect click -> address shown, balances rounded with exact titles, trust evidence in full, audit badge live | refusal and absence both speak`);
+  console.log(`wallet contract: boot reaches the network (${want} cubes coded), connect click -> address shown for both extension shapes (requestAccess and getPublicKey), demo account readable with no extension at all, balances rounded with exact titles, trust evidence in full, audit badge live | refusal and absence both speak`);
   if (problems.length === 0) {
     console.log('wallet connect: proven against the real app.js and the real markup, not asserted in prose');
     process.exit(0);

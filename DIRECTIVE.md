@@ -492,6 +492,54 @@ functionality belongs in the off-chain surface, the facade and the docs.
       and it builds the disabled-control table from the DOM, reasons included.
       Both browser harnesses assert the panel's numbers against the page's own
       measurements, so it cannot describe a page that is not there.
+- [x] **The first screen is a wordmark, one sentence and two buttons.** The
+      hero carries no strip, the wallet band starts directly under it and its top
+      edge lands inside the first viewport, and the explanation blocks that used
+      to sit between the two (who signs / who pays / who can change the rules,
+      and the four counters) became ordinary rows of the settlement strip below
+      the wallet. The version number moved to the end of the page as its own
+      roadmap strip: **1.0** is this repository, **2.0** is a separate system
+      whose design is not written yet, and its button is disabled with its reason
+      stated rather than teasing a reader before they have read anything. The
+      first screen also gained a header CTA, so the wallet is one click away from
+      every scroll position instead of only from the hero.
+- [x] **The strips hug their text.** The operator's complaint was measurable:
+      20-30px of band padding above and below every row, which reads as space
+      between the text and its own strip. It is 13-18px now, the air between rows
+      comes from the row gap where the lattice shows, and the page harness fails
+      if any band pads more than 24px - a spacing rule that is checked rather
+      than eyeballed.
+- [x] **The lattice thinned out where it was costing the most.** One element per
+      pitch instead of one per tile: the tile stays 60x60 and never resampled,
+      but the pitch opens with the screen (phone 1 tile, laptop 2, wide display
+      4). A 1920x1080 screen went from 576 cubes to **40**, and the harness
+      asserts the count, the tokens and that a rebuild only happens when the
+      screen really changed.
+- [x] **The wallet connects for both shapes a real extension answers in, and it
+      can be read with no extension at all.** Freighter's newer builds resolve
+      `requestAccess()` with an address, older ones answer `getPublicKey()` with
+      the string; the harness now proves both, in the real module, rather than
+      asserting one. The card also offers *View the demo account*: the manifest's
+      gasless recipient read straight from Horizon, signed by nobody, labelled
+      read-only in the chip and in the note, with burning still routed through the
+      connect path because signing needs a wallet.
+- [x] **Amounts are typed in human units.** `13.7`, not `137000000`, with the
+      base-unit integer stated underneath as what goes on the wire. The
+      conversion is string arithmetic, not `* 1e7`, because that multiplication
+      is wrong in binary floating point (`13.7 * 1e7` = `136999999.99`) and the
+      error would only surface on some amounts. Two decimals place too many is
+      refused with a reason.
+- [x] **Three button weights, so the demo path and the operator shelf are not
+      the same colour.** `primary` = the next step of the demo; a plain button =
+      a real but optional action; `.mini` = housekeeping (copy a command, set a
+      token, fill a field). The cash-out panel split its voices too: a sentence
+      for the user at the top, and the engineering honesty inside a labelled
+      *Operating detail* disclosure, so one paragraph is never addressed to two
+      readers at once.
+- [x] **Tab labels stay on one line at every width.** Shortened to
+      `Receive · mint` / `Send back · burn` / `Cash out` with `white-space:
+      nowrap`, measured in a 390px viewport: three labels, one line each, no
+      clipping, no horizontal page overflow.
 - [x] **The hero is the one row on the page with no strip, and the page
       announces which system it is.** The operator asked for the first area to
       carry no black band, for the wallet to sit under it, and for two buttons

@@ -145,12 +145,31 @@ const FRAME_PX = 4;
 // One asset pixel per screen pixel, always. The cell and the ring are the
 // tile divided by the device pixel ratio, never multiplied - a 2x display
 // gets a 30px cell that still lands on 60 physical pixels.
+// The lattice is not a carpet of interactive elements: the wall is built one
+// element per *pitch*, and the pitch opens up with the screen while the tile
+// itself never changes size. The pointer can still only ever frame one cube,
+// which is the part of the design that is about blocks; the number of elements
+// is the part that is about cost, and this is where that cost is decided.
+function latticeStride() {
+  const width = window.innerWidth || 0;
+  if (width >= 1600) return 4;
+  if (width >= 900) return 2;
+  return 1;
+}
+
 function sizeLattice() {
   const dpr = window.devicePixelRatio || 1;
   const root = document.documentElement;
-  root.style.setProperty('--cell', `${TILE_PX / dpr}px`);
+  const stride = latticeStride();
+  const cell = TILE_PX / dpr;
+  const pitch = cell * stride;
+  root.style.setProperty('--cell', `${cell}px`);
+  root.style.setProperty('--stride', String(stride));
+  root.style.setProperty('--pitch', `${pitch}px`);
   root.style.setProperty('--ring', `${FRAME_PX / dpr}px`);
-  return TILE_PX / dpr;
+  // The caller wants the cadence: how far apart the elements sit, not how big
+  // the tile inside them is.
+  return pitch;
 }
 
 // The background is not a wallpaper: every cube is its own element on a
@@ -165,13 +184,16 @@ function sizeLattice() {
 // the rule the design actually asks for: the frame appears on the cube under
 // the pointer, and only where that cube is visible - a strip, a card, the
 // wallet band, the header, the footer or a dialog all hide it again.
+// The first area is not on this list, and that is the point of it: it carries
+// no strip, so the lattice shows through and the frame can land under the
+// hero's own text. A surface belongs here only if it really does cover the
+// wall.
 const LATTICE_BLOCKERS = [
   'header.top',
   'footer',
   'nav.foot-nav',
   'dialog',
   '.boundary',
-  '.hero-panel',
   '.band',
   '.card',
   '.steps',
@@ -232,9 +254,9 @@ function initLatticeFrame() {
 function buildLattice() {
   const wall = $('cubeLattice');
   if (!wall) return;
-  const cell = sizeLattice();
-  const cols = Math.max(1, Math.ceil(window.innerWidth / cell));
-  const rows = Math.max(1, Math.ceil(window.innerHeight / cell));
+  const pitch = sizeLattice();
+  const cols = Math.max(1, Math.ceil(window.innerWidth / pitch));
+  const rows = Math.max(1, Math.ceil(window.innerHeight / pitch));
   const wanted = Math.min(cols * rows, 6000);
   if (buildLattice.wanted === wanted) return;
   buildLattice.wanted = wanted;
@@ -721,6 +743,24 @@ async function refreshWallet() {
 // reads 137000000 as 13.7, so every amount field carries its own translation.
 const ASSET_DECIMALS = 7;
 
+/**
+ * What the reader types is what a wallet would show: 13.7, not 137000000.
+ * The conversion is string arithmetic on purpose - `13.7 * 1e7` is 136999999.99
+ * in binary floating point, and sending that to a contract would be a bug that
+ * only shows up on some amounts.
+ */
+function toBaseUnits(text) {
+  const raw = String(text == null ? '' : text).trim().replace(/\s|,/g, '');
+  if (!/^\d+(\.\d{1,7})?$/.test(raw)) return null;
+  const [whole, fraction = ''] = raw.split('.');
+  const padded = (fraction + '0'.repeat(ASSET_DECIMALS)).slice(0, ASSET_DECIMALS);
+  const base = whole + padded;
+  const trimmed = base.replace(/^0+/, '') || '0';
+  if (trimmed.length > 15) return null; // beyond what the contract's i128 path accepts here
+  const value = Number(trimmed);
+  return value > 0 ? value : null;
+}
+
 function formatUnits(value) {
   const [whole, fraction] = (value / 10 ** ASSET_DECIMALS).toFixed(ASSET_DECIMALS).split('.');
   const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
@@ -733,22 +773,24 @@ function amountHint(inputId, hintId, tail) {
   const hint = $(hintId);
   const paint = () => {
     const raw = input.value.trim();
-    const value = Number(raw);
-    if (raw === '' || !Number.isFinite(value) || !Number.isInteger(value) || value <= 0) {
-      hint.textContent = 'a positive whole number of base units';
+    const base = toBaseUnits(raw);
+    if (base === null) {
+      hint.textContent = 'a number with up to 7 decimal places, e.g. 13.7';
       hint.dataset.state = 'warn';
       return;
     }
     hint.dataset.state = '';
-    hint.textContent = `= ${formatUnits(value)} wSRC ${tail}`;
+    // Both directions, in the reader's unit first: the base-unit integer is what
+    // goes on the wire, so it is shown rather than hidden.
+    hint.textContent = `${base.toLocaleString('en-US')} base units on the wire ${tail}`;
   };
   input.addEventListener('input', paint);
   paint();
 }
 
 function wireAmounts() {
-  amountHint('lockAmount', 'lockAmountHint', 'minted, minus the relayer fee');
-  amountHint('burnAmount', 'burnAmountHint', 'burned from your own balance');
+  amountHint('lockAmount', 'lockAmountHint', '- minted to the recipient, minus the relayer fee');
+  amountHint('burnAmount', 'burnAmountHint', '- burned from your own balance');
 }
 
 // -------------------------------------------------------- inbound (lock)
@@ -774,10 +816,11 @@ function resetSteps() {
 }
 
 async function lock() {
-  const amount = Number($('lockAmount').value);
+  const amount = toBaseUnits($('lockAmount').value);
+  const typed = $('lockAmount').value.trim();
   const recipient = $('lockRecipient').value.trim();
   const count = Number($('lockCount').value || 1);
-  if (!Number.isInteger(amount) || amount <= 0) return log('Amount must be a positive whole number.', 'bad');
+  if (amount === null) return log(`Amount must be a number with up to 7 decimal places: "${typed}" cannot be sent.`, 'bad');
   if (!/^G[A-Z2-7]{55}$/.test(recipient)) return log('Recipient must be a Stellar account address (G..., 56 characters).', 'bad');
 
   resetSteps();
@@ -881,9 +924,8 @@ async function burn() {
     const address = await connectWallet();
     if (!address) return;
   }
-  const amount = Number($('burnAmount').value);
-  const recipient = ($('burnRecipient').value || state.wallet).trim();
-  if (!Number.isInteger(amount) || amount <= 0) return log('Amount must be a positive whole number.', 'bad');
+  const amount = toBaseUnits($('burnAmount').value);
+  if (amount === null) return log(`Amount must be a number with up to 7 decimal places: "${$('burnAmount').value.trim()}" cannot be sent.`, 'bad');
   const gateway = state.status?.contracts?.gateway;
   const targetDomain = state.status?.domain?.key;
   if (!gateway || !targetDomain) return log('Deployment addresses are not loaded yet.', 'warn');
@@ -1349,6 +1391,29 @@ function wire() {
     if (pub) $('lockRecipient').value = pub;
   }));
   $('connectBtn').addEventListener('click', () => withBusy($('connectBtn'), () => connectWallet()));
+  // Connecting needs the Freighter extension; this does not. The deployment
+  // manifest names the gasless demo account, so the card can show that account's
+  // live balances to anyone, signed by nobody. It is read-only and says so: the
+  // chip and the note both carry the word, and burning still routes through
+  // connectWallet(), which will ask for Freighter because signing needs it.
+  $('demoWalletBtn').addEventListener('click', () => withBusy($('demoWalletBtn'), async () => {
+    const demo = state.status?.accounts?.gasless_recipient || state.status?.accounts?.end_user;
+    if (!demo) {
+      log('The manifest in this deployment carries no demo account to read.', 'warn');
+      return;
+    }
+    if (state.wallet && state.wallet !== demo) {
+      log(`The card is showing ${short(state.wallet)}; switching to the demo account ${short(demo)}.`, 'warn');
+    }
+    state.wallet = demo;
+    state.walletSource = 'demo-read-only';
+    $('walletChip').textContent = `read-only: ${short(demo, 6)}`;
+    $('walletKind').textContent = 'read-only demo view';
+    log(`Reading the demo account ${demo}. This view is read-only: nothing here signs, and burning still needs your own wallet.`, 'info');
+    await refreshWallet();
+    $('walletKind').textContent = 'read-only demo view';
+    $('walletNote').textContent = 'This is the deployment manifest\'s demo account, read straight from Horizon. It is read-only: connecting your own wallet is still the only way to sign a burn.';
+  }));
   $('balanceBtn').addEventListener('click', () => withBusy($('balanceBtn'), () => refreshWallet()));
   $('walletLink').addEventListener('click', () => {});
   $('burnBtn').addEventListener('click', () => withBusy($('burnBtn'), () => burn()));

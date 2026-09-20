@@ -109,7 +109,7 @@ if (cubeRule) {
   expect(cubeRule[0].includes('background-image: var(--grid-tile)'), 'every cube is painted from the embedded tile bytes');
   expect(cubeRule[0].includes('background-size: var(--cell) var(--cell)'), 'every cube paints the tile at cell size, never resampled');
   expect(cubeRule[0].includes('image-rendering: pixelated'), 'the tile must not be smoothed (image-rendering: pixelated)');
-  expect(/width:\s*var\(--cell\);\s*height:\s*var\(--cell\)/.test(cubeRule[0]), 'every cube is exactly one cell');
+  expect(/width:\s*var\(--pitch\);\s*height:\s*var\(--pitch\)/.test(cubeRule[0]), 'every cube box is exactly one pitch wide');
   expect(/transition:\s*box-shadow/.test(cubeRule[0]), 'the frame on a cube fades in and out rather than popping');
 }
 // The frame is one rule with two selectors: :hover for anything that can still
@@ -126,6 +126,8 @@ expect(/prefers-reduced-motion: reduce[^}]*\.cube[^}]*transition:\s*none/.test(h
 const buildMatch = app.match(/function buildLattice\(\) \{[\s\S]*?\n\}/);
 expect(Boolean(buildMatch), 'buildLattice() was not found in frontend/src/app.js');
 const sizeMatch = app.match(/function sizeLattice\(\) \{[\s\S]*?\n\}/);
+const strideMatch = app.match(/function latticeStride\(\) \{[\s\S]*?\n\}/);
+expect(Boolean(strideMatch), 'latticeStride() was not found in frontend/src/app.js: the pitch is what keeps the element count down');
 expect(Boolean(sizeMatch), 'sizeLattice() was not found in frontend/src/app.js');
 expect(/const TILE_PX = 60;\nconst FRAME_PX = 4;/.test(app), 'the lattice constants could not be read out of frontend/src/app.js');
 expect(!/LATTICE_MODES/.test(app), 'density modes are retired: 1:1 is the only mode now');
@@ -158,22 +160,63 @@ function drive({ width, height, dpr }) {
   };
   vm.createContext(sandbox);
   const prefix = 'const TILE_PX = 60;\nconst FRAME_PX = 4;\n';
-  vm.runInContext(`${prefix}${sizeMatch ? sizeMatch[0] : ''}\n${buildMatch ? buildMatch[0] : ''}\nbuildLattice();`, sandbox, { filename: 'app.js#buildLattice' });
+  vm.runInContext(
+    `${prefix}${strideMatch ? strideMatch[0] : ''}\n${sizeMatch ? sizeMatch[0] : ''}\n${buildMatch ? buildMatch[0] : ''}\nbuildLattice();`,
+    sandbox,
+    { filename: 'app.js#buildLattice' }
+  );
   calls.cubes = wall.children.map((cube) => cube.className);
   return { calls, wall, sandbox };
 }
 
-// the density contract, asserted on the tokens the run actually sets
+// The cadence contract. The tile is 60px and never resampled; what changes
+// with the screen is the pitch - how far apart the elements sit - because that
+// is the number that decides how many of them exist. One element per pitch,
+// exactly, at three screen widths and two device pixel ratios.
+const expectedCubes = (width, height, cell) => {
+  const stride = width >= 1600 ? 4 : width >= 900 ? 2 : 1;
+  return { stride, want: Math.ceil(width / (cell * stride)) * Math.ceil(height / (cell * stride)) };
+};
+
 let run = drive({ width: 1000, height: 700, dpr: 1 });
-expect(run.calls.tokens['--cell'] === '60px', `at dpr 1 the cell must be 60px, got ${run.calls.tokens['--cell']}`);
-expect(run.calls.tokens['--ring'] === '4px', `at dpr 1 the ring must be 4px, got ${run.calls.tokens['--ring']}`);
-expect(run.calls.cubes.length === Math.ceil(1000 / 60) * Math.ceil(700 / 60), `1000x700 at dpr 1 needs exactly ${Math.ceil(1000 / 60) * Math.ceil(700 / 60)} cubes, got ${run.calls.cubes.length}`);
-expect(run.calls.cubes.every((name) => name === 'cube'), 'every element on the wall is an individually coded cube');
+{
+  const { want } = expectedCubes(1000, 700, 60);
+  expect(run.calls.tokens['--cell'] === '60px', `at dpr 1 the cell must be 60px, got ${run.calls.tokens['--cell']}`);
+  expect(run.calls.tokens['--pitch'] === '120px', `on a laptop the pitch must be two tiles, got ${run.calls.tokens['--pitch']}`);
+  expect(run.calls.tokens['--ring'] === '4px', `at dpr 1 the ring must be 4px, got ${run.calls.tokens['--ring']}`);
+  expect(run.calls.cubes.length === want, `1000x700 at dpr 1 needs exactly ${want} cubes, got ${run.calls.cubes.length}`);
+  expect(run.calls.cubes.every((name) => name === 'cube'), 'every element on the wall is an individually coded cube');
+}
 
 run = drive({ width: 1000, height: 700, dpr: 2 });
-expect(run.calls.tokens['--cell'] === '30px', `at dpr 2 the cell must be 30px so one asset pixel stays one screen pixel, got ${run.calls.tokens['--cell']}`);
-expect(run.calls.tokens['--ring'] === '2px', `at dpr 2 the ring must be 2px, got ${run.calls.tokens['--ring']}`);
-expect(run.calls.cubes.length === Math.ceil(1000 / 30) * Math.ceil(700 / 30), `1000x700 at dpr 2 needs exactly ${Math.ceil(1000 / 30) * Math.ceil(700 / 30)} cubes, got ${run.calls.cubes.length}`);
+{
+  const { want } = expectedCubes(1000, 700, 30);
+  expect(run.calls.tokens['--cell'] === '30px', `at dpr 2 the cell must be 30px so one asset pixel stays one screen pixel, got ${run.calls.tokens['--cell']}`);
+  expect(run.calls.tokens['--ring'] === '2px', `at dpr 2 the ring must be 2px, got ${run.calls.tokens['--ring']}`);
+  expect(run.calls.cubes.length === want, `1000x700 at dpr 2 needs exactly ${want} cubes, got ${run.calls.cubes.length}`);
+}
+
+// a wide display: the wall must thin out rather than grow, and a phone must
+// still get the dense one-tile-per-block lattice
+run = drive({ width: 1920, height: 1080, dpr: 1 });
+{
+  const { want, stride } = expectedCubes(1920, 1080, 60);
+  expect(stride === 4, 'a 1920px screen must sit four tiles apart');
+  expect(run.calls.tokens['--pitch'] === '240px', `at 1920px the pitch must be 240px, got ${run.calls.tokens['--pitch']}`);
+  expect(run.calls.cubes.length === want, `1920x1080 needs exactly ${want} cubes, got ${run.calls.cubes.length}`);
+  // The point of the stride, in one number: on a large screen the wall is a
+  // small fraction of the dense one, because that is what a judge's projector
+  // gets asked to repaint on every pointer move.
+  const dense = Math.ceil(1920 / 60) * Math.ceil(1080 / 60);
+  expect(run.calls.cubes.length * 10 <= dense, `the wide wall must be at most a tenth of the dense one: ${run.calls.cubes.length} vs ${dense}`);
+  expect(run.calls.cubes.length <= 100, `a 1920x1080 screen must carry fewer than a hundred cubes, got ${run.calls.cubes.length}`);
+}
+run = drive({ width: 390, height: 844, dpr: 1 });
+{
+  const { want, stride } = expectedCubes(390, 844, 60);
+  expect(stride === 1, 'a phone must keep the one-tile pitch');
+  expect(run.calls.cubes.length === want, `390x844 needs exactly ${want} cubes, got ${run.calls.cubes.length}`);
+}
 
 // a re-run with an unchanged screen must not tear down and rebuild the wall
 {
@@ -194,7 +237,11 @@ expect(run.calls.cubes.length === Math.ceil(1000 / 30) * Math.ceil(700 / 30), `1
   };
   sandbox.$ = () => wall;
   vm.createContext(sandbox);
-  vm.runInContext(`const TILE_PX = 60;\nconst FRAME_PX = 4;\n${sizeMatch[0]}\n${buildMatch[0]}\nbuildLattice();\nbuildLattice();`, sandbox, { filename: 'app.js#buildLattice' });
+  vm.runInContext(
+    `const TILE_PX = 60;\nconst FRAME_PX = 4;\n${strideMatch[0]}\n${sizeMatch[0]}\n${buildMatch[0]}\nbuildLattice();\nbuildLattice();`,
+    sandbox,
+    { filename: 'app.js#buildLattice' }
+  );
   expect(clears === 1, `an unchanged screen must build the wall once, not on every pass (cleared ${clears} times)`);
 }
 
@@ -212,7 +259,14 @@ expect(/^initLatticeFrame\(\);/m.test(app), 'initLatticeFrame() is defined but n
 for (const gesture of ['pointermove', 'pointerleave', 'blur', 'scroll']) {
   expect(new RegExp(`addEventListener\\s*\\(\\s*'${gesture}'`).test(app), `the frame must be cleared or repainted on ${gesture}`);
 }
-expect(/LATTICE_BLOCKERS/.test(app) && /\.hero-panel/.test(app) && /\.card/.test(app), 'the blockers list must name the surfaces that hide the lattice (strips, cards, the band, chrome)');
+expect(/LATTICE_BLOCKERS/.test(app) && /\.card/.test(app) && /\.band/.test(app), 'the blockers list must name the surfaces that hide the lattice (cards, the band, chrome)');
+// The hero carries no strip any more, so it must NOT be listed as a blocker:
+// a list that still hides the frame there would contradict the page.
+{
+  const list = (app.match(/const LATTICE_BLOCKERS = \[[\s\S]*?\];/) || [''])[0];
+  expect(!/\.hero-panel/.test(list), 'the hero panel is transparent: it must not be listed as a lattice blocker');
+  expect(/\.card/.test(list) && /dialog/.test(list) && /nav\.foot-nav/.test(list), 'the blockers list must still name the cards, the dialog and the dock');
+}
 
 // Drive cubeUnderPointer() with synthetic hit-test stacks: the topmost cube
 // wins only when nothing opaque sits above it.
@@ -237,7 +291,9 @@ if (underMatch) {
   const shell = node('shell', []);
   expect(under([shell, section, node('main', []), cube, node('cube-lattice', [])]) === cube, 'a cube directly under the pointer in an open gap must be the one framed');
   expect(under([node('card', ['.card']), shell, cube]) === null, 'a card above the cube must hide the frame');
-  expect(under([node('hero-panel', ['.hero-panel']), cube]) === null, 'the hero panel must hide the frame');
+  // the first area carries no strip, so a hit over it is still a hit on the cube
+  expect(under([node('hero-panel', []), cube]) === cube, 'the first area carries no strip: the cube under the pointer there must still be framed');
+  expect(under([node('band', ['.band']), shell, cube]) === null, 'the wallet band above the cube must hide the frame');
   expect(under([node('band', ['.band']), cube]) === null, 'the wallet band must hide the frame');
   expect(under([node('top', ['header.top']), cube]) === null, 'the header must hide the frame');
   expect(under([node('boundary', ['.boundary']), cube]) === null, 'the settlement boundary strip must hide the frame');
@@ -326,7 +382,7 @@ expect(/\.iface-strip-gap\s*\{[^}]*background-size:\s*60px 60px/.test(html), "th
 expect(/--row-gap:\s*clamp\(/.test(html), '--row-gap must be part of the rhythm tokens');
 expect(/overflow-x:\s*hidden/.test(html) && /overflow-x:\s*clip/.test(html), 'the full-bleed strips are measured in vw, so the horizontal overflow must be clipped (with a fallback first)');
 
-console.log('lattice contract: coded wall, one element per 60px cube, per-cube 4px frame (painted by pointer tracking, since the wall lives behind the page), pixelated tile, one asset px per screen px (60/4 at dpr 1, 30/2 at dpr 2) | behaviour: density tokens, exact coverage, no pointless rebuild, one framed cube at a time | strips: text rows are full-bleed and the lattice shows in the gaps');
+console.log('lattice contract: coded wall, one element per pitch (60px tile, stride by screen width), per-cube 4px frame (painted by pointer tracking, since the wall lives behind the page), pixelated tile, one asset px per screen px (60/4 at dpr 1, 30/2 at dpr 2) | behaviour: density tokens, exact coverage, no pointless rebuild, one framed cube at a time | strips: text rows are full-bleed and the lattice shows in the gaps');
 if (problems.length === 0) {
   console.log('grid fx: every cube is coded onto the grid and frames itself under the pointer, and only itself');
   process.exit(0);

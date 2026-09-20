@@ -139,11 +139,18 @@ async function main() {
       };
     });
 
-    expect(layout.rows.length >= 8, `the page should carry the line strips of every text section, found ${layout.rows.length}`);
+    expect(layout.rows.length >= 12, `the page should carry the line strips of every text row, found ${layout.rows.length}`);
     for (const row of layout.rows) {
       expect(row.left <= 1 && row.right >= layout.vw - 1, `#${row.id}: a text row must run edge to edge, got [${row.left},${row.right}] of ${layout.vw}`);
       expect(!/rgba?\(0, 0, 0, 0\)/.test(row.painted), `#${row.id}: a text row must carry its own strip, found ${row.painted}`);
     }
+    // The band hugs the text it carries: the padding inside a strip is small,
+    // and the air between rows comes from the row gap where the lattice shows.
+    const bandPad = await page.evaluate(() =>
+      [...document.querySelectorAll('main > section.strip > .shell > *')]
+        .map((el) => Math.round(parseFloat(getComputedStyle(el).paddingTop)))
+    );
+    expect(Math.max(...bandPad) <= 24, `a strip must hug its text, found up to ${Math.max(...bandPad)}px of padding inside the band`);
     const gaps = layout.rows.map((r) => r.gapAbove).filter((g) => g !== null);
     expect(gaps.every((g) => g > 0), `every pair of rows must leave a gap for the lattice, found ${JSON.stringify(gaps)}`);
     expect(layout.gapProbe > 0, 'the gap between two strips must be a visible opening, not zero');
@@ -164,8 +171,20 @@ async function main() {
     expect(/inset/.test(openLattice.shadow || ''), `the frame must be an inset ring, got ${openLattice.shadow}`);
     expect(openLattice.count !== 1 || /4px/.test(openLattice.shadow), `the frame must be the 4 screen pixel ring at 1x, got ${openLattice.shadow}`);
 
-    const onPanel = await hold(720, 430);
-    expect(onPanel.count === 0, `the hero panel must hide the frame, got ${onPanel.count}`);
+    // The first area carries no strip any more, so the lattice is what shows
+    // through it: a pointer over the hero's own text column still frames one
+    // cube. That is the operator's "no black strip in the first area" made
+    // measurable - if a band were painted there, the frame would be hidden.
+    const inHero = await hold(720, 430);
+    expect(inHero.count === 1, `the first area must carry no strip: the lattice must still frame under the hero, got ${inHero.count}`);
+
+    // and the wallet band is the next thing after the hero, not four screens
+    // down: its top edge has to be inside the first viewport
+    const walletReach = await page.evaluate(() => {
+      const band = document.querySelector('#console').getBoundingClientRect();
+      return { top: Math.round(band.top), vh: window.innerHeight, viewportScrolled: window.scrollY };
+    });
+    expect(walletReach.top < walletReach.vh, `the wallet must start within the first screen, it starts at ${walletReach.top}px of ${walletReach.vh}`);
 
     const onHeader = await hold(720, 40);
     expect(onHeader.count === 0, `the header must hide the frame, got ${onHeader.count}`);
