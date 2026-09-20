@@ -777,10 +777,57 @@ async function requestWalletAddress(freighter) {
     new Promise((_, reject) => setTimeout(() => reject(new Error(`${label} did not answer within ${ms / 1000}s`)), ms)),
   ]);
 
+  // Sixty seconds is the right budget for a human reading a popup. It is the
+  // wrong budget for "there is no extension", and those two look identical
+  // from here: in both cases requestAccess() simply never settles, because
+  // without a content script nothing ever answers the postMessage.
+  //
+  // The official module's isConnected() is what separates them. It carries its
+  // own ~2s internal timeout, so a SLOW answer IS the timeout firing - meaning
+  // nothing is listening - while a fast one means the extension is there and
+  // the popup is now the user's decision. 2.0 resolves it exactly this way;
+  // 1.0 had the race missing, so a reader with no wallet watched "Asking
+  // Freighter…" for a full minute before being told anything.
+  //
+  // This only applies to the official postMessage module. An injected provider
+  // is proof of presence by itself, so it keeps the full human budget.
+  // 1.0 marks the module as __official; 2.0 calls the same thing
+  // __lumenOfficial. Accept either so this keeps working if the two wallet
+  // layers are ever merged, rather than silently disabling itself.
+  const isOfficialModule = Boolean(freighter && (freighter.__official || freighter.__lumenOfficial));
+  let absenceSignal = null;
+  if (isOfficialModule && typeof freighter.isConnected === 'function') {
+    const started = Date.now();
+    absenceSignal = Promise.resolve()
+      .then(() => freighter.isConnected())
+      .then((status) => {
+        const present = Boolean(status && (status.isConnected ?? status));
+        if (present) return new Promise(() => {}); // extension is here: never win the race
+        if (Date.now() - started >= 1500) {
+          throw new Error('The Stellar Freighter extension is not installed. Install it, then reconnect.');
+        }
+        // A fast negative is a real "no": the content script answered and said
+        // it is not connected, rather than the call timing out into silence.
+        throw new Error('Freighter is installed but reported no connection. Unlock it, then reconnect.');
+      })
+      .catch((error) => {
+        throw error instanceof Error ? error : new Error(String(error));
+      });
+    // Nothing awaits this yet, so an unhandled rejection must not escape
+    // before the race below attaches its own handler.
+    absenceSignal.catch(() => {});
+  }
+
   for (const [label, method, open] of doors) {
     if (typeof freighter[method] !== 'function') continue;
     try {
-      const answer = await withTimeout(open(), label === 'requestAccess' ? 60000 : 8000, label);
+      // requestAccess keeps the generous human budget, but the absence signal
+      // can cut it short: if the wallet is not there, waiting out the full
+      // minute tells the reader nothing they could not have been told in two
+      // seconds.
+      const racers = [withTimeout(open(), label === 'requestAccess' ? 60000 : 8000, label)];
+      if (absenceSignal && label === 'requestAccess') racers.push(absenceSignal);
+      const answer = await Promise.race(racers);
       const address = walletAddressFrom(answer);
       if (address) return { address, via: label, attempts };
       attempts.push(`${label}: ${walletReasonFrom(answer) || 'the extension answered without an address'}`);
@@ -976,7 +1023,15 @@ async function connectWallet() {
       // Say which door was tried and what it answered, instead of rendering
       // "undefined" as an address or a generic failure. The last concrete
       // reason is the one a reader can act on.
-      const why = attempts.length ? attempts[attempts.length - 1] : 'the extension exposes no way to ask for an address';
+      // Prefer a definite verdict over the last thing that happened. When the
+      // module's own status call has established that nothing is listening,
+      // that is the fact worth printing; the later doors only add noise like
+      // "answered without an address", which describes silence rather than
+      // naming it. Without this the clearest sentence we have is buried by
+      // whichever door failed last.
+      const decisive = attempts.find((a) => /not installed|unlock it/i.test(a));
+      const why = decisive
+        || (attempts.length ? attempts[attempts.length - 1] : 'the extension exposes no way to ask for an address');
       // Every door was tried and none answered. That can mean the extension is
       // absent, locked, or the request was declined - so the note says all
       // three rather than asserting one. Detection is only consulted here,

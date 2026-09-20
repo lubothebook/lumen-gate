@@ -122,6 +122,51 @@ check("a press with no wallet says what it is waiting on",
 check("receiving is still described as keyless", /receiv/i.test(none.note));
 check("no page error without a wallet", none.errors.length === 0, none.errors[0] || "");
 
+// 4a - AND IT MUST NOT TAKE A MINUTE TO SAY SO.
+//
+// "Asking Freighter…" is honest while a door is still open, but with no
+// extension present nothing will ever answer it: requestAccess() carries a 60s
+// budget sized for a human reading a popup, and spending that whole minute on
+// an absence leaves the reader staring at a spinner. 2.0 settles this in ~2s
+// by racing the module's own isConnected(), whose internal timeout firing IS
+// the evidence that nothing is listening. 1.0 now does the same.
+//
+// Measured, not asserted: press the button with no wallet and time how long
+// until the note stops saying "asking" and names a verdict.
+{
+  const page = await browser.newPage();
+  await page.setViewport({ width: 1400, height: 1000 });
+  const pageErrors = [];
+  page.on("pageerror", (e) => pageErrors.push(String(e)));
+  await page.goto(BASE, { waitUntil: "networkidle2", timeout: 60000 });
+  await page.waitForSelector("#connectBtn", { timeout: 20000 });
+  const started = Date.now();
+  await page.click("#connectBtn");
+  let settledAt = null;
+  let verdict = "";
+  for (let i = 0; i < 60; i++) {
+    await new Promise((r) => setTimeout(r, 500));
+    const note = await page.$eval("#walletNote", (n) => (n.innerText || "").trim());
+    if (note && !/^asking freighter/i.test(note)) {
+      settledAt = Date.now() - started;
+      verdict = note;
+      break;
+    }
+  }
+  check(
+    "a missing wallet is reported in seconds, not after the full popup budget",
+    settledAt !== null && settledAt < 15000,
+    settledAt === null ? "still asking after 30s" : `${(settledAt / 1000).toFixed(1)}s`
+  );
+  check(
+    "and it names the absence instead of describing silence",
+    /not installed/i.test(verdict),
+    verdict.slice(0, 90)
+  );
+  check("no page error while settling the absence", pageErrors.length === 0, pageErrors[0] || "");
+  await page.close();
+}
+
 // 4b - THE GESTURE AND A SLOW WALLET. This was the real cause of the reported
 // fault: with an await between the click and requestAccess the browser counts
 // the user activation as already spent and BLOCKS the wallet popup - the button
