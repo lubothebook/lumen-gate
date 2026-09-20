@@ -248,6 +248,15 @@
   /* ------------------------------------------------------------ structure */
   .sec-head { display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-end; justify-content: space-between; }
   .sec-head > div { max-width: 62ch; }
+  /* The lattice is position:fixed with z-index:0, so anything that stays in the
+     default (auto) layer paints UNDER it: the wallet card was legible but sat
+     beneath the pattern and swallowed its own clicks, because elementFromPoint
+     landed on .cube instead of the card. Gate 2.0 already lifts its content
+     this way (gate2/web/src/style.css); 1.0 never got the same line. */
+  .card, .band, .trust-grid, .row-strip, .strip, footer {
+    position: relative; z-index: 1;
+  }
+
   .card {
     /* a dark base under the glass gradient: cards no longer sit on a strip, so
        the lattice behind them must not shine through the prose */
