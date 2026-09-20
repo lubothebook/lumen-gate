@@ -1,0 +1,19 @@
+[workspace]
+
+[package]
+name = "spike_gate"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+doctest = false
+
+[dependencies]
+soroban-sdk = "28.0.0"
+
+[profile.release]
+overflow-checks = true
+opt-level = "z"
+lto = true

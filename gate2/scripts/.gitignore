@@ -1,0 +1,3 @@
+node_modules/
+.spike-state.json
+.spike-evm-key.json
