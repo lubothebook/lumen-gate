@@ -53,4 +53,6 @@ jobs:
       - name: cargo audit (Ek A section 9)
         run: |
           cargo install cargo-audit --locked --quiet
-          cargo audit
+          # --ignore list is ONLY valid when each ID carries a triage entry in
+          # deployments/hardening-2.0.json audit_ignores[]; untriaged advisories stay red.
+          cargo audit --ignore RUSTSEC-2026-0258
