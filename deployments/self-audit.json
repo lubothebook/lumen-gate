@@ -1,30 +1,30 @@
 {
   "note": "Written by the Lumen Gate self-audit loop. Each entry is one round of probes against the live deployed registry.",
-  "updated_at": "2026-09-19T22:41:40.157Z",
+  "updated_at": "2026-09-20T01:32:07.854Z",
   "latest": {
-    "round": 21,
-    "started_at": "2026-09-19T22:40:48.895Z",
-    "finished_at": "2026-09-19T22:41:40.157Z",
-    "checks_passed": 14,
-    "checks_total": 14,
-    "all_passed": true,
-    "registry": "CCXJDQMTJUGXKNFOQPC25IYVOAVWDMLJBNQYX75MAREHV7MZMU5OSEN4",
+    "round": 23,
+    "started_at": "2026-09-20T01:31:59.842Z",
+    "finished_at": "2026-09-20T01:32:07.854Z",
+    "checks_passed": 13,
+    "checks_total": 15,
+    "all_passed": false,
+    "registry": "CB7ZKFLTSNRKLFE25T4E4R6K3GNEMVLQ5J7UPNHLEPVH35UYHBSGUNXL",
     "network": "testnet",
     "checks": [
       {
         "check": "source_chain_reachable",
         "passed": true,
-        "detail": "simulator produced height 7"
+        "detail": "simulator produced height 92"
       },
       {
         "check": "honest_evidence_accepted",
-        "passed": true,
-        "detail": "contract returned an attestation"
+        "passed": false,
+        "detail": "a valid proof must never be refused, but this call ended as: contract error #7 InvalidSignature"
       },
       {
         "check": "replay_rejected",
-        "passed": true,
-        "detail": "#9 EvidenceAlreadyProcessed"
+        "passed": false,
+        "detail": "expected #9, saw contract error #7 InvalidSignature"
       },
       {
         "check": "tampered_signature_rejected",
@@ -44,7 +44,7 @@
       {
         "check": "console_wiring_consistent",
         "passed": true,
-        "detail": "console wiring: every selector resolves, every nav target exists, embedded assets match frontend/public | grid fx: every cube is coded onto the grid and frames itself under the pointer, and only itself"
+        "detail": "console wiring: every selector resolves, every nav target exists, embedded assets match frontend/public | grid fx: every block is coded onto the grid, and the frame follows the pointer anywhere on the page"
       },
       {
         "check": "gasless_recipient_zero_spendable_xlm",
@@ -67,9 +67,14 @@
         "detail": "CB7ZKFLT... serves all five slot keys byte-identical to four registries and the committed sibling vector, and set_gate_vm32_vk is refused by the contract itself after the renounce; lanes on one contract: step_chain ledger 4766775 (176733 stroops); execution ledger 4766780 (212091 stroops); gate_vm ledger 4766784 (181385 stroops); gate_vm32_by_stranger ledger 4766791 (181707 stroops)"
       },
       {
+        "check": "stranger_full_flow_still_recorded",
+        "passed": true,
+        "detail": "one runtime keypair carried its own trustline, finality, and mint: trustline ledger 4767217 — 100 stroops; finality ledger 4767218 — 179682 stroops; mint ledger 4767219 — 103017 stroops; balance now 250.0000001 of the minted 250.0000001"
+      },
+      {
         "check": "post_renounce_set_vk_impossible",
         "passed": true,
-        "detail": "the contract itself refused set_vk after the renounce and the stored key is unchanged: Event log (newest first): | 0: [Diagnostic Event] contract:CCXJDQMTJUGXKNFOQPC25IYVOAVWDMLJBNQYX75MAREHV7MZMU5"
+        "detail": "the contract itself refused set_vk after the renounce and the stored key is unchanged: Event log (newest first): | 0: [Diagnostic Event] contract:CB7ZKFLTSNRKLFE25T4E4R6K3GNEMVLQ5J7UPNHLEPVH35UYHBS"
       },
       {
         "check": "facade_sep_conformance",
@@ -1313,6 +1318,180 @@
           "check": "post_renounce_set_vk_impossible",
           "passed": true,
           "detail": "the contract itself refused set_vk after the renounce and the stored key is unchanged: Event log (newest first): | 0: [Diagnostic Event] contract:CCXJDQMTJUGXKNFOQPC25IYVOAVWDMLJBNQYX75MAREHV7MZMU5"
+        },
+        {
+          "check": "facade_sep_conformance",
+          "passed": true,
+          "detail": "26/26 facade checks passed against http://127.0.0.1:8081"
+        },
+        {
+          "check": "sep10_weight_verification",
+          "passed": true,
+          "detail": "sep-10 verification: on-ledger accounts are verified by signature weight against their own threshold, and nothing weaker passes"
+        }
+      ]
+    },
+    {
+      "round": 22,
+      "started_at": "2026-09-20T01:30:35.853Z",
+      "finished_at": "2026-09-20T01:30:46.916Z",
+      "checks_passed": 12,
+      "checks_total": 15,
+      "all_passed": false,
+      "registry": "CCXJDQMTJUGXKNFOQPC25IYVOAVWDMLJBNQYX75MAREHV7MZMU5OSEN4",
+      "network": "testnet",
+      "checks": [
+        {
+          "check": "source_chain_reachable",
+          "passed": true,
+          "detail": "simulator produced height 75"
+        },
+        {
+          "check": "honest_evidence_accepted",
+          "passed": false,
+          "detail": "a valid proof must never be refused, but this call ended as: never reached the contract: ❌ error: Failed to find config identity for lumen-deployer"
+        },
+        {
+          "check": "replay_rejected",
+          "passed": false,
+          "detail": "expected #9, saw never reached the contract: ❌ error: Failed to find config identity for lumen-deployer"
+        },
+        {
+          "check": "tampered_signature_rejected",
+          "passed": true,
+          "detail": "#7 InvalidSignature"
+        },
+        {
+          "check": "admin_capability_renounced",
+          "passed": true,
+          "detail": "admin capability has been permanently given up"
+        },
+        {
+          "check": "gateway_admin_renounced",
+          "passed": true,
+          "detail": "gateway admin capability is gone: a second renounce traps in the host"
+        },
+        {
+          "check": "console_wiring_consistent",
+          "passed": true,
+          "detail": "console wiring: every selector resolves, every nav target exists, embedded assets match frontend/public | grid fx: every block is coded onto the grid, and the frame follows the pointer anywhere on the page"
+        },
+        {
+          "check": "gasless_recipient_zero_spendable_xlm",
+          "passed": true,
+          "detail": "balance 1.5000000 XLM, reserve 1.5000000 XLM, spendable 0.0000000 XLM (read live from Horizon)"
+        },
+        {
+          "check": "recorded_gasless_mint_on_chain",
+          "passed": true,
+          "detail": "receipt 8b4e9bd59f405b8d... is on ledger 4763378, successful, fee 137293 stroops"
+        },
+        {
+          "check": "gate_vm_lane_still_verified",
+          "passed": true,
+          "detail": "acceptance 6d67f5f402fc954b... still on ledger 4765859 (177143 stroops), and CDWJWDJV... still serves the committed key byte for byte"
+        },
+        {
+          "check": "merged_registry_still_frozen",
+          "passed": true,
+          "detail": "CB7ZKFLT... serves all five slot keys byte-identical to four registries and the committed sibling vector, and set_gate_vm32_vk is refused by the contract itself after the renounce; lanes on one contract: step_chain ledger 4766775 (176733 stroops); execution ledger 4766780 (212091 stroops); gate_vm ledger 4766784 (181385 stroops); gate_vm32_by_stranger ledger 4766791 (181707 stroops)"
+        },
+        {
+          "check": "stranger_full_flow_still_recorded",
+          "passed": true,
+          "detail": "one runtime keypair carried its own trustline, finality, and mint: trustline ledger 4767217 — 100 stroops; finality ledger 4767218 — 179682 stroops; mint ledger 4767219 — 103017 stroops; balance now 250.0000001 of the minted 250.0000001"
+        },
+        {
+          "check": "post_renounce_set_vk_impossible",
+          "passed": true,
+          "detail": "the contract itself refused set_vk after the renounce and the stored key is unchanged: Event log (newest first): | 0: [Diagnostic Event] contract:CCXJDQMTJUGXKNFOQPC25IYVOAVWDMLJBNQYX75MAREHV7MZMU5"
+        },
+        {
+          "check": "facade_sep_conformance",
+          "passed": false,
+          "detail": "conformance probe failed: fetch failed"
+        },
+        {
+          "check": "sep10_weight_verification",
+          "passed": true,
+          "detail": "sep-10 verification: on-ledger accounts are verified by signature weight against their own threshold, and nothing weaker passes"
+        }
+      ]
+    },
+    {
+      "round": 23,
+      "started_at": "2026-09-20T01:31:59.842Z",
+      "finished_at": "2026-09-20T01:32:07.854Z",
+      "checks_passed": 13,
+      "checks_total": 15,
+      "all_passed": false,
+      "registry": "CB7ZKFLTSNRKLFE25T4E4R6K3GNEMVLQ5J7UPNHLEPVH35UYHBSGUNXL",
+      "network": "testnet",
+      "checks": [
+        {
+          "check": "source_chain_reachable",
+          "passed": true,
+          "detail": "simulator produced height 92"
+        },
+        {
+          "check": "honest_evidence_accepted",
+          "passed": false,
+          "detail": "a valid proof must never be refused, but this call ended as: contract error #7 InvalidSignature"
+        },
+        {
+          "check": "replay_rejected",
+          "passed": false,
+          "detail": "expected #9, saw contract error #7 InvalidSignature"
+        },
+        {
+          "check": "tampered_signature_rejected",
+          "passed": true,
+          "detail": "#7 InvalidSignature"
+        },
+        {
+          "check": "admin_capability_renounced",
+          "passed": true,
+          "detail": "admin capability has been permanently given up"
+        },
+        {
+          "check": "gateway_admin_renounced",
+          "passed": true,
+          "detail": "gateway admin capability is gone: a second renounce traps in the host"
+        },
+        {
+          "check": "console_wiring_consistent",
+          "passed": true,
+          "detail": "console wiring: every selector resolves, every nav target exists, embedded assets match frontend/public | grid fx: every block is coded onto the grid, and the frame follows the pointer anywhere on the page"
+        },
+        {
+          "check": "gasless_recipient_zero_spendable_xlm",
+          "passed": true,
+          "detail": "balance 1.5000000 XLM, reserve 1.5000000 XLM, spendable 0.0000000 XLM (read live from Horizon)"
+        },
+        {
+          "check": "recorded_gasless_mint_on_chain",
+          "passed": true,
+          "detail": "receipt 8b4e9bd59f405b8d... is on ledger 4763378, successful, fee 137293 stroops"
+        },
+        {
+          "check": "gate_vm_lane_still_verified",
+          "passed": true,
+          "detail": "acceptance 6d67f5f402fc954b... still on ledger 4765859 (177143 stroops), and CDWJWDJV... still serves the committed key byte for byte"
+        },
+        {
+          "check": "merged_registry_still_frozen",
+          "passed": true,
+          "detail": "CB7ZKFLT... serves all five slot keys byte-identical to four registries and the committed sibling vector, and set_gate_vm32_vk is refused by the contract itself after the renounce; lanes on one contract: step_chain ledger 4766775 (176733 stroops); execution ledger 4766780 (212091 stroops); gate_vm ledger 4766784 (181385 stroops); gate_vm32_by_stranger ledger 4766791 (181707 stroops)"
+        },
+        {
+          "check": "stranger_full_flow_still_recorded",
+          "passed": true,
+          "detail": "one runtime keypair carried its own trustline, finality, and mint: trustline ledger 4767217 — 100 stroops; finality ledger 4767218 — 179682 stroops; mint ledger 4767219 — 103017 stroops; balance now 250.0000001 of the minted 250.0000001"
+        },
+        {
+          "check": "post_renounce_set_vk_impossible",
+          "passed": true,
+          "detail": "the contract itself refused set_vk after the renounce and the stored key is unchanged: Event log (newest first): | 0: [Diagnostic Event] contract:CB7ZKFLTSNRKLFE25T4E4R6K3GNEMVLQ5J7UPNHLEPVH35UYHBS"
         },
         {
           "check": "facade_sep_conformance",
