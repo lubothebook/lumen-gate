@@ -188,10 +188,11 @@ header.top {
 
 /* Same 1.0/2.0 pills on both gates — original track-tag size, never stacked. */
 .track-row {
-  display: flex; justify-content: center; align-items: center; gap: 6px;
+  display: flex; justify-content: center; align-items: center; gap: 8px;
   width: max-content; max-width: 100%; margin: 0 auto 14px;
   pointer-events: auto;
 }
+.track-split { display: block; width: 1px; height: 12px; background: rgba(255,255,255,0.35); flex: none; pointer-events: none; }
 .track-box, a.track-box, button.track-box {
   appearance: none; -webkit-appearance: none;
   display: inline-flex; align-items: center; justify-content: center;
