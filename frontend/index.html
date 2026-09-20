@@ -490,8 +490,9 @@
   .finding summary:hover { background: rgba(255, 255, 255, 0.045); }
   .finding summary::-webkit-details-marker { display: none; }
   /* the page-wide details rule paints its own +/- into every summary; the
-     finding row carries its own grip, so the borrowed one is switched off */
-  .finding summary::after { content: none; }
+     finding row carries its own grip, so the borrowed one is switched off -
+     at a specificity that beats both the closed and the open form of it */
+  details.finding summary::after, details.finding[open] summary::after { content: none; }
   .finding .id {
     flex: none; font-family: var(--mono); font-size: 0.6875rem; letter-spacing: 0.08em;
     color: var(--muted); border: 1px solid var(--line-2); border-radius: 999px; padding: 2px 9px;
@@ -600,7 +601,8 @@
      fades out at both edges instead of ending on a hard cut, so it reads as
      a ribbon laid over the wall rather than a hole punched in it. */
   main > section.strip > .shell > .row-strip {
-    background: linear-gradient(180deg, rgba(2, 2, 2, 0.96), rgba(2, 2, 2, 0.9));
+    background-color: rgba(2, 2, 2, 0.95);
+    background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0));
     border-top: 1px solid var(--line-2); border-bottom: 1px solid var(--line-2);
     border-radius: 0;
     margin-left: calc(50% - 50vw); margin-right: calc(50% - 50vw);

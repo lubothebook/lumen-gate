@@ -110,25 +110,44 @@ async function main() {
     // ---------------------------------------------------------------- strips
     const layout = await page.evaluate(() => {
       const vw = document.documentElement.clientWidth;
+      // The strip contract changed with the operator's console directive: a
+      // ribbon belongs to a text row (.row-strip) and to nothing else. A box -
+      // card, window, step rail, stat shelf - keeps its own surface inside the
+      // shell measure and sits on the lattice like any other object. So the
+      // harness measures the two families separately and holds each to its
+      // own rule.
       const rows = [];
+      const boxes = [];
+      const gaps = [];
       for (const section of document.querySelectorAll('main > section.strip')) {
         const kids = [...section.querySelectorAll(':scope > .shell > *')];
         kids.forEach((el, i) => {
           const r = el.getBoundingClientRect();
           const prev = kids[i - 1]?.getBoundingClientRect();
-          rows.push({
+          const style = getComputedStyle(el);
+          const entry = {
             id: section.id,
             left: Math.round(r.left),
             right: Math.round(r.right),
             gapAbove: prev ? Math.round(r.top - prev.bottom) : null,
-            painted: getComputedStyle(el).backgroundColor,
-          });
+            painted: style.backgroundColor,
+            surfaced:
+              !/rgba?\(0, 0, 0, 0\)/.test(style.backgroundColor) ||
+              style.backgroundImage !== 'none' ||
+              Boolean(el.querySelector('.card, .win, .stat, .step, .lane, .trust-grid, .iface-block')),
+          };
+          if (entry.gapAbove !== null) gaps.push(entry.gapAbove);
+          if (el.classList.contains('row-strip')) rows.push(entry);
+          else boxes.push(entry);
         });
       }
       return {
         vw,
         scrollWidth: document.scrollingElement.scrollWidth,
         rows,
+        boxes,
+        gaps,
+        unribbonedHeads: document.querySelectorAll('main > section.strip > .shell > .sec-head:not(.row-strip)').length,
         gapProbe: (() => {
           const section = document.querySelector('#how');
           const kids = [...section.querySelectorAll(':scope > .shell > *')];
@@ -139,19 +158,27 @@ async function main() {
       };
     });
 
-    expect(layout.rows.length >= 12, `the page should carry the line strips of every text row, found ${layout.rows.length}`);
+    expect(layout.rows.length >= 8, `the page should carry the ribbons of every text row, found ${layout.rows.length}`);
+    expect(layout.unribbonedHeads === 0, `every section head is a text row and must carry a ribbon, ${layout.unribbonedHeads} do not`);
     for (const row of layout.rows) {
       expect(row.left <= 1 && row.right >= layout.vw - 1, `#${row.id}: a text row must run edge to edge, got [${row.left},${row.right}] of ${layout.vw}`);
       expect(!/rgba?\(0, 0, 0, 0\)/.test(row.painted), `#${row.id}: a text row must carry its own strip, found ${row.painted}`);
     }
-    // The band hugs the text it carries: the padding inside a strip is small,
+    for (const box of layout.boxes) {
+      // A wrapper (a column pair, a shelf) may be transparent as long as the
+      // boxes inside it carry their own surface; what must never happen is a
+      // bare grid letting the lattice shine through prose.
+      expect(box.surfaced, `#${box.id}: a box on the lattice must carry its own surface, found ${box.painted}`);
+      expect(box.left > 1 || box.right < layout.vw - 1, `#${box.id}: a box must not wear a full-bleed strip, it spans [${box.left},${box.right}]`);
+    }
+    // The band hugs the text it carries: the padding inside a ribbon is small,
     // and the air between rows comes from the row gap where the lattice shows.
     const bandPad = await page.evaluate(() =>
-      [...document.querySelectorAll('main > section.strip > .shell > *')]
+      [...document.querySelectorAll('main > section.strip > .shell > .row-strip')]
         .map((el) => Math.round(parseFloat(getComputedStyle(el).paddingTop)))
     );
     expect(Math.max(...bandPad) <= 24, `a strip must hug its text, found up to ${Math.max(...bandPad)}px of padding inside the band`);
-    const gaps = layout.rows.map((r) => r.gapAbove).filter((g) => g !== null);
+    const gaps = layout.gaps;
     expect(gaps.every((g) => g > 0), `every pair of rows must leave a gap for the lattice, found ${JSON.stringify(gaps)}`);
     expect(layout.gapProbe > 0, 'the gap between two strips must be a visible opening, not zero');
     expect(layout.scrollWidth <= layout.vw, `the full-bleed strips must not create a horizontal scrollbar (${layout.scrollWidth} > ${layout.vw})`);
