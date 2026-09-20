@@ -1,2 +1,8 @@
-// F0 skeleton per DIRECTIVE.md section 4: the campaign example (claim-gated, campaign-joined
-// outbound burn path) moves here in F1 with its 1.0 host tests intact.
+//! Gate 2.0 skeleton: the consumer demo (tiers over GateClaim.get_migration)
+//! is F5 work. No logic until its acceptance evidence exists.
+#![no_std]
+#[cfg(test)]
+mod test {
+    #[test]
+    fn skeleton_compiles() {}
+}

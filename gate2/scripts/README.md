@@ -1,1 +1,2 @@
-Gate 2.0 scripts lane (F0 skeleton). F2 ceremony automation, F8 CI wiring land here; 1.0 scripts/ stays frozen as evidence.
+Spike drivers (F1), end-to-end tests (F2-F7) and self-audit-2.0 (F8) live here.
+Nothing in this directory is wired yet; each phase adds its own runner and evidence.

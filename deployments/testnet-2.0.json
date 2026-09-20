@@ -1,19 +1,20 @@
 {
-  "schema": "gate-2.0-manifest-skeleton/v0",
-  "created_utc": "2026-09-21T00:40:00Z",
-  "status": "F0 skeleton \u2014 sections fill up as F1..F12 run; empty array means NOT YET, never NOTHING FOUND",
+  "product": "Gate 2.0 - Proof of Migration (CCTP)",
+  "generated_at": "2026-09-20",
+  "network": "testnet",
+  "contracts": {},
   "spikes": [],
   "receipts": [],
   "negative_probes": [],
   "findings": [
-    {
-      "id": "f0-directive-ascii",
-      "note": "repo-gate check 3 (1.0, frozen) greps tracked file CONTENTS for localised letters; the 2.0 directive is Turkish with diacritics, so DIRECTIVE.md is stored with diacritics transliterated to ASCII and the 2.0 phase reports keep prose in the operator's wording; renaming DIRECTIVE.md per F0 additionally collides with the frozen 'exactly one directive file' rule \u2014 the 2.0 gate re-tune (F12) owns resolution, 1.0 scripts are untouched."
-    },
-    {
-      "id": "f0-branch-scope",
-      "note": "F0 changes only: DIRECTIVE rename+header, gate2/ skeleton, root Cargo.toml members, deployments/testnet-2.0.json. No 1.0 file edited."
-    }
+    "F0: repo-gate's 'exactly one directive file' rule matches DIRECTIVE-1.0.md too, so that single gate check now fails as a direct consequence of the mandated rename (scripts/repo-gate.sh is frozen Gate 1.0 territory and is not edited); the 2.0 regression gate is 'cargo test --workspace --lib' per DIRECTIVE 2.0 section 4.",
+    "F0: the directive cites 1.0 test counts as '12 / 11 / 3'; the crate suites in this repository measure differently (finality_registry carries 61 tests, gate_vm 17, and more after the 32-line sibling lane). Regression is pinned to the actual counts recorded in this phase's run output, not to the cited numbers; the discrepancy is written down instead of quietly reconciled.",
+    "F0: the sandbox that hosts this work has twice rebuilt from a snapshot between turns, dropping .git and the toolchain directories; everything durable lives in the pushed gate-2.0 branch, and local toolchains are treated as disposable.",
+    "F0 (parallel sibling pass, merged): the localised-text gate scans tracked file CONTENTS for Turkish letters, which is why the 2.0 directive is stored diacritic-free with wording intact; the re-tune of the frozen 1.0 gate rules is not F0's to perform.",
+    "F0 (parallel sibling pass, merged): an empty array in this manifest means NOT YET, never NOTHING FOUND - failed probes land in findings[]/negative_probes[] with their transcripts, and silence in this file is not evidence of absence of problems.",
+    "F0 (reconciliation): the sibling skeleton described GateClaim as a byte-for-byte relocation of the 1.0 claim crate at F1; DIRECTIVE 2.0 defines GateClaim as a new CCTP claim contract with F1 as the S1-S6 spike phase. The operator's verbatim text governs; the misreading is recorded instead of silently deleted.",
+    "F0 (environment): the round-23 audit run proved the sandbox toolchain is survivable but identities are not - the 1.0 demo signer secret was destroyed in a snapshot rebuild. For 2.0 this is a design lesson, not an accident: keys that gate a claim path must never be single-sandbox-local, and the F2 script that claims manually must generate its receiving keypair at run time, fund it via friendbot, and print nothing secret - the stranger flow of 1.0 is the template.",
+    "F0 (environment): deployments/testnet.json's finality_registry field still names the legacy v1 contract while rounds 21+ measure the v2 five-slot registry from deployments/registry-v2.json; any 2.0 spike script that reads 'the registry' from a manifest must read it from the v2 file explicitly. Recorded, not patched (frozen 1.0 file)."
   ],
   "superseded": []
 }

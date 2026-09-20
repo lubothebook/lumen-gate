@@ -247,10 +247,9 @@ const allText = (el) => flatten(el).map((n) => (n instanceof El ? n.text : n.tex
   expect(els.get('auditBadge').textContent === 'Self-audit: 12/12', `the audit badge must read the live result, got "${els.get('auditBadge').textContent}"`);
   expect(els.get('auditBadgeDot').classList.contains('ok'), 'the audit badge dot must be green when the latest round passed');
 
-  // the coded cube wall: 1280x800 at dpr 1 is two tiles apart, so 11 x 7
-  // individually coded cubes - one element per pitch, not one per tile
-  const stride = 1280 >= 1600 ? 4 : 1280 >= 900 ? 2 : 1;
-  const want = Math.ceil(1280 / (60 * stride)) * Math.ceil(800 / (60 * stride));
+  // the coded cube wall: 1280x800 at dpr 1 is one element per 60px block, edge
+  // to edge - the blocks are adjacent, with no gap and no stride between them
+  const want = Math.ceil(1280 / 60) * Math.ceil(800 / 60);
   const wallChildren = els.get('cubeLattice').children.length;
   expect(wallChildren === want, `the wall must carry exactly ${want} coded cubes for this viewport, got ${wallChildren}`);
 
@@ -278,7 +277,10 @@ const allText = (el) => flatten(el).map((n) => (n instanceof El ? n.text : n.tex
 
   expect(els.get('walletChip').textContent.includes(PUB.slice(0, 6)), `the wallet chip must show the connected address, got "${els.get('walletChip').textContent}"`);
   expect(els.get('connectBtn').textContent === 'Reconnect', 'the connect button must reflect the connected state');
-  expect(allText(els.get('txLog')).includes(`Wallet connected: ${PUB}`), 'the log must record the connection with the full address');
+  // the log names the door it came through as well as the address: when a
+  // reader reports "it will not connect", which door answered is the first
+  // thing worth knowing
+  expect(allText(els.get('txLog')).includes(`Wallet connected via requestAccess: ${PUB}`), 'the log must record the connection, the door it used and the full address');
   expect(els.get('walletKind').textContent.includes('connected'), `walletKind must say connected, got "${els.get('walletKind').textContent}"`);
 
   // amounts: rounded on the face, exact on hover - the review requirement
@@ -302,13 +304,29 @@ const allText = (el) => flatten(el).map((n) => (n instanceof El ? n.text : n.tex
   expect(allText(refused.elsById.get('txLog')).includes('not approved'), 'the refusal must land in the log, not be swallowed');
   expect(!refused.elsById.get('walletChip').textContent.includes('undefined'), 'a refusal must never render "undefined" as the address');
 
-  // ------------------------------------- the two shapes a real extension answers in
-  // Freighter's newer builds answer requestAccess() with { address }, older ones
-  // answer getPublicKey() with the string itself. Both are the extension talking,
-  // and neither may end in "wallet connection failed".
+  // ------------------------------------- every shape a real extension answers in
+  // Freighter changed its API three times in the years this page has been open:
+  // requestAccess() answering { address }, getPublicKey() answering the string
+  // itself, getPublicKey() answering { publicKey }, and the oldest pair of all,
+  // setAllowed() then getPublicKey(). A reader does not know which extension
+  // they have, so all of them must connect. The last case is the interesting
+  // one: a build that throws from its modern door and answers its older one
+  // anyway used to fail outright.
   for (const [label, injected] of [
-    ['requestAccess with an address', { requestAccess: async () => ({ address: PUB }), getNetwork: async () => ({ network: 'TESTNET' }) }],
-    ['getPublicKey with a string', { getPublicKey: async () => PUB, getNetwork: async () => 'TESTNET' }],
+    ['requestAccess -> {address}', { requestAccess: async () => ({ address: PUB }), getNetwork: async () => ({ network: 'TESTNET' }) }],
+    ['getPublicKey -> string', { getPublicKey: async () => PUB, getNetwork: async () => 'TESTNET' }],
+    ['getPublicKey -> {publicKey}', { getPublicKey: async () => ({ publicKey: PUB }), getNetwork: async () => 'TESTNET' }],
+    ['setAllowed + getPublicKey', { setAllowed: async () => true, getPublicKey: async () => PUB }],
+    [
+      'requestAccess throws, getPublicKey answers',
+      {
+        requestAccess: async () => {
+          throw new Error('requestAccess is not available in this build');
+        },
+        getPublicKey: async () => PUB,
+        getNetwork: async () => 'TESTNET',
+      },
+    ],
   ]) {
     const run2 = await boot(injected);
     run2.elsById.get('connectBtn').click();
@@ -322,6 +340,19 @@ const allText = (el) => flatten(el).map((n) => (n instanceof El ? n.text : n.tex
       `a wallet answering as "${label}" must not be reported as a failure`
     );
   }
+
+  // a refusal has to name what happened, not just "undefined"
+  const refusedByAnswer = await boot({ requestAccess: async () => ({ error: { message: 'the user rejected the request' } }) });
+  refusedByAnswer.elsById.get('connectBtn').click();
+  await refusedByAnswer.flush();
+  expect(
+    refusedByAnswer.elsById.get('walletNote').textContent.includes('the user rejected the request'),
+    `a refused request must pass on the extension's own words, got "${refusedByAnswer.elsById.get('walletNote').textContent}"`
+  );
+  expect(
+    refusedByAnswer.elsById.get('walletNote').textContent.includes('demo account'),
+    'a refusal must also point at the read-only demo account, since that path needs no wallet'
+  );
 
   // ------------------------------------------------------- the missing wallet path
   const noWallet = await boot(undefined);

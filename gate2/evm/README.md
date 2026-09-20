@@ -1,1 +1,2 @@
-Gate 2.0 EVM lane (F0 skeleton). F1 moves the finalized-event proof verifier here, byte-identical to `finality_registry` in semantics.
+BurnRouter (Foundry project) lands here in F4, after the S1 spike proves the
+CCTP hook contract. Until then this directory is a placeholder: no code, no claims.

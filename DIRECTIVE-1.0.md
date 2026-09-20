@@ -1,5 +1,4 @@
-Bu belge Gate 1.0 icindir; kapsam disi taleplerde 1.0 maddelerini yeni hedefe uydurmayiniz. (ASCII transliterasyonu 1.0 icaplarindandir; operatorun asil metni bu kelimelerle aynidir.)
-
+This document is for Gate 1.0. Bu belge Gate 1.0 icindir.
 # Lumen Gate — Standing Directive
 
 ## 0. Role of this document (protocol: read first)
@@ -511,6 +510,25 @@ functionality belongs in the off-chain surface, the facade and the docs.
       comes from the row gap where the lattice shows, and the page harness fails
       if any band pads more than 24px - a spacing rule that is checked rather
       than eyeballed.
+- [x] **The lattice is contiguous again, and its ring follows the pointer
+      everywhere.** The operator's correction: the blocks sit edge to edge with
+      no gap, and the effect has to work where the content is, not only in the
+      empty space between strips. The pitch/stride experiment is retired. The
+      ring is now one overlay element positioned by `floor(x / cell), floor(y /
+      cell)` from the pointer's own coordinates - no hit test, no list of
+      surfaces that "hide" it - so it lands on the block under the pointer over
+      cards, strips and the hero alike, and the harness measures all three.
+      The separate "put the pointer on a cube below" demo card was the wrong
+      answer to the same question and is gone with it; the page's own wall is
+      the demonstration.
+- [x] **The first screen carries the chain.** A row of real blocks, painted from
+      the submitted tile at its own 60px with the page's own ring, sits under the
+      hero's two buttons - and one block on its own below 640px, at the tile's
+      own size rather than a resized copy of it.
+- [x] **The defect log folds away.** Seventeen findings rendered in full was a
+      wall of text at the bottom of the page. It uses the page's own `details`
+      pattern, closed by default, with the count on the closed line
+      ("17 findings, click to open").
 - [x] **The lattice thinned out where it was costing the most.** One element per
       pitch instead of one per tile: the tile stays 60x60 and never resampled,
       but the pitch opens with the screen (phone 1 tile, laptop 2, wide display
