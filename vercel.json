@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
-  "installCommand": "npm install && cd frontend && npm install && cd ../gate2/web && npm install && cd ../../stello/web && npm install",
+  "installCommand": "npm install && cd frontend && npm install && cd ../gate2/web && npm install",
   "buildCommand": "bash tools/vercel-build.sh",
   "outputDirectory": "frontend/dist",
   "functions": {
@@ -17,7 +17,7 @@
       "destination": "/api/:path*"
     },
     {
-      "source": "/((?!api/|gate2/|stello/).*)",
+      "source": "/((?!api/|gate2/).*)",
       "destination": "/index.html"
     }
   ],
