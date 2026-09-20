@@ -147,15 +147,20 @@ contract ReentrantCallbackToken is MockERC20 {
         // classic malicious hook: call back into the router mid-transfer with a
         // fully valid payload (correct checksum G-strkey, live oracle vector),
         // so the ONLY thing that can stop it is the reentrancy guard itself.
+        address[] memory toks = new address[](1);
+        toks[0] = address(this);
+        uint256[] memory amts = new uint256[](1);
+        amts[0] = 1;
+        uint256[] memory mins = new uint256[](1);
+        mins[0] = 1;
         bytes memory inner = abi.encodeWithSignature(
-            "burn(address,uint256,uint256,uint64,uint16,uint240,string)",
-            address(this),
-            1,
-            1,
+            "burnBatch(address[],uint256[],uint256[],uint64,uint16,uint240,string,uint256,uint256,uint8,string,uint256)",
+            toks, amts, mins,
             type(uint64).max,
             uint16(0),
             uint240(1000),
-            "GDX7BRQXHTCTGIWAAR4RN3KLOMAWDZM2QNWJW7QMNKLVHPKBR2WJQDPD"
+            "GDX7BRQXHTCTGIWAAR4RN3KLOMAWDZM2QNWJW7QMNKLVHPKBR2WJQDPD",
+            uint256(0), uint256(0), uint8(0), "", uint256(0)
         );
         (bool ok, bytes memory err) = router.call(inner);
         if (ok) {

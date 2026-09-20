@@ -7,10 +7,12 @@ import {
   hasUsdcTrustline,
   getFreighter,
   watchFreighter,
+  detectFreighter,
   freighterConnect,
   sendWithFreighter,
   friendbot,
   openUsdcTrustline,
+  embeddedFrame,
   EXPLORER_TX,
   EXPLORER_ACCOUNT,
 } from "./stellar.js";
@@ -74,9 +76,71 @@ function setWalletState(text, cls = "muted") {
   s.textContent = text;
   s.className = cls;
 }
+function paintEmbedGate() {
+  const framed = embeddedFrame();
+  const tab = $("btn-open-tab");
+  if (tab) {
+    tab.href = window.location.href;
+    tab.target = "_blank";
+    tab.classList.toggle("hidden", !framed);
+  }
+  if (framed) {
+    setWalletState("Bu çerçevede uzantı yok. Sekmede aç, sonra bağlan.", "error");
+  }
+}
+async function connectWallet() {
+  paintEmbedGate();
+  const found = await detectFreighter();
+  if (!found.installed) {
+    const note = embeddedFrame()
+      ? "Freighter bu çerçeveye giremez. Sekmede aç, sonra bağlan."
+      : "Freighter yok. chrome.google.com/webstore’dan Freighter kur, sayfayı yenile, bağlan.";
+    setWalletState(note, "error");
+    acctLog(note);
+    return null;
+  }
+  setWalletState("Freighter açılıyor…", "muted");
+  try {
+    const addr = await freighterConnect(found.api, { installed: found.installed });
+    connectedAddress = addr;
+    setWalletState(`${addr.slice(0, 8)}…${addr.slice(-6)} bağlı`, "ok");
+    $("in-address").value = addr;
+    $("in-strkey").value = addr;
+    $("btn-tier-send").disabled = false;
+    $("btn-trustline").disabled = false;
+    setWalletActions(true);
+    await refreshBalances(addr);
+    acctLog(`Bağlandı. Expert: ${addr.slice(0, 8)}…`);
+    if (typeof found.api.getNetwork === "function") {
+      try {
+        const net = await found.api.getNetwork();
+        const name = typeof net === "string" ? net : net && (net.network || net.networkPassphrase);
+        if (name && !/test/i.test(String(name))) {
+          setWalletState(`Bağlı ama Freighter ${name} üzerinde. Mainnet’te işlem düğmeleri kapalı.`, "error");
+          $("btn-tier-send").disabled = true;
+          $("btn-burn").disabled = true;
+          setWalletActions(
+            false,
+            `Freighter ${name} ağında — bu konsol yalnızca testnet’te işlem imzalar. Cüzdanı Stellar testnet’e al.`
+          );
+        }
+      } catch {
+        /* getNetwork is advisory; some builds refuse it until unlocked */
+      }
+    }
+    return addr;
+  } catch (e) {
+    setWalletState(`Bağlantı hatası: ${e.message || e}`, "error");
+    return null;
+  }
+}
 function onFreighter(f) {
+  if (embeddedFrame()) {
+    paintEmbedGate();
+    return;
+  }
   if (!f) {
-    setWalletState("Freighter bulunamadı (geç yüklenirse tekrar denenecek)", "muted");
+    setWalletState("Freighter bulunamadı. Uzantıyı kur, sayfayı yenile, bağlan.", "muted");
     setWalletActions(
       false,
       "Bu tarayıcıda Freighter eklentisi yok. Okuma (Taşıma Kanıtım, StrKey) cüzdansız çalışır; imza isteyen düğmeler kapalı."
@@ -84,39 +148,6 @@ function onFreighter(f) {
     return;
   }
   setWalletState("Freighter hazır — bağlanmak için tıkla", "ok");
-  $("btn-connect").addEventListener("click", async () => {
-    try {
-      const addr = await freighterConnect(f);
-      connectedAddress = addr;
-      setWalletState(`${addr.slice(0, 8)}…${addr.slice(-6)} bağlı`, "ok");
-      $("in-address").value = addr;
-      $("in-strkey").value = addr;
-      $("btn-tier-send").disabled = false;
-      $("btn-trustline").disabled = false;
-      setWalletActions(true);
-      await refreshBalances(addr);
-      acctLog(`Bağlandı. Expert: ${addr.slice(0, 8)}…`);
-      if (typeof f.getNetwork === "function") {
-        try {
-          const net = await f.getNetwork();
-          const name = typeof net === "string" ? net : net && (net.network || net.networkPassphrase);
-          if (name && !/test/i.test(String(name))) {
-            setWalletState(`Bağlı ama Freighter ${name} üzerinde. Mainnet’te işlem düğmeleri kapalı.`, "error");
-            $("btn-tier-send").disabled = true;
-            $("btn-burn").disabled = true;
-            setWalletActions(
-              false,
-              `Freighter ${name} ağında — bu konsol yalnızca testnet’te işlem imzalar. Cüzdanı Stellar testnet’e al.`
-            );
-          }
-        } catch {
-          /* getNetwork is advisory; some builds refuse it until unlocked */
-        }
-      }
-    } catch (e) {
-      setWalletState(`Bağlantı hatası: ${e.message || e}`, "error");
-    }
-  }, { once: false });
 }
 function acctLog(text, hash) {
   const box = $("acct-log");
@@ -194,14 +225,9 @@ async function refreshBalances(g) {
   }
 }
 
+paintEmbedGate();
 watchFreighter(onFreighter);
-// The watcher only enables the button when a provider shows up; keep a
-// manual fallback so the click always tries the current window state.
-$("btn-connect").addEventListener("click", async () => {
-  const f = getFreighter();
-  if (f) return; // the watcher-bound handler takes care of it
-  setWalletState("Bu tarayıcıda Freighter sağlayıcısı yok", "error");
-});
+$("btn-connect").addEventListener("click", () => connectWallet());
 
 // ---------- Taşıma Kanıtım ----------
 async function queryAddress(g) {
@@ -411,6 +437,21 @@ $("btn-fund")?.addEventListener("click", async () => {
 });
 $("btn-trust-open")?.addEventListener("click", () => runTrustOpen());
 $("btn-trust-open-burn")?.addEventListener("click", () => runTrustOpen());
+$("btn-stamp")?.addEventListener("click", async () => {
+  const f = getFreighter();
+  if (!f || !connectedAddress) {
+    acctLog("Önce Freighter ile bağlan.");
+    return;
+  }
+  acctLog("TESTNET damgası — Freighter imzası bekleniyor (CCTP Pasaportu değil).");
+  try {
+    const r = await sendWithFreighter(f, CONFIG.stamp, "stamp", []);
+    if (r.ok) acctLog(`Damga ${r.status}`, r.hash);
+    else acctLog(`Damga: ${String(r.error || r.status).slice(0, 220)}`, r.hash);
+  } catch (e) {
+    acctLog(`Damga hatası: ${e.message || e}`);
+  }
+});
 $("btn-bump")?.addEventListener("click", async () => {
   const f = getFreighter();
   if (!f || !connectedAddress) return;

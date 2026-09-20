@@ -78,8 +78,11 @@ code { font-family: var(--mono); font-size: 0.88em; color: var(--ink); }
 img { image-rendering: auto; }
 
 /* ---------------------------------------------------------------- lattice */
+/* z-index 0, not -1: a negative child sits behind an opaque body background
+   and never receives a pointer. Content stacks above; empty hero space
+   passes events through so a cube can wear the 4px white frame. */
 .cube-lattice {
-  position: fixed; inset: 0; z-index: -1; overflow: hidden;
+  position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: auto;
   display: grid; grid-template-columns: repeat(auto-fill, var(--cell));
   grid-auto-rows: var(--cell);
 }
@@ -91,8 +94,10 @@ img { image-rendering: auto; }
   image-rendering: pixelated;
   transition: box-shadow 0.18s var(--ease);
 }
-.cube:hover, .cube.frame { box-shadow: inset 0 0 0 var(--ring) rgba(255, 255, 255, 0.92); }
-@media (hover: none), (pointer: coarse) { .cube:hover, .cube.frame { box-shadow: none; } }
+.cube.frame { box-shadow: inset 0 0 0 4px #fff; }
+@media (hover: hover) and (pointer: fine) {
+  .cube:hover { box-shadow: inset 0 0 0 4px #fff; }
+}
 
 /* ----------------------------------------------------------- testnet band */
 .testnet-band {
@@ -158,11 +163,11 @@ header.top {
 
 /* ----------------------------------------------------------------- cards */
 .card {
-  background-color: rgba(6, 7, 5, 0.95);
-  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.04));
-  border: 1px solid rgba(255, 255, 255, 0.09); border-radius: var(--r-xl);
-  padding: 28px; min-width: 0;
-  box-shadow: var(--shadow-card), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  background-color: rgba(8, 9, 7, 0.97);
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.025));
+  border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 16px;
+  padding: 24px; min-width: 0;
+  box-shadow: var(--shadow-card), inset 0 1px 0 rgba(255, 255, 255, 0.05);
   transition: border-color var(--dur) var(--ease), box-shadow 0.3s var(--ease);
 }
 .card:hover { border-color: rgba(255, 255, 255, 0.15); }
@@ -173,44 +178,41 @@ header.top {
 .block:first-child { border-top: 0; padding-top: 0; margin-top: 0; }
 
 /* ------------------------------------------------------------------ hero */
-.hero { position: relative; padding-top: clamp(108px, 10vw, 132px); padding-bottom: clamp(10px, 1.4vw, 18px); }
-.hero > .shell { position: relative; z-index: 1; }
-.hero-panel { background: none; border: 0; padding: 0; text-align: center; }
-.hero-banner { display: block; width: min(560px, 82%); height: auto; margin: 0 auto 14px; }
+.hero { position: relative; z-index: 1; padding-top: clamp(108px, 10vw, 132px); padding-bottom: clamp(10px, 1.4vw, 18px); pointer-events: none; }
+.hero > .shell { position: relative; z-index: 1; pointer-events: none; }
+.hero-panel { background: none; border: 0; padding: 0; text-align: center; pointer-events: none; }
+.hero-banner { display: block; width: min(560px, 82%); height: auto; margin: 0 auto 14px; pointer-events: auto; }
 .hero-panel h1 { margin: 10px auto 0; }
 .hero-panel .lead { margin: 12px auto 0; }
-.hero-panel .cta { margin-top: 18px; justify-content: center; }
+.hero-panel .cta { margin-top: 18px; justify-content: center; pointer-events: auto; }
 
-/* The 1.0 / 2.0 kutucuklar. Clicking one owns the band below — 2.0 is this
-   page's console, 1.0 leaves for the frozen settlement-boundary console. */
+/* Gate switch lives only here. Same compact pills on 1.0 and 2.0. */
 .track-row {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
-  width: min(640px, 92%); margin: 0 auto 14px;
+  display: flex; justify-content: center; align-items: center; gap: 8px;
+  width: auto; margin: 0 auto 14px;
+  pointer-events: auto;
 }
 .track-box {
-  display: flex; align-items: flex-start; gap: 12px;
-  padding: 14px 16px; min-height: 72px;
+  appearance: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  min-height: 0; min-width: 0; padding: 3px 10px;
+  font-family: var(--mono); font-size: 0.6875rem; font-weight: 600;
+  letter-spacing: 0.1em; line-height: 1.4;
   background: rgba(6, 7, 5, 0.9);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 14px; text-align: left; text-decoration: none; color: inherit;
-  cursor: pointer; font: inherit;
-  transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease), transform var(--dur-fast) var(--ease);
+  border-radius: 999px; text-decoration: none; color: var(--muted);
+  cursor: pointer;
+  transition: border-color var(--dur) var(--ease), color var(--dur) var(--ease), background var(--dur) var(--ease);
 }
-.track-box p { font-size: 0.8125rem; color: var(--muted); line-height: 1.5; }
-.track-box:hover { border-color: rgba(255, 255, 255, 0.28); background: rgba(6, 7, 5, 0.96); }
-.track-box[data-gate="1"] { opacity: 0.78; }
-.track-box.selected {
-  opacity: 1;
-  border-color: rgba(255, 255, 255, 0.55);
-  background: rgba(255, 255, 255, 0.06);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+.track-box:hover { border-color: rgba(255, 255, 255, 0.4); color: var(--ink); background: rgba(10, 11, 9, 0.98); }
+.track-box.selected, .track-box[aria-current="true"] {
+  color: #000; background: rgba(255, 255, 255, 0.92); border-color: transparent;
+  box-shadow: none;
 }
-.track-box.selected p { color: var(--ink); }
-.track-tag {
-  flex: none; font-family: var(--mono); font-size: 0.6875rem; letter-spacing: 0.1em;
-  padding: 4px 10px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.35); color: var(--muted);
+
+.card, .band, .trust-grid, .row-strip, .strip, footer {
+  position: relative; z-index: 1;
 }
-.track-tag.live { background: rgba(255, 255, 255, 0.92); color: #000; border-color: transparent; }
 
 /* ----------------------------------------------------------- the band */
 .boundary { background: var(--band); border-bottom: 1px solid var(--line-2); }
@@ -360,7 +362,6 @@ nav.main a[aria-current="true"] { color: var(--ink); border-bottom-color: rgba(2
 }
 @media (max-width: 720px) {
   body { font-size: 16px; }
-  .track-row { grid-template-columns: 1fr; }
   .boundary-in .wide-only { display: none; }
   .card { padding: 22px; }
   nav.main.foot-nav { gap: 2px 14px; padding: 9px 16px; bottom: 10px; }
