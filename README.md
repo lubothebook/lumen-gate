@@ -12,6 +12,48 @@ Stellar already has the payment rails, the anchor model and a smart-contract pla
 
 This is the proposal for the [Rise In x Stellar Pro Hackathon](https://www.risein.com/programs/stellar-pro-hackathon), Genesis track. It is deliberately ambitious and deliberately honest: the source chain may remain a deterministic simulator for the hackathon, but Stellar-side contracts, Soroban RPC calls, event ingestion and transaction receipts are designed for real Testnet execution. No green button is allowed to turn an unverified fixture into a production claim.
 
+## What this is, in one minute
+
+A bridge is usually two things at once: a way to move value, and a group of
+people you have to trust while it moves. Lumen Gate separates those two, and
+only ships the first.
+
+**The accept/reject decision is code reading evidence, not an operator pressing
+approve.** A Soroban contract checks the finality evidence on-chain and settles
+or refuses on its own. There is no approval queue, no multisig of humans on the
+settlement path, and no off-chain callback that can be asked to make an
+exception. Admins are renounced on-chain in Gate 1.0 — the receipts are in
+[`deployments/testnet.json`](deployments/testnet.json).
+
+**It works when the user holds zero XLM.** Onboarding usually dies at the first
+step: you need the chain's gas token before you can do anything, but you need a
+bridge to get it. [`gate_battery::forward`](gate2/soroban/gate_battery/src/lib.rs)
+closes that loop. The user signs the intent; a relayer submits it and is paid
+out of the user's USDC Battery, capped by `max_fee` and bound to a `nonce` and
+an `expiry` that the same signature covers. So the entry cost of the ecosystem
+is not "first acquire XLM" — it is a signature.
+
+**You can load an NFT without a bridge.**
+[`gate_ticket::redeem_to_battery`](gate2/soroban/gate_ticket/src/lib.rs) turns a
+Ticket's face value straight into spendable Battery balance in one call. No
+wrap, no external route, no second asset.
+
+**You can change balances without trading the NFTs.**
+[`gate_ticket::split`](gate2/soroban/gate_ticket/src/lib.rs) divides one Ticket
+into several, each with its own amount, all still owned by the same address.
+Value is redistributed without a transfer, a counterparty, or a marketplace —
+ownership never moves, only the denomination changes.
+
+**Honest limits, stated here rather than discovered later.** The 2.0 claim lane
+depends on Circle's CCTP attestation and on a relayer being willing to submit;
+neither is a human approving a payment, but both are parties outside this
+repository. Testnet assets carry no production value. The
+[`gate2/zkvm/`](gate2/zkvm/) workspace is an imported execution foundation —
+deterministic execution and trace generation only — and is explicitly
+unfinished; it makes no claim beyond that, and nothing on the Gate path imports
+it. What is live, and what is merely written and tested, is listed contract by
+contract in the table below.
+
 ## One repository, two gates
 
 **Türkçe sürüm: [`README.tr.md`](README.tr.md)**
