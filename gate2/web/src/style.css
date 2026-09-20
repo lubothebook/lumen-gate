@@ -186,28 +186,28 @@ header.top {
 .hero-panel .lead { margin: 12px auto 0; }
 .hero-panel .cta { margin-top: 18px; justify-content: center; pointer-events: auto; }
 
-/* Gate switch lives only here. Each box is a number — no extra copy. */
+/* Gate switch lives only here. Same compact pills on 1.0 and 2.0. */
 .track-row {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
-  width: min(220px, 70%); margin: 0 auto 16px;
+  display: flex; justify-content: center; align-items: center; gap: 8px;
+  width: auto; margin: 0 auto 14px;
   pointer-events: auto;
 }
 .track-box {
-  display: grid; place-items: center;
-  min-height: 48px; padding: 0 14px;
-  font-family: var(--mono); font-size: 0.95rem; font-weight: 600;
-  letter-spacing: 0.16em;
-  background: rgba(6, 7, 5, 0.94);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 12px; text-decoration: none; color: var(--ink);
+  appearance: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  min-height: 0; min-width: 0; padding: 3px 10px;
+  font-family: var(--mono); font-size: 0.6875rem; font-weight: 600;
+  letter-spacing: 0.1em; line-height: 1.4;
+  background: rgba(6, 7, 5, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px; text-decoration: none; color: var(--muted);
   cursor: pointer;
-  transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+  transition: border-color var(--dur) var(--ease), color var(--dur) var(--ease), background var(--dur) var(--ease);
 }
-.track-box:hover { border-color: rgba(255, 255, 255, 0.4); background: rgba(10, 11, 9, 0.98); }
-.track-box[data-gate="1"] { color: var(--muted); }
-.track-box.selected {
-  color: #000; background: #fff; border-color: #fff;
-  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.4);
+.track-box:hover { border-color: rgba(255, 255, 255, 0.4); color: var(--ink); background: rgba(10, 11, 9, 0.98); }
+.track-box.selected, .track-box[aria-current="true"] {
+  color: #000; background: rgba(255, 255, 255, 0.92); border-color: transparent;
+  box-shadow: none;
 }
 
 .card, .band, .trust-grid, .row-strip, .strip, footer {
@@ -362,7 +362,6 @@ nav.main a[aria-current="true"] { color: var(--ink); border-bottom-color: rgba(2
 }
 @media (max-width: 720px) {
   body { font-size: 16px; }
-  .track-row { grid-template-columns: 1fr; }
   .boundary-in .wide-only { display: none; }
   .card { padding: 22px; }
   nav.main.foot-nav { gap: 2px 14px; padding: 9px 16px; bottom: 10px; }

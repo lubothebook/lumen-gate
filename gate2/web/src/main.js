@@ -7,6 +7,7 @@ import {
   hasUsdcTrustline,
   getFreighter,
   watchFreighter,
+  detectFreighter,
   freighterConnect,
   sendWithFreighter,
   friendbot,
@@ -78,26 +79,29 @@ function setWalletState(text, cls = "muted") {
 function paintEmbedGate() {
   const framed = embeddedFrame();
   const tab = $("btn-open-tab");
-  const connect = $("btn-connect");
   if (tab) {
     tab.href = window.location.href;
     tab.target = "_blank";
     tab.classList.toggle("hidden", !framed);
   }
-  if (connect) connect.classList.toggle("hidden", framed);
   if (framed) {
-    setWalletState("Cüzdan uzantısı bu çerçeveye giremez. Sekmede aç.", "error");
+    setWalletState("Bu çerçevede uzantı yok. Sekmede aç, sonra bağlan.", "error");
   }
 }
 async function connectWallet() {
-  if (embeddedFrame()) {
-    paintEmbedGate();
+  paintEmbedGate();
+  const found = await detectFreighter();
+  if (!found.installed) {
+    const note = embeddedFrame()
+      ? "Freighter bu çerçeveye giremez. Sekmede aç, sonra bağlan."
+      : "Freighter yok. chrome.google.com/webstore’dan Freighter kur, sayfayı yenile, bağlan.";
+    setWalletState(note, "error");
+    acctLog(note);
     return null;
   }
-  const f = getFreighter();
   setWalletState("Freighter açılıyor…", "muted");
   try {
-    const addr = await freighterConnect(f);
+    const addr = await freighterConnect(found.api, { installed: found.installed });
     connectedAddress = addr;
     setWalletState(`${addr.slice(0, 8)}…${addr.slice(-6)} bağlı`, "ok");
     $("in-address").value = addr;
@@ -107,9 +111,9 @@ async function connectWallet() {
     setWalletActions(true);
     await refreshBalances(addr);
     acctLog(`Bağlandı. Expert: ${addr.slice(0, 8)}…`);
-    if (typeof f.getNetwork === "function") {
+    if (typeof found.api.getNetwork === "function") {
       try {
-        const net = await f.getNetwork();
+        const net = await found.api.getNetwork();
         const name = typeof net === "string" ? net : net && (net.network || net.networkPassphrase);
         if (name && !/test/i.test(String(name))) {
           setWalletState(`Bağlı ama Freighter ${name} üzerinde. Mainnet’te işlem düğmeleri kapalı.`, "error");
