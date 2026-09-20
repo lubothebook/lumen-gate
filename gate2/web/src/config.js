@@ -15,6 +15,13 @@ export const CONFIG = {
   gateClaimPreHardening: c.gate_claim_testnet_pre_hardening.id,
   campaign: c.gate_campaign_example_testnet.id,
   stamp: c.gate_stamp_testnet.id,
+  // F5/F6: live on testnet since 2026-09-20. Read straight from the receipt,
+  // exactly like every other id on this screen.
+  battery: c.gate_battery_testnet.id,
+  ticket: c.gate_ticket_testnet.id,
+  // mint_ticket needs a minter contract that does not exist on testnet yet, so
+  // init_minter was never called. Reads are live; minting stays honestly shut.
+  ticketMinterSet: !c.gate_ticket_testnet.minter_not_set,
   deployerPublicKey: c.testnet_deployer.public_key,
   usdc: c.circle_testnet_reference.native_usdc_stellar_testnet,
   usdcIssuer: c.circle_testnet_reference.native_usdc_stellar_testnet_issuer,
