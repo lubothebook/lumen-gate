@@ -574,8 +574,8 @@ async function loadStatus() {
       setStat('statRegistry', 'statRegistrySub', deployment.registryId, 'static manifest', true);
       setStat('statFinality', 'statFinalitySub', '-', 'no API layer in this build');
       $('settleNote').textContent = 'No API layer in this build: start one with node tools/api-dev-server.js, or deploy the functions to Vercel.';
-      $('lockBtn').disabled = true;
-      $('settleBtn').disabled = true;
+      markUnavailable($('lockBtn'), true);
+      markUnavailable($('settleBtn'), true);
       $('sourceNote').textContent = 'No API layer: the source adapter cannot be reached from this build.';
       // The two buttons just went grey, so the notes that explain them and the
       // panel that lists them have to be repainted here as well. Without this
@@ -613,20 +613,20 @@ async function loadStatus() {
 
   const relayReady = Boolean(payload.capabilities?.operator_relay?.enabled);
   // Three states, three sentences: the note is what the button's own title is
-  // copied from, so a state that is missing here would leave a disabled button
-  // explaining the wrong thing.
+  // copied from, so a state that is missing here would leave an unavailable
+  // button explaining the wrong thing.
   $('settleNote').textContent = !relayReady
     ? 'This deployment cannot relay by itself: no operator URL and token are configured here. Locking still works; use "Copy the command instead" to settle it with the local relayer.'
     : state.lock
       ? 'This deployment can relay: the button runs one relayer pass at the height you locked. The relayer signs and pays.'
       : 'This deployment can relay. Lock a block first: settlement settles one specific lock, so the button unlocks once there is something to settle.';
-  $('settleBtn').disabled = !relayReady || !state.lock;
+  markUnavailable($('settleBtn'), !relayReady || !state.lock);
 
   const sourceReady = Boolean(payload.capabilities?.source_chain?.configured);
   $('sourceNote').textContent = sourceReady
     ? 'Source adapter configured. Locks created here become real events on the simulated source chain, with real BLS evidence behind them.'
-    : 'No source adapter is configured on this deployment, so this button is disabled rather than pretending to work.';
-  $('lockBtn').disabled = !sourceReady;
+    : 'No source adapter is configured on this deployment (SOURCE_URL is unset server-side), so this button cannot lock anything. Pressing it says exactly this instead of pretending to work.';
+  markUnavailable($('lockBtn'), !sourceReady);
 
   paintWriteState();
   paintDisabledReasons();
@@ -972,6 +972,16 @@ async function lock() {
   if (amount === null) return log(`Amount must be a number with up to 7 decimal places: "${typed}" cannot be sent.`, 'bad');
   if (!/^G[A-Z2-7]{55}$/.test(recipient)) return log('Recipient must be a Stellar account address (G..., 56 characters).', 'bad');
 
+  // The button is not dead when no source adapter exists behind this
+  // deployment; the click is answered with the reason instead. Saying it here,
+  // before the request, is what makes the answer instant and exact - the API
+  // would say the same thing one round-trip later.
+  if (state.status && state.status.capabilities?.source_chain?.configured === false) {
+    step('lock', 'idle', 'no source adapter on this deployment');
+    log('Lock refused here: this deployment has no source adapter (SOURCE_URL is not set server-side), so there is no source chain to create the lock event on. Locally: run the source simulator and point SOURCE_URL at it.', 'warn');
+    return;
+  }
+
   resetSteps();
   step('lock', 'active', 'creating the lock event on the source chain');
   log(`Locking ${amount} for ${short(recipient)} with ${count} event(s) in the block...`);
@@ -992,7 +1002,7 @@ async function lock() {
   step('lock', 'done', `lock observed at source height ${state.lock.height}`);
   $('runStatus').textContent = `locked ${state.lock.events?.length || 1} event(s) at source height ${state.lock.height}`;
   log(`Locked. message_id ${event?.message_id}\n  nonce ${event?.nonce} - payload_hash ${event?.payload_hash}\n  ${payload.events?.length || 1} event(s) in block ${payload.block_height}, expiry height ${event?.expiry_height}`, 'ok');
-  $('settleBtn').disabled = !state.status?.capabilities?.operator_relay?.enabled;
+  markUnavailable($('settleBtn'), !state.status?.capabilities?.operator_relay?.enabled);
   await showProof(state.lock.height);
 }
 
@@ -1015,8 +1025,13 @@ async function showProof(height) {
 
 async function settle() {
   const height = state.lock?.height;
-  if (!height) return;
-  $('settleBtn').disabled = true;
+  if (!height) {
+    // A silent return here is how a button looks dead: the click reaches the
+    // handler, the handler does nothing, and the reader learns nothing. Say
+    // the state instead.
+    log('Nothing to settle yet: lock a block on the source chain first. Settlement is one relayer pass over one specific locked height.', 'warn');
+    return;
+  }
   $('settleBtn').textContent = 'Relayer pass running...';
   step('finality', 'active', 'the relayer is anchoring this block and paying for the mint');
   log(`Asking the operator facade for one relayer pass at height ${height}. This signs, submits and waits for confirmation, so it takes tens of seconds.`);
@@ -1025,7 +1040,6 @@ async function settle() {
   if (!ok) {
     log(`Relay refused (${failureCode(payload) || 'error'}): ${failureText(payload)}`, 'warn');
     step('finality', 'idle', 'the relayer pass did not complete; finality was not anchored');
-    $('settleBtn').disabled = false;
     return;
   }
   if (payload.error) log(`The relayer did not run: ${failureText(payload)}`, 'bad');
@@ -1045,7 +1059,6 @@ async function settle() {
     $('runStatus').textContent = `pass finished: ${receipts.length} transaction(s) confirmed on Stellar`;
     log(`Explorer: ${EXPLORER_TX}${receipts[receipts.length - 1]}`, 'info');
   }
-  $('settleBtn').disabled = false;
 }
 
 async function copyCommand() {
@@ -1075,6 +1088,13 @@ async function burn() {
   }
   const amount = toBaseUnits($('burnAmount').value);
   if (amount === null) return log(`Amount must be a number with up to 7 decimal places: "${$('burnAmount').value.trim()}" cannot be sent.`, 'bad');
+  // The unlock needs somewhere to land on the source chain. This line used to
+  // be missing: the function referenced a bare `recipient` that no scope
+  // defined, so every click died on a ReferenceError before a single byte
+  // reached the network - the button looked dead while the code was broken.
+  const recipient = $('burnRecipient').value.trim();
+  if (!recipient) return log('Unlock recipient is required: burning locks the value for an address on the source chain, and an empty one would strand it.', 'bad');
+  if (!/^G[A-Z2-7]{55}$/.test(recipient)) return log('Unlock recipient must be a source-chain account address (G..., 56 characters).', 'bad');
   const gateway = state.status?.contracts?.gateway;
   const targetDomain = state.status?.domain?.key;
   if (!gateway || !targetDomain) return log('Deployment addresses are not loaded yet.', 'warn');
@@ -1137,6 +1157,33 @@ const DISABLED_REASONS = [
   { control: 'cashoutStatusBtn', note: 'cashoutActionNote' },
 ];
 
+/**
+ * A `disabled` button cannot be clicked, so it can never say why it is grey:
+ * the browser swallows the click before any handler runs, and the reason stays
+ * in a note the reader has not found. An *unavailable* control keeps answering:
+ * it stays focusable, it carries aria-disabled for assistive tech, and its own
+ * handler is where the honest reason lives. The button is never silently dead.
+ *
+ * Availability is a style state here, not a hard gate: the handlers themselves
+ * still decide what a click may do, and a click that cannot act answers with
+ * the exact reason in the log instead of doing nothing.
+ */
+function markUnavailable(button, unavailable) {
+  if (!button) return;
+  if (unavailable) {
+    button.setAttribute('aria-disabled', 'true');
+    button.removeAttribute('disabled');
+  } else {
+    button.removeAttribute('aria-disabled');
+    button.removeAttribute('disabled');
+  }
+  paintDisabledReasons();
+}
+
+function isUnavailable(button) {
+  return Boolean(button) && (button.disabled || button.getAttribute('aria-disabled') === 'true');
+}
+
 function paintDisabledReasons() {
   for (const { control, note } of DISABLED_REASONS) {
     const button = $(control);
@@ -1144,7 +1191,7 @@ function paintDisabledReasons() {
     if (!button || !source) continue;
     button.setAttribute('aria-describedby', note);
     const reason = source.textContent.replace(/\s+/g, ' ').trim();
-    if (button.disabled && reason) button.title = reason;
+    if (isUnavailable(button) && reason) button.title = reason;
     else button.removeAttribute('title');
   }
 }
@@ -1252,8 +1299,8 @@ function cashoutPaintInstructions(instructions) {
     row.append(left, right);
     container.append(row);
   }
-  $('cashoutPayBtn').disabled = !instructions;
-  $('cashoutStatusBtn').disabled = !CASHOUT.transactionId;
+  markUnavailable($('cashoutPayBtn'), !instructions);
+  markUnavailable($('cashoutStatusBtn'), !CASHOUT.transactionId);
   // The note the two buttons point at is written for the state they are in:
   // with an open withdrawal it is the anchor's own instruction (pay this
   // address, with this memo), and without one it is why they are grey.
@@ -1376,7 +1423,10 @@ async function cashoutPay() {
 }
 
 async function cashoutStatus() {
-  if (!CASHOUT.transactionId) return;
+  if (!CASHOUT.transactionId) {
+    log('No withdrawal to check yet: read the anchor, authenticate and open a withdrawal first - until it answers there is no transaction to poll.', 'warn');
+    return;
+  }
   const result = await cashoutApi(`?action=status&id=${encodeURIComponent(CASHOUT.transactionId)}`, {
     anchorToken: CASHOUT.anchorToken,
   });
