@@ -9,6 +9,7 @@ import {
   Asset,
   Operation,
   Horizon,
+  Account,
 } from "@stellar/stellar-sdk";
 import {
   requestAccess as officialRequestAccess,
@@ -35,7 +36,7 @@ export async function readContract(contractId, method, args = []) {
   // Passing { type } makes the hint do what its callers meant.
   const scArgs = args.map((a) => (a.scVal !== undefined ? a.scVal : nativeToScVal(a.value, { type: a.type })));
   const raw = contract.call(method, ...scArgs);
-  const account = await server.getAccount(CONFIG.deployerPublicKey);
+  const account = new Account(CONFIG.deployerPublicKey, "0");
   const tx = new TransactionBuilder(account, {
     fee: BASE_FEE,
     networkPassphrase: CONFIG.networkPassphrase,
