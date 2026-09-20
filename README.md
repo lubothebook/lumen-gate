@@ -12,33 +12,49 @@ Stellar already has the payment rails, the anchor model and a smart-contract pla
 
 This is the proposal for the [Rise In x Stellar Pro Hackathon](https://www.risein.com/programs/stellar-pro-hackathon), Genesis track. It is deliberately ambitious and deliberately honest: the source chain may remain a deterministic simulator for the hackathon, but Stellar-side contracts, Soroban RPC calls, event ingestion and transaction receipts are designed for real Testnet execution. No green button is allowed to turn an unverified fixture into a production claim.
 
-## Gate 1.0 and Gate 2.0
+## One repository, two gates
 
-This repository now develops in two registers, and the line between them is a
-directory, not a shade of gray.
+**Türkçe sürüm: [`README.tr.md`](README.tr.md)**
 
-**Gate 1.0** is everything described in the rest of this README: the finality
-registry, the settlement gateway, the bounded-VM proving lanes, the anchor
-facade and the console. It is **frozen** — its code, its receipts, and every
-evidence table below refer to it, and nothing on those tables will be edited
-to make room for the next product. Its standing directive moved, with its
-full history of decisions, to `DIRECTIVE-1.0.md`.
+This repository contains two separate products that share one evidence culture
+and one regression gate. They are described apart because they *are* apart:
+different code, different contracts, different deployments, different consoles,
+and different states of completion. Neither one borrows credibility from the
+other, and every claim in either part is backed by a transaction hash in a
+manifest file or it is not made at all.
 
-**Gate 2.0** is in development on the `gate-2.0` branch: *Proof of Migration*
-— a user swaps assets to USDC on an EVM testnet, burns it through Circle
-CCTP, and claims native USDC on Stellar with no relayer and no custody in our
-contracts, minted alongside a **soulbound migration-proof NFT** any Soroban
-contract can query. The differentiator is that proof object, not the
-swap-and-bridge leg; the known limits are written where they belong: the
-proof is per-wallet (sybil across wallets is possible), the trust root is
-Circle's Iris attestation (Circle can freeze USDC), and CCTP messages cannot
-be undone — a wrong hook target is a permanent loss. Its authority is
-`DIRECTIVE.md`; its claims live or die by `deployments/testnet-2.0.json`, and
-until a transaction hash is in that file, no sentence about Gate 2.0 in this
-repository is allowed to say "live", "1:1", or "proven". As of this writing,
-2.0 has shipped evidence for nothing — phase F0 is a skeleton and a gate; the
-first receipts arrive with the spike phase, and this section will point at
-them or shrink, not soften.
+| | **Gate 1.0 — The settlement boundary** | **Gate 2.0 — Pasaport + Batarya + Bilet** |
+|---|---|---|
+| What it is | A neutral finality layer: Stellar anchors settle value from other domains after a Soroban registry verifies BLS/Groth16 finality evidence on-chain | A CCTP migration product: swap to USDC on Ethereum Sepolia, burn through Circle CCTP, claim native USDC on Stellar — with a soulbound Migration Passport, a user-owned on-chain fee Battery, and a transferable Ticket vault |
+| State | **Frozen and evidenced.** Live testnet contracts, admins renounced on-chain, ZK lanes verified on-chain, 137-test regression suite green | **In development.** Core claim contract live and initialized on Stellar testnet (two lanes), consumer demo live, web console live; BurnRouter built and tested but not deployed; Battery and Ticket not yet written |
+| Authority | [`DIRECTIVE-1.0.md`](DIRECTIVE-1.0.md) | [`DIRECTIVE.md`](DIRECTIVE.md) (canonical operator mandate) + [`HARDENING-2.0.md`](HARDENING-2.0.md) |
+| Evidence | [`deployments/testnet.json`](deployments/testnet.json), [`deployments/step-chain.json`](deployments/step-chain.json), [`deployments/execution-lane.json`](deployments/execution-lane.json), [`deployments/gate-vm-lane.json`](deployments/gate-vm-lane.json) | [`deployments/testnet-2.0.json`](deployments/testnet-2.0.json) — no sentence about 2.0 may say "live", "1:1" or "proven" before its hash is in this file |
+| Console | `/` — the operator & verification console (31 interactive controls, harness-checked in a real browser) | `/gate2/` — the 2.0 console on the **same Vercel deployment**, reading live testnet contracts from the browser |
+| Code | `contracts/`, `crates/`, `circuits/`, `anchor/`, `api/`, `frontend/`, `tools/` | `gate2/` only — `evm/`, `soroban/`, `web/`, `scripts/` |
+| Honest blocker | Source chain is a deterministic simulator by design; testnet assets carry no production value | The end-to-end burn lane waits on Sepolia testnet funds (no captcha-free faucet reachable); the Battery and Ticket contracts (F5/F6) are not written yet |
+
+**How to read this README.** Part I documents Gate 1.0 exactly as its evidence
+stands — its tables are receipts, not marketing, and they are unchanged.
+Part II documents Gate 2.0: what the product is, what is already on-chain with
+real transaction hashes, what is deliberately *not* claimed yet, and what you
+can test from the deployed application right now. The two parts meet in one
+place only: the Vercel deployment serves both consoles from one origin, so a
+visitor can exercise Gate 1.0 at `/` and Gate 2.0 at `/gate2/` without leaving
+the app.
+
+---
+
+## Part I — Gate 1.0: the neutral finality layer (frozen)
+
+Gate 1.0 is complete for what it set out to prove, and it is frozen: its code
+paths are locked, its receipts are final, and Gate 2.0 development is not
+allowed to edit them. The evaluation in one paragraph: *this is a working,
+on-chain-verified settlement boundary with an unusually honest evidence trail —
+every acceptance and every refusal below is a testnet transaction you can pull
+up by hash — and its one structural limitation (a simulated source chain) is a
+declared design boundary, not a hidden gap.* Everything that follows in Part I
+describes it.
+
 
 ## The 30-second pitch
 
@@ -253,6 +269,8 @@ The Groth16 proof was generated from a circuit compiled in this repository, agai
 ### Test status
 
 `cargo test --workspace` → **120 passed, 0 failed** (41 in `finality_registry`, 28 in `execution_vm`, 20 in `domain_adapter`, 14 in `gate_vm`, 11 in `settlement_gateway`, 3 in `source_simulator`, 3 in the circomlib Poseidon cross-check). Run it yourself; the count in this file is not aspirational. Three of the registry tests replay the exact 256-byte proof and 768-byte key that a testnet transaction accepted, and twelve more cover the chained lane's own key, proof and public inputs, so a regression in either verifier or in either byte encoding fails the suite instead of only failing in production. `-- --nocapture` prints the measured CPU cost of both pairing checks.
+
+*Count update (2026-09-20):* the repository baseline has since grown — the suite now measures **61** in `finality_registry`, **17** in `gate_vm`, **11** in `settlement_gateway`, **20** in `domain_adapter`, **28** in `execution_vm`, plus the Gate 2.0 crates. The gate is the same: `cargo test --workspace --lib` must stay green after every phase, and CI turns red on any crate that drops.
 
 The circuit suites are separate and do not need a network. `node tools/step-chain-tests.mjs` runs **18 checks** against the chained circuit's compiled witness generator — one per constraint family, each breaking a specific thing and requiring that specific refusal. `node tools/execution-trace-tests.mjs` runs **34 checks** against the execution lane's witness generator: two honest runs (the demonstration program and a control-flow fixture), twenty-seven mutations, one per constraint family, and five runs the machine itself refuses. A mutation counts only if it is refused **at the constraint it targets** — the harness matches the refusal against the pinned source line, because a mutation that trips some other constraint would otherwise read as coverage for a family nobody tested, and a mutation that is silently *accepted* means the constraint behind it does not exist. `node tools/step-chain-live.js` and `node tools/execution-lane-live.js` run the lanes against real deployed registries and write [`deployments/step-chain.json`](deployments/step-chain.json) and [`deployments/execution-lane.json`](deployments/execution-lane.json) with every transaction hash.
 
@@ -491,6 +509,8 @@ The console runs in two places from one codebase: locally with two small process
 `frontend/` builds to a static site and `api/` becomes serverless functions. Nothing needs a wallet key, and nothing shells out to a binary.
 
 Two packaging details decide whether this works at all. The handlers read `deployments/*.json` and `anchor/stellar.toml` through paths they build at runtime, so a bundler cannot trace them: `vercel.json` declares `includeFiles` for both, otherwise the deployed function answers `manifest not found` on its first real request. The build also copies those files into the static output, so the deployed site serves the same manifest it was built from and a reviewer can fetch it and compare.
+
+Since Gate 2.0, one Vercel deployment serves **both gates**: the build compiles `frontend/` and `gate2/web` (with `--base=/gate2/`) and merges the second output into `frontend/dist/gate2/`, and the SPA rewrite excludes `/gate2/` so its assets are served as files. Gate 1.0 keeps the root; Gate 2.0 lives at `/gate2/`; the header of each console links to the other. This touch to `vercel.json` and the frontend header was an explicit operator order (the 1.0 freeze otherwise stands) and is recorded in the 2.0 manifest findings.
 
 ```bash
 vercel                        # from the repository root
@@ -780,6 +800,184 @@ Stellar-specific primitives, written as a new Soroban implementation for the
 hackathon. That framing is intentional and transparent. The submission should
 lead with the working Testnet evidence rather than with unverified ecosystem
 badges or unsupported security adjectives.
+
+---
+
+## Part II — Gate 2.0: Pasaport + Batarya + Bilet (in development)
+
+### The evaluation, in one paragraph
+
+Gate 2.0 is a real product under construction with real on-chain state and a
+strict proof-before-claim rule: *the core Stellar-side claim contract is
+deployed, initialized and negatively probed on testnet with recorded
+transaction hashes; the consumer demo reads it cross-contract on-chain; the web
+console serves live chain data from the same Vercel deployment as Gate 1.0 —
+but the source-side burn has never run, because the BurnRouter is not deployed
+while the Sepolia funds blocker stands, and two of the three product pillars
+(Battery, Ticket) are not written yet.* Nothing in this section is allowed to
+sound more finished than [`deployments/testnet-2.0.json`](deployments/testnet-2.0.json)
+can prove.
+
+### The product
+
+A user on Ethereum Sepolia converts chosen tokens to USDC and burns them
+through Circle CCTP (destination domain 27 = Stellar testnet). On Stellar they
+receive native USDC — and three things make this more than a bridge UI:
+
+- **Taşıma Pasaportu (Migration Passport, soulbound).** One non-transferable
+  record per address: "this wallet brought this much value to Stellar." Every
+  claim grows the same passport; other Soroban contracts read it through a
+  fixed query interface (`get_migration`, `has_migrated_at_least`,
+  `get_proof`, `bump`). It is proof, so it cannot be sold — that is why it is
+  soulbound. *Current state: the passport exists on-chain as a storage record
+  with the full query interface; the soulbound NFT token and the on-chain SVG
+  `token_uri` are the open half of F3 and are not claimed as built.*
+- **Batarya (Battery).** A user-owned, on-chain fee balance in USDC. When the
+  user has no XLM, Stellar transaction fees are paid from the Battery through
+  a relayer — inspired by Tonkeeper Battery, with one difference worth stating
+  plainly: on TON the Battery is an off-chain account at a provider; here it is
+  on-chain and belongs to the user. *Current state: contract not written (F5).*
+- **Bilet (Ticket, transferable NFT).** Instead of delivering migrated USDC
+  straight to a wallet, the user can choose to park it in a vault contract and
+  hold a ticket: a bearer right to redeem that USDC. Transferring a ticket
+  between two Stellar wallets moves ownership only — the USDC stays in the
+  vault — so a ticket can be received by an address with no USDC trustline.
+  The vault's backing is verifiable by anyone at any time:
+  `sum(active ticket amounts) == USDC.balance(gate_ticket)`. A ticket is a
+  1:1 claim receipt on native USDC in the vault, not a bridge-wrapped asset;
+  it is bearer paper: a ticket sent to a wrong address or stolen cannot be
+  recovered, and if Circle froze the vault address every ticket would be
+  affected — a concentrated risk that is stated, not hidden. *Current state:
+  contract not written (F6).*
+
+Why two separate NFTs: if the Passport were transferable, migration proof
+could be bought. The Ticket is a value right, and transferring it is the point.
+Passport credit is written to the first recipient at burn time and never moves
+with later ticket transfers.
+
+### How it flows
+
+```text
+[EVM wallet] → BurnRouter → swap → USDC → CCTP depositForBurnWithHook (domain 27)
+
+                                       Circle Iris attestation
+
+[Stellar] → GateClaim.claim(message, attestation, …)
+    MessageTransmitter.receive_message → native USDC mint
+    relay fee (≤ user's cap) → relayer        battery share → gate_battery
+    remainder:  mode 0 → recipient wallet  (6→7 decimals, ×10)
+                mode 1 → gate_ticket vault (USDC stays, ticket minted)
+    Passport updated + MigrationSummary written — one atomic transaction
+```
+
+The core is relayer-less: `claim` is permissionless and the outcome always goes
+to the recipient bound inside the CCTP message. Sender validation is part of
+the parse: a message whose sender is not the immutable BurnRouter address is
+refused. The Battery's relayer, when F5/F7 land, is a labelled *demo
+dependency*, not part of the trust model. The trust root is Circle's Iris
+attestation — this system is not "trustless", and Circle can freeze USDC.
+
+### What is live on Stellar testnet right now
+
+Every row is a real transaction, read back from Horizon and recorded in
+[`deployments/testnet-2.0.json`](deployments/testnet-2.0.json):
+
+| Contract | Address | Deploy / init | On-chain negatives |
+| --- | --- | --- | --- |
+| `gate_claim` (canonical, hardened) | `CDQ3PA5LBLIS22VXJSHXLOPFDD2ZDWPQWODIBLA5KPBOTKIXKOUZI4K2` | deploy `aa421501…` (ledger 4770371), init `21c53dfe…` (ledger 4770385) | junk claim → `Error #3 MessageTooShort`; second `initialize` → `Error #1 AlreadyInitialized` — codes, never panics |
+| `gate_claim` (F3 lane; the campaign is wired to this one) | `CBKSNJBQS4IC6IPUT452RLCJR3I6RH6ELNDZEE5R5TDVO6274AV7IGPC` | create `c17b20a8…` (ledger 4770419), init `af88a0b2…` (ledger 4770426) | re-init refused; `get_migration` returns `null` for a wallet with no record — the honest answer, served live |
+| `gate_campaign_example` | `CDDQLXIIR3LZ6NT2EFYX2FAZGKPEQPTKHZUC5NLK4BRZYE2JSYDOARCF` | create `8dd80c5a…` (ledger 4770423), init `e6a50507…` (ledger 4770430) | badgeless `claim_tier` → `Error #3 NoMigration` (simulation; no tx sent) |
+| Circle CCTP testnet (reference) | TokenMessenger `CDNG7HXA…`, MessageTransmitter `CBJ6MTCK…`, native USDC `CBIELTK6…` | — | domain 27, not paused, min fee 0 — read live |
+
+Two live `gate_claim` deployments coexist deliberately: the hardened canonical
+build and the earlier F3-lane build the campaign points at. Neither was
+deleted; both are receipted. `BurnRouter` (Foundry, `gate2/evm`) is **built and
+tested — 23/23 local and CI — and not deployed**: deploying and burning needs
+Sepolia testnet ETH and USDC, which is the standing blocker (§10 stop-report).
+
+### Test suites
+
+- `gate_claim`: 7 integration proofs (`tests/claim.rs`) — happy path forwards
+  everything and holds nothing; replay refused by stored message hash;
+  corrupted attestation traps with zero movement; wrong
+  destinationCaller/mintRecipient/source domain/destination domain/burn token
+  each refused with its own error code; broken hook refused before anything
+  moves; permissionless TTL `bump`.
+- `gate_campaign_example`: 3 tests including the tier-boundary matrix — and it
+  tests against the **real** GateClaim in one environment.
+- Regression gate after every phase: `cargo test --workspace --lib`; the 1.0
+  suites (61/17/11/20/28) must not move. They have not.
+
+### Phase ledger (canonical F0–F11)
+
+| Phase | Status |
+|---|---|
+| F0 Preparation | closed |
+| F1 Spikes | S1–S4, S6, S10 evidenced; S5, S7–S9, S11, S12 open |
+| F2 Manual burn → contract claim | **blocked** — Sepolia funds (stop-reported, not faked) |
+| F3 Passport & query interface | query interface + TTL + deploy complete on-chain; soulbound NFT token + `token_uri` half open |
+| F4 BurnRouter | 23/23 green locally; full §5.1 spec (swap+minOut, v1 hook payload, modes, star name, gas-share guard) rescoped as additive at the deployed gate_claim |
+| F5 `gate_battery` | not written |
+| F6 `gate_ticket` | not written |
+| F7 Auto fee strategy & web | console built (see below); the XLM-less Battery path awaits F5 |
+| F8 Consumer demo | closed — campaign live, tiers proven, badgeless refusal proven on-chain |
+| F9 Visual layer (optional) | untouched |
+| F10 Negative tests & lock | core negatives passed; Battery/Ticket blocks await their contracts |
+| F11 Self-audit & docs | `self-audit-2.0.js` not written |
+
+### The web console — what you can test from the deployed app today
+
+The 2.0 console ships at **`/gate2/` on the same Vercel deployment** as the
+1.0 console (one origin, two gates; locally the 1.0 dev server proxies
+`/gate2` to the 2.0 dev server, so development exercises the identical
+layout). It reads addresses from the receipt manifest at build time — no
+hand-copied IDs — and it never renders fake data: when a record does not exist
+it says "kayıt yok".
+
+Live and testable from the browser right now, against real testnet state:
+
+- **Taşıma Kanıtım:** enter any Stellar address (or connect Freighter) and read
+  `get_migration` on *both* live `gate_claim` deployments, list NFT records
+  (`proofs_of` → `get_proof` / `get_meta` / `owner_of`), and simulate
+  `claim_tier` on the live campaign — a badgeless address visibly receives the
+  contract's `NoMigration` refusal. With Freighter connected, `claim_tier` can
+  be sent as a real signed transaction.
+- **Burn Ekranı preconditions:** StrKey validation of the recipient address and
+  a real Horizon USDC-trustline check — the two gates that will guard the burn
+  button — plus the irreversibility "type BURN" lock, which cannot enable
+  while no router exists.
+- Deliberately **not** shown: a token list, price previews or an enabled BURN
+  button. The router is not deployed, so the burn screen states its blocker
+  instead of staging a demo. When F2/F4 land, the screen lights up from the
+  same manifest it already reads.
+
+All of the above is machine-checked in a real headless browser by
+`gate2/scripts/check-gate2-web.mjs` (10/10 green, zero failed requests), and
+the 1.0 page is checked by `tools/check-live-page.js` (31 controls reachable,
+frame contract intact, zero failing requests).
+
+### Known limits, written where they belong
+
+- The passport is **per-wallet**: sybil across wallets is possible.
+- The trust root is **Circle's Iris attestation**. "Trustless" is never used.
+  Circle can freeze USDC; a frozen vault address would affect every ticket.
+- CCTP messages are **irreversible**: a wrong hook target is a permanent loss,
+  which is why BurnRouter stays undeployed until its spec is met and funded.
+- The Battery's fee-paying relayer is a third-party **demo dependency**,
+  configurable, capped by the user's signed fee ceiling — not a trust anchor.
+- "Automatic" and "XLM-less" will be claimed only when F7 is proven, with the
+  sentence the directive requires: the relayer pays the network fee in XLM and
+  is reimbursed from the user's Battery in USDC.
+
+### The blocker, stated plainly
+
+F2 — the single real end-to-end burn — needs Sepolia testnet ETH (gas) and
+USDC. Captcha-free faucets were unreachable at the time of writing; per the
+directive's §10 the work stopped and reported instead of simulating a burn or
+fabricating hashes. Everything that does not need those funds has been built
+and proven anyway, which is why the claim path, the campaign, the console and
+the negative probes are live while the burn lane honestly is not.
+
 
 ## License
 
