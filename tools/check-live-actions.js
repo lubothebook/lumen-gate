@@ -94,6 +94,13 @@ const SNAPSHOT = () => {
       [...document.querySelectorAll('button')].map((b) => [b.id || b.textContent.trim().slice(0, 20), b.disabled === true])
     ),
     openDetails: [...document.querySelectorAll('#about details')].filter((d) => d.open).length,
+    // Work that outlives the snapshot window is still observable work: a
+    // control that is doing something says so while it does it. Without this,
+    // a button whose job is a network call - the cash-out challenge, say - was
+    // reported silent simply because the reply had not landed yet.
+    busy: [...document.querySelectorAll('button.busy, button[aria-busy="true"]')]
+      .map((b) => b.id || b.textContent.trim().slice(0, 20))
+      .join(','),
     // The two read-only tables the console writes answers into. A query button
     // whose whole job is to refresh a table has to be measured on the table,
     // not on the incidental scroll its focus causes.
@@ -125,6 +132,7 @@ function diff(before, after) {
   for (const key of Object.keys(after.disabled)) {
     if (before.disabled[key] !== undefined && after.disabled[key] !== before.disabled[key]) changes.push(`disabled.${key}=${after.disabled[key]}`);
   }
+  if (after.busy !== before.busy) changes.push(`busy=${after.busy || 'none'}`);
   if (after.openDetails !== before.openDetails) changes.push(`faq=${after.openDetails}`);
   if (after.tables !== before.tables) changes.push('table');
   return changes;
@@ -224,6 +232,33 @@ async function main() {
       if (!st.visible) {
         problems.push(`#${id} is on the page but cannot be reached: hidden behind ${st.pane || 'an element with no visible state'}`);
         report.push({ id, result: 'UNREACHABLE' });
+        failures += 1;
+        return;
+      }
+      // Reach it like a person with a mouse: bring it to the middle of the
+      // screen, then check that the thing under the pointer is the control.
+      // Clicking wherever the page happened to leave it produced a false
+      // "silent button": the fixed navigation pill floats over the bottom of
+      // the viewport, and a control left there takes a click that lands on the
+      // dock instead. That is a real defect, so it is reported as one rather
+      // than swallowed.
+      await page.evaluate((sel) => {
+        document.documentElement.style.scrollBehavior = 'auto';
+        document.querySelector(sel).scrollIntoView({ block: 'center' });
+      }, `#${id}`);
+      const under = await page.evaluate((sel) => {
+        const el = document.querySelector(sel);
+        const r = el.getBoundingClientRect();
+        const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        return {
+          ok: Boolean(at) && (at === el || el.contains(at)),
+          at: at ? at.id || at.tagName : null,
+          className: at ? String(at.className).slice(0, 40) : null,
+        };
+      }, `#${id}`);
+      if (!under.ok) {
+        problems.push(`#${id} is covered where it sits: the element under its own centre is ${under.at}${under.className ? ` (${under.className})` : ''}`);
+        report.push({ id, result: `OCCLUDED by ${under.at}` });
         failures += 1;
         return;
       }

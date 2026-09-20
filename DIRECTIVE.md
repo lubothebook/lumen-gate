@@ -492,6 +492,30 @@ functionality belongs in the off-chain surface, the facade and the docs.
       and it builds the disabled-control table from the DOM, reasons included.
       Both browser harnesses assert the panel's numbers against the page's own
       measurements, so it cannot describe a page that is not there.
+- [x] **The hero is the one row on the page with no strip, and the page
+      announces which system it is.** The operator asked for the first area to
+      carry no black band, for the wallet to sit under it, and for two buttons
+      under the banner: **1.0**, which is this repository's system, and **2.0**,
+      a separate system whose design has not been written yet and whose button
+      therefore states that instead of pretending to be a door. The hero panel
+      is now transparent - the lattice reads through it, which is the honest
+      version of the same contrast - and the version switch sits directly under
+      the wordmark. The wallet band moved above the settlement explanation to
+      sit under the hero, and the dock navigation was reordered to match the
+      page rather than the page matching the dock.
+- [x] **Two defects the hero round surfaced, both fixed rather than worked
+      around.** The first: the fixed navigation pill floats over the bottom of
+      the viewport, so a control that a scroll leaves in that band takes the
+      click and does nothing - the exact shape of the "the wallet buttons do not
+      work" report, found this time by the harness itself. The page now declares
+      `scroll-padding-bottom` so nothing is scrolled to rest inside the dock's
+      band. The second: the click-through only counted a click as observed if a
+      log line, note or disabled flag moved inside its snapshot window, so a
+      control whose work is a network round trip looked dead while it was still
+      working. The harness now counts "the control says it is working" as
+      observable work as well, and it clicks the way a person does - it brings
+      the control to the middle of the screen and asserts that the control,
+      not an overlay, is the topmost element under its own centre.
 - [x] **The click-through runs against the live deployment, and it does not
       guess when the page is ready.** Both browser harnesses take a URL; run
       against the deployed console, the page check passes and the action check

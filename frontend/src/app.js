@@ -944,6 +944,7 @@ const DISABLED_REASONS = [
   { control: 'settleBtn', note: 'settleNote' },
   { control: 'cashoutPayBtn', note: 'cashoutActionNote' },
   { control: 'cashoutStatusBtn', note: 'cashoutActionNote' },
+  { control: 'versionTwoBtn', note: 'versionNote' },
 ];
 
 function paintDisabledReasons() {
@@ -1310,6 +1311,16 @@ function wire() {
   $('settleBtn').addEventListener('click', () => withBusy($('settleBtn'), () => settle().catch((error) => log(String(error), 'bad'))));
   $('copyCmdBtn').addEventListener('click', () => copyCommand());
   $('clearLogBtn').addEventListener('click', () => showLogPlaceholder());
+  // The version switch. 1.0 is this repository's system, so pressing it means
+  // "the thing below" - it marks itself and goes to the wallet. 2.0 is disabled
+  // with its reason stated; when its design lands it becomes a real switch
+  // rather than being quietly enabled.
+  $('versionOneBtn').addEventListener('click', () => {
+    $('versionOneBtn').setAttribute('aria-pressed', 'true');
+    $('versionTwoBtn').setAttribute('aria-pressed', 'false');
+    log('1.0: the settlement boundary below is this repository\'s system - registry, relayer, wallet and receipts.');
+    $('console').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
   $('operatorHintBtn').addEventListener('click', operatorDialog);
   window.addEventListener('resize', queueLattice);
   // The interface panel measures the page (the gap between two strips, the
