@@ -150,19 +150,15 @@ const FRAME_PX = 4;
 // itself never changes size. The pointer can still only ever frame one cube,
 // which is the part of the design that is about blocks; the number of elements
 // is the part that is about cost, and this is where that cost is decided.
-function latticeStride() {
+function sizeLattice() {
+  const dpr = window.devicePixelRatio || 1;
+  const root = document.documentElement;
   // The wall is contiguous: the tile's own 60px is the only rhythm, and every
   // cube on the screen is a real element at the tile's own size. Sparsifying
   // the grid once saved elements nobody missed and broke the artwork's
   // cadence - isolated flowers floating in black read as giant cubes instead
   // of a lattice, which is exactly what the operator asked to remove.
-  return 1;
-}
-
-function sizeLattice() {
-  const dpr = window.devicePixelRatio || 1;
-  const root = document.documentElement;
-  const stride = latticeStride();
+  const stride = 1;
   const cell = TILE_PX / dpr;
   const pitch = cell * stride;
   root.style.setProperty('--cell', `${cell}px`);
@@ -683,6 +679,58 @@ async function loadTrustEvidence() {
 }
 
 // ---------------------------------------------------------------- wallet
+/**
+ * Every Freighter build since v1 answers a connection request in a slightly
+ * different shape, and the reader does not care which one they installed:
+ * a bare address string, {address}, {publicKey}, or {error} when the popup was
+ * refused. This reads an address out of whatever came back, and says what came
+ * back when there is none.
+ */
+function walletAddressFrom(answer) {
+  if (!answer) return null;
+  if (typeof answer === 'string') return answer.trim() || null;
+  const candidate = answer.address || answer.publicKey || answer.public_key;
+  return typeof candidate === 'string' && candidate.trim() ? candidate.trim() : null;
+}
+
+function walletReasonFrom(answer) {
+  if (!answer || typeof answer === 'string') return null;
+  if (answer.error) return String(answer.error.message || answer.error);
+  if (answer.message && !walletAddressFrom(answer)) return String(answer.message);
+  return null;
+}
+
+/**
+ * Ask for an address through every door the extension exposes, in order, and
+ * keep what each one said. requestAccess() is the modern door; getPublicKey()
+ * is what older builds answer; setAllowed() then getPublicKey() is the oldest
+ * pair still in the wild. A build that throws from the first may still answer
+ * the second, so all of them are tried rather than the first one guessed at.
+ */
+async function requestWalletAddress(freighter) {
+  const attempts = [];
+  const doors = [
+    ['requestAccess', 'requestAccess', () => freighter.requestAccess()],
+    ['getPublicKey', 'getPublicKey', () => freighter.getPublicKey()],
+    ['setAllowed+getPublicKey', 'setAllowed', async () => {
+      await freighter.setAllowed();
+      return freighter.getPublicKey();
+    }],
+  ];
+  for (const [label, method, open] of doors) {
+    if (typeof freighter[method] !== 'function') continue;
+    try {
+      const answer = await open();
+      const address = walletAddressFrom(answer);
+      if (address) return { address, via: label, attempts };
+      attempts.push(`${label}: ${walletReasonFrom(answer) || 'the extension answered without an address'}`);
+    } catch (error) {
+      attempts.push(`${label}: ${error && error.message ? error.message : String(error)}`);
+    }
+  }
+  return { address: null, via: null, attempts };
+}
+
 async function connectWallet() {
   const freighter = window.freighterApi || window.freighter;
   if (!freighter) {
@@ -691,29 +739,28 @@ async function connectWallet() {
     return null;
   }
   try {
-    const access = await (freighter.requestAccess ? freighter.requestAccess() : freighter.getPublicKey());
-    const pub = typeof access === 'string' ? access : access && access.address;
-    if (!pub) {
-      // Newer Freighter builds resolve with { error } on a refusal instead of
-      // throwing. Say that out loud instead of rendering "undefined" as an
-      // address, which used to read as a broken connection.
-      const why = access && access.error ? String(access.error) : 'the popup was closed without an approval';
-      $('walletNote').textContent = `Freighter did not share an address: ${why}`;
+    const { address, via, attempts } = await requestWalletAddress(freighter);
+    if (!address) {
+      // Say which door was tried and what it answered, instead of rendering
+      // "undefined" as an address or a generic failure. The last concrete
+      // reason is the one a reader can act on.
+      const why = attempts.length ? attempts[attempts.length - 1] : 'the extension exposes no way to ask for an address';
+      $('walletNote').textContent = `Freighter did not share an address (${why}). Unlock the extension and approve the request, or read the demo account without any wallet.`;
       log(`Wallet connection was not approved: ${why}`, 'warn');
       return null;
     }
-    state.wallet = pub;
-    $('walletChip').textContent = short(pub, 6);
+    state.wallet = address;
+    $('walletChip').textContent = short(address, 6);
     $('connectBtn').textContent = 'Reconnect';
-    log(`Wallet connected: ${pub}`, 'ok');
+    log(`Wallet connected via ${via}: ${address}`, 'ok');
     // An advisory network check: a wallet pointed at Mainnet can still be
     // read here, but every signature it makes would be for the wrong
     // passphrase, and the failure would only surface much later.
     if (freighter.getNetwork) {
       try {
         const net = await freighter.getNetwork();
-        const name = typeof net === 'string' ? net : net && net.network;
-        if (name && String(name).toUpperCase() !== 'TESTNET') {
+        const name = typeof net === 'string' ? net : net && (net.network || net.networkPassphrase);
+        if (name && String(name).toUpperCase() !== 'TESTNET' && String(name).toUpperCase() !== 'TESTNET' && !/test/i.test(String(name))) {
           $('walletNote').textContent = `Connected, but Freighter is set to ${name}. Switch the wallet to Testnet before burning.`;
           log(`Freighter is on ${name}, not Testnet: receiving still works, switch before you burn.`, 'warn');
         }
@@ -723,9 +770,9 @@ async function connectWallet() {
       }
     }
     await refreshWallet();
-    return pub;
+    return address;
   } catch (error) {
-    log(`Wallet connection failed: ${error}`, 'bad');
+    log(`Wallet connection failed: ${error && error.message ? error.message : error}`, 'bad');
     return null;
   }
 }

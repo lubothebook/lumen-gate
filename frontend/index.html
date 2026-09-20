@@ -118,11 +118,11 @@
      4px white inset frame; when the pointer leaves, the frame closes. */
   .cube-lattice {
     position: fixed; inset: 0; z-index: -1; overflow: hidden;
-    display: grid; grid-template-columns: repeat(auto-fill, var(--pitch));
-    grid-auto-rows: var(--pitch);
+    display: grid; grid-template-columns: repeat(auto-fill, var(--cell));
+    grid-auto-rows: var(--cell);
   }
   .cube {
-    width: var(--pitch); height: var(--pitch);
+    width: var(--cell); height: var(--cell);
     background-image: var(--grid-tile);
     background-size: var(--cell) var(--cell);
     background-repeat: no-repeat;
