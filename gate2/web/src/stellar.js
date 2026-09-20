@@ -189,12 +189,12 @@ export async function freighterConnect(f) {
       const answer = await open();
       const address = walletAddressFrom(answer);
       if (address) return address;
-      attempts.push(`${label}: ${walletReasonFrom(answer) || "adres yok"}`);
+      attempts.push(`${label}: ${walletReasonFrom(answer) || "no address"}`);
     } catch (error) {
       attempts.push(`${label}: ${error && error.message ? error.message : String(error)}`);
     }
   }
-  const why = attempts.length ? attempts[attempts.length - 1] : "uzantı adres vermedi";
+  const why = attempts.length ? attempts[attempts.length - 1] : "extension returned no address";
   throw new Error(why);
 }
 
@@ -204,7 +204,7 @@ async function signXdr(f, xdr, addr) {
     networkPassphrase: CONFIG.networkPassphrase,
   });
   const signed = typeof signedXdr === "string" ? signedXdr : signedXdr?.signedTxXdr || signedXdr?.xdr;
-  if (!signed) throw new Error("Freighter imzali XDR dondurmedi");
+  if (!signed) throw new Error("Freighter did not return a signed XDR");
   return signed;
 }
 

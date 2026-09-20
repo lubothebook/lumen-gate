@@ -27,5 +27,5 @@ export const CONFIG = {
   },
   burnRouter: null, // F2/F4 Sepolia fonu bekliyor; uydurma adres yazilmaz
   burnRouterBlocker:
-    "BurnRouter Sepolia'de kurulu degil: F2 uctan uca burn, Sepolia testnet ETH/USDC fonu bekliyor (DIRECTIVE 2.0 Bolum 10 stop-raporu). Fon geldiginde router adresi makbuza yazilir ve bu ekran canlanir.",
+    "BurnRouter is not deployed on Sepolia: F2 end-to-end burn waits on Sepolia testnet ETH/USDC (DIRECTIVE 2.0 §10 stop-report). When funded, the router address is written to the receipt and this screen lights up.",
 };

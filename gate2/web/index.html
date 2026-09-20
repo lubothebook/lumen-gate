@@ -1,16 +1,16 @@
 <!doctype html>
-<html lang="tr">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" href="favicon.png" type="image/png" />
-    <title>Lumen Gate 2.0 — Pasaport, Batarya, Bilet</title>
-    <meta name="description" content="Gate 2.0, Circle CCTP attestation ile Stellar testnet'e taşıma kaydı tutar. BurnRouter henüz Sepolia'de kurulu değil. Testnet." />
+    <title>Lumen Gate 2.0 — Passport, Battery, Ticket</title>
+    <meta name="description" content="Gate 2.0 records Circle CCTP attestations on Stellar testnet. BurnRouter is not deployed on Sepolia yet. Testnet." />
   </head>
   <body>
-    <a class="sr" href="#console">Konsola atla</a>
+    <a class="sr" href="#console">Skip to console</a>
     <div class="cube-lattice" id="cubeLattice" aria-hidden="true"></div>
-    <div class="testnet-band"><span class="band-wide">TESTNET · Stellar domain 27 · Sepolia CCTP · üretim ağı değil</span><span class="band-narrow">TESTNET · üretim ağı değil</span></div>
+    <div class="testnet-band"><span class="band-wide">TESTNET · Stellar domain 27 · Sepolia CCTP · not a production network</span><span class="band-narrow">TESTNET · not a production network</span></div>
 
     <header class="top">
       <div class="shell top-inner">
@@ -19,7 +19,7 @@
         </a>
         <div class="top-right">
           <span class="pill" id="netPill"><span class="dot warn"></span> Stellar testnet</span>
-          <a class="btn primary small" href="#console">Konsolu aç</a>
+          <a class="btn primary small" href="#console">Open the console</a>
         </div>
       </div>
     </header>
@@ -29,20 +29,20 @@
         <div class="shell">
           <div class="hero-panel">
             <img class="hero-banner" src="lumen-gate-banner.png" alt="Lumen Gate" />
-            <div class="track-row" role="tablist" aria-label="Sürüm">
+            <div class="track-row" role="tablist" aria-label="Version">
               <a class="track-box" href="/" data-gate="1" id="gate1Select" title="1.0">1.0</a>
               <a class="track-box selected" href="#console" data-gate="2" id="gate2Select" aria-current="true" title="2.0">2.0</a>
             </div>
             <p class="eyebrow">Stellar testnet · CCTP domain 27 · Circle attestation</p>
-            <h1>Taşıma kaydı, ücret bakiyesi ve hamiline yazılı hak — tek ekranda.</h1>
+            <h1>Migration record, fee battery and bearer ticket — one screen.</h1>
             <p class="lead">
-              Gate 2.0, EVM tarafında yakılan USDC için Stellar'da bir Pasaport yazar.
-              Güven kökü Circle'ın CCTP attestation'ıdır. BurnRouter henüz Sepolia'de
-              kurulu değil; alttaki konsol bugün okuma, StrKey ve trustline ile çalışır.
+              Gate 2.0 writes a Passport on Stellar for USDC burned on EVM.
+              The trust root is Circle’s CCTP attestation. BurnRouter is not
+              on Sepolia yet; the console below reads, checks StrKey and trustlines.
             </p>
             <div class="btn-row cta">
-              <a class="btn primary" href="#console">Konsolu aç</a>
-              <a class="btn" href="#info">Güven modelini oku</a>
+              <a class="btn primary" href="#console">Open the console</a>
+              <a class="btn" href="#info">Read the trust model</a>
             </div>
           </div>
         </div>
@@ -53,40 +53,40 @@
           <div class="boundary" aria-hidden="true">
             <div class="shell boundary-in">
               <span class="mark4"></span>
-              <span class="strong">Sepolia yakma (plan)</span>
+              <span class="strong">Sepolia burn (planned)</span>
               <span class="rule"></span>
               <span class="wide-only">cctp domain 27</span>
               <span class="rule rev"></span>
-              <span class="strong">Stellar testnet aşağıda</span>
+              <span class="strong">Stellar testnet below</span>
             </div>
           </div>
 
           <div class="shell">
             <div class="sec-head band-head">
               <div>
-                <p class="eyebrow">Konsol · Gate 2.0</p>
-                <h2 style="margin-top:14px">Izgara durur. İş burada yapılır.</h2>
+                <p class="eyebrow">Console · Gate 2.0</p>
+                <h2 style="margin-top:14px">The grid stops here. This is where you act.</h2>
                 <p class="note" style="margin-top:14px">
-                  2.0 kutucuğuna basınca bu bant açılır — 1.0'daki cüzdan bandının karşılığı.
-                  Burn, kanıt, Batarya ve Bilet aynı kartın sekmelerindedir; ayrı bir siteye gitmez.
+                  The 2.0 pill opens this band — the same move as the 1.0 wallet band.
+                  Burn, proof, Battery and Ticket share one card; they are not a second site.
                 </p>
               </div>
               <div class="pills">
                 <span class="pill"><span class="dot warn"></span> TESTNET</span>
-                <span class="pill" id="routerPill"><span class="dot bad"></span> BurnRouter yok</span>
+                <span class="pill" id="routerPill"><span class="dot bad"></span> No BurnRouter</span>
               </div>
             </div>
 
             <div class="console">
               <div class="card" id="wallet-box">
                 <div class="card-head">
-                  <h3>Hesap</h3>
-                  <span class="hint" id="walletKind">bağlanınca imza, bağlanmadan okuma</span>
+                  <h3>Account</h3>
+                  <span class="hint" id="walletKind">read without a wallet; sign after connect</span>
                 </div>
                 <div class="acct-top wallet">
-                  <button class="btn primary small" id="btn-connect" type="button">Freighter ile bağlan</button>
-                  <a class="btn primary small hidden" id="btn-open-tab" rel="noopener">Sekmede aç — cüzdan burada açılmaz</a>
-                  <span class="chip" id="wallet-state">cüzdan yok</span>
+                  <button class="btn primary small" id="btn-connect" type="button">Connect Freighter</button>
+                  <a class="btn primary small hidden" id="btn-open-tab" rel="noopener">Open in a tab — wallet cannot reach this frame</a>
+                  <span class="chip" id="wallet-state">no wallet</span>
                 </div>
                 <table class="balances" style="margin-top:18px">
                   <tbody id="walletKv">
@@ -95,154 +95,150 @@
                   </tbody>
                 </table>
                 <div class="btn-row" style="margin-top:16px">
-                  <button class="btn mini" id="btn-fund" type="button" disabled>Friendbot ile XLM al</button>
-                  <button class="btn mini" id="btn-trust-open" type="button" disabled>USDC trustline aç</button>
-                  <button class="btn mini" id="btn-bump" type="button" disabled>TTL uzat (bump)</button>
-                  <button class="btn primary small" id="btn-stamp" type="button" disabled>TESTNET damgası bas</button>
+                  <button class="btn mini" id="btn-fund" type="button" disabled>Fund with Friendbot</button>
+                  <button class="btn mini" id="btn-trust-open" type="button" disabled>Open USDC trustline</button>
+                  <button class="btn mini" id="btn-bump" type="button" disabled>Extend TTL (bump)</button>
+                  <button class="btn primary small" id="btn-stamp" type="button" disabled>Stamp TESTNET</button>
                 </div>
                 <p class="note" id="walletNote" style="margin-top:16px; font-size:0.8125rem">
-                  Taşıma Kanıtım herhangi bir G… adresi için zinciri okur; cüzdan şart değil.
-                  Friendbot, trustline, bump ve TESTNET damgası Freighter imzası ister — işlem Stellar testnet’te görünür.
-                  Damga soulbound’dur; CCTP Pasaportu değildir. Pasaport yalnızca gerçek CCTP claim ile basılır.
-                  Mainnet cüzdanında işlem düğmeleri kapanır.
+                  Proof of Migration reads any G… address; a wallet is not required.
+                  Friendbot, trustline, bump and the TESTNET stamp need a Freighter signature — the tx is visible on Stellar testnet.
+                  The stamp is soulbound; it is not a CCTP Passport. A Passport is minted only by a real CCTP claim.
+                  On a mainnet wallet the action buttons stay closed.
                 </p>
                 <div id="acct-log" class="contracts" style="margin-top:10px"></div>
               </div>
 
               <div class="card">
                 <div class="card-head">
-                  <h3>Çalışma alanı</h3>
-                  <span class="hint">sekme, alttaki paneli değiştirir</span>
+                  <h3>Workspace</h3>
+                  <span class="hint">tabs switch the pane below</span>
                 </div>
-                <div class="tabs" role="tablist" aria-label="Gate 2.0 ekranları">
-                  <button id="tab-proof" class="tab active" type="button" role="tab" aria-selected="true" aria-controls="page-proof">Taşıma Kanıtım</button>
+                <div class="tabs" role="tablist" aria-label="Gate 2.0 screens">
+                  <button id="tab-proof" class="tab active" type="button" role="tab" aria-selected="true" aria-controls="page-proof">Proof of Migration</button>
                   <button id="tab-burn" class="tab" type="button" role="tab" aria-selected="false" aria-controls="page-burn">Burn</button>
-                  <button id="tab-battery" class="tab" type="button" role="tab" aria-selected="false" aria-controls="page-battery">Batarya</button>
-                  <button id="tab-tickets" class="tab" type="button" role="tab" aria-selected="false" aria-controls="page-tickets">Biletlerim</button>
+                  <button id="tab-battery" class="tab" type="button" role="tab" aria-selected="false" aria-controls="page-battery">Battery</button>
+                  <button id="tab-tickets" class="tab" type="button" role="tab" aria-selected="false" aria-controls="page-tickets">My tickets</button>
                 </div>
 
-                <!-- ============ Taşıma Kanıtım ============ -->
                 <section id="page-proof" class="page" role="tabpanel">
-                  <h2>Kanıt sorgusu</h2>
+                  <h2>Proof query</h2>
                   <p class="muted">
-                    Bağlı Freighter adresi (ya da elle girilen herhangi bir G… adresi) için
-                    zincirdeki gerçek durum okunur: <code>get_migration</code>, NFT listesi
+                    For the connected Freighter address (or any G… you type) this
+                    reads the chain: <code>get_migration</code>, the NFT list
                     (<code>proofs_of</code> → <code>get_proof</code>/<code>get_meta</code>/<code>owner_of</code>)
-                    ve kampanya kademesi. Uydurma veri yok; kayıt yoksa “kayıt yok” yazar.
+                    and the campaign tier. Nothing is invented; no record prints “no record”.
                   </p>
                   <div class="row">
-                    <input id="in-address" type="text" placeholder="G… (Stellar adresi)" spellcheck="false" autocomplete="off" />
-                    <button class="btn primary small" id="btn-query" type="button">Sorgula</button>
+                    <input id="in-address" type="text" placeholder="G… (Stellar address)" spellcheck="false" autocomplete="off" />
+                    <button class="btn primary small" id="btn-query" type="button">Query</button>
                   </div>
                   <div id="addr-error" class="error hidden"></div>
                   <div class="contracts muted" id="contract-ids"></div>
 
                   <div id="results" class="results-stack hidden">
                     <div class="block">
-                      <h3>Taşıma özeti — <span id="res-which"></span></h3>
+                      <h3>Migration summary — <span id="res-which"></span></h3>
                       <div id="res-migration"></div>
                     </div>
                     <div class="block">
-                      <h3>NFT’ler (devredilemez Taşıma Kanıtları)</h3>
+                      <h3>NFTs (non-transferable Proofs of Migration)</h3>
                       <div id="res-nfts"></div>
                     </div>
                     <div class="block">
-                      <h3>Kampanya kademesi</h3>
+                      <h3>Campaign tier</h3>
                       <p class="muted">
-                        <code>claim_tier</code> önce salt-okunur simüle edilir (tx gönderilmez).
-                        Freighter bağlıysa gerçek imzalı işlem de gönderilebilir; rozet yoksa
-                        sözleşme <code>NoMigration (#3)</code> ile reddeder — zincirdeki kanıt budur.
+                        <code>claim_tier</code> is simulated first (no tx).
+                        With Freighter connected a signed call can be sent; with no badge
+                        the contract refuses <code>NoMigration (#3)</code> — that refusal is the proof.
                       </p>
                       <div class="row">
-                        <button class="btn small" id="btn-tier-sim" type="button">Kademeyi simüle et</button>
-                        <button class="btn mini" id="btn-tier-send" type="button" disabled>Freighter ile claim_tier gönder</button>
+                        <button class="btn small" id="btn-tier-sim" type="button">Simulate tier</button>
+                        <button class="btn mini" id="btn-tier-send" type="button" disabled>Send claim_tier with Freighter</button>
                       </div>
                       <div id="res-tier"></div>
                     </div>
                   </div>
                 </section>
 
-                <!-- ============ Burn Ekranı ============ -->
                 <section id="page-burn" class="page hidden" role="tabpanel">
                   <div class="block">
-                    <h2>Burn akışı — dürüst durum</h2>
+                    <h2>Burn flow — honest state</h2>
                     <p id="burn-blocker" class="warn"></p>
                     <p class="muted">
-                      Bu ekranda sahte token listesi, sahte fiyat önizlemesi veya sahte işlem
-                      butonu yok. BurnRouter Sepolia’ye kurulup makbuza yazıldığında token
-                      listesi, “→ USDC” önizlemesi (minimum alınacak, fiyat etkisi), toplam +
-                      ücret satırı ve BURN onayı burada canlanacak. Aşağıdaki iki kontrol
-                      burn ön koşulu olarak <strong>şimdi de gerçekten çalışır</strong>.
-                      Yakma geri alınamaz; Circle USDC’yi dondurabilir.
+                      This screen has no fake token list, fake quote or fake submit.
+                      When BurnRouter is on Sepolia and written into the receipt, the token
+                      list, “→ USDC” preview (minimum out, price impact), total + fee
+                      and BURN confirm will light up here. The two checks below
+                      already run as real burn preconditions.
+                      A burn cannot be undone; Circle can freeze USDC.
                     </p>
                   </div>
 
                   <div class="block">
-                    <h3>Ön koşul 1 — Stellar adresi doğrulaması (StrKey)</h3>
+                    <h3>Precondition 1 — Stellar address (StrKey)</h3>
                     <div class="row">
-                      <input id="in-strkey" type="text" placeholder="Alıcının G… adresi" spellcheck="false" autocomplete="off" />
-                      <button class="btn small" id="btn-strkey" type="button">Doğrula</button>
+                      <input id="in-strkey" type="text" placeholder="Recipient G… address" spellcheck="false" autocomplete="off" />
+                      <button class="btn small" id="btn-strkey" type="button">Validate</button>
                     </div>
                     <div id="res-strkey"></div>
                   </div>
 
                   <div class="block">
-                    <h3>Ön koşul 2 — USDC trustline kontrolü (Horizon)</h3>
+                    <h3>Precondition 2 — USDC trustline (Horizon)</h3>
                     <p class="muted">
-                      Alıcının native USDC (Stellar testnet) trustline’ı
-                      yoksa burn butonu kapalı kalır; mint edilen USDC takılır. Kontrol gerçek
-                      Horizon verisiyle yapılır.
+                      If the recipient has no native USDC (Stellar testnet) trustline,
+                      the burn button stays closed; minted USDC would stick. The check
+                      uses live Horizon data.
                     </p>
                     <div class="row">
-                      <button class="btn small" id="btn-trustline" type="button" disabled>Trustline’ı kontrol et</button>
-                      <button class="btn primary small" id="btn-trust-open-burn" type="button" disabled>Trustline’ı Freighter ile aç</button>
+                      <button class="btn small" id="btn-trustline" type="button" disabled>Check trustline</button>
+                      <button class="btn primary small" id="btn-trust-open-burn" type="button" disabled>Open trustline with Freighter</button>
                     </div>
                     <div id="res-trustline"></div>
                   </div>
 
                   <div class="block">
-                    <h3>Geri alınamazlık onayı</h3>
+                    <h3>Irreversibility confirm</h3>
                     <p class="muted">
-                      Burn geri alınamaz. Onay kutusuna büyük harfle <code>BURN</code> yazılmadan
-                      buton açılmaz (şu an zaten kapalı: router yok).
+                      A burn cannot be undone. The button stays closed until you type
+                      <code>BURN</code> in capitals (it is already closed: no router).
                     </p>
                     <div class="row">
                       <input id="in-burnword" type="text" placeholder="BURN" spellcheck="false" autocomplete="off" />
                       <button class="btn primary small" id="btn-burn" type="button" disabled>BURN</button>
                     </div>
-                    <div id="res-burn" class="muted">Router kurulmadan bu buton hiçbir koşulda açılmaz.</div>
+                    <div id="res-burn" class="muted">This button cannot enable until a router exists.</div>
                   </div>
 
                   <div class="block">
-                    <h3>Burn sonrası (plan — S1/F2 kanıtı bekliyor)</h3>
+                    <h3>After burn (plan — waiting on S1/F2 evidence)</h3>
                     <ol class="muted">
-                      <li>Attestation, Iris API’den çekilir: <code id="iris-url"></code></li>
-                      <li>Kullanıcı Freighter ile <code>claim(message, attestation)</code> işlemine yönlendirilir.</li>
-                      <li>GateClaim mint eder, ölçülmüş 6→7 ondalık düzeltmeyi uygular, NFT’yi basar, fon tutmaz.</li>
+                      <li>Attestation is fetched from Iris: <code id="iris-url"></code></li>
+                      <li>The user signs <code>claim(message, attestation)</code> in Freighter.</li>
+                      <li>GateClaim mints, applies the 6→7 decimal correction, stamps the NFT, holds no funds.</li>
                     </ol>
                   </div>
                 </section>
 
-                <!-- ============ Batarya (F5 yok — dürüst boş) ============ -->
                 <section id="page-battery" class="page hidden" role="tabpanel">
-                  <h2>Batarya</h2>
-                  <p class="warn">Batarya kontratı henüz yok (F5 yazılmadı). Bakiye, doldur, çek veya forward işlemi uydurulmaz.</p>
+                  <h2>Battery</h2>
+                  <p class="warn">The Battery contract is not written yet (F5). Balance, top-up, withdraw or forward are not invented.</p>
                   <p class="muted" style="margin-top:12px">
-                    Ağ ücretini relayer XLM ile öder, karşılığı Bataryadan USDC ile alınır.
-                    Bu cümle, kontrat ve F7 kanıtı gelince bu ekranın çalışma biçimi olacak.
-                    Tonkeeper Battery’den ilham alınmıştır: TON’da off-chain, Gate’te zincir üstü
-                    ve kullanıcıya ait olacaktır. Şu an gösterilecek bir bakiye yok.
+                    The relayer pays network fees in XLM and is repaid in USDC from the Battery.
+                    That sentence is how this screen will work once the contract and F7 evidence exist.
+                    Inspired by Tonkeeper Battery: off-chain on TON, on-chain and user-owned on Gate.
+                    There is no balance to show today.
                   </p>
                 </section>
 
-                <!-- ============ Biletlerim (F6 yok — dürüst boş) ============ -->
                 <section id="page-tickets" class="page hidden" role="tabpanel">
-                  <h2>Biletlerim</h2>
-                  <p class="warn">Bilet kontratı henüz yok (F6 yazılmadı). Liste, gönder, çek veya böl uydurulmaz.</p>
+                  <h2>My tickets</h2>
+                  <p class="warn">The Ticket contract is not written yet (F6). List, send, redeem or split are not invented.</p>
                   <p class="muted" style="margin-top:12px">
-                    Bilet, kasadaki native USDC üzerinde bir hak makbuzudur. Köprü varlığı değildir.
-                    Hamiline yazılıdır: yanlış adrese gönderilen veya çalınan bilet geri alınamaz.
-                    Circle kasa adresini dondurursa tüm biletler etkilenir.
+                    A ticket is a claim on native USDC in the vault. It is not a bridged asset.
+                    It is bearer paper: a ticket sent to the wrong address or stolen cannot be clawed back.
+                    If Circle freezes the vault, every ticket is affected.
                   </p>
                 </section>
               </div>
@@ -255,25 +251,25 @@
         <div class="shell">
           <div class="sec-head row-strip">
             <div>
-              <p class="eyebrow">Bilgi</p>
-              <h2 style="margin-top:14px">Güven modeli, bu sayfanın konuştuğu yerde</h2>
+              <p class="eyebrow">Info</p>
+              <h2 style="margin-top:14px">The trust model, on the page that talks to it</h2>
             </div>
             <p class="note" style="max-width:44ch">
-              “Trustless” denmez. Güven kökü Circle’ın CCTP attestation’ıdır. Circle USDC’yi dondurabilir.
+              We do not say “trustless”. The trust root is Circle’s CCTP attestation. Circle can freeze USDC.
             </p>
           </div>
           <div class="trust-grid">
             <div>
-              <strong>Kim doğrular</strong>
-              <p>Circle Iris. Attestation yoksa claim yok. Bu sayfa bir köprü işletmez.</p>
+              <strong>Who verifies</strong>
+              <p>Circle Iris. No attestation, no claim. This page does not operate a bridge.</p>
             </div>
             <div>
-              <strong>Kim tutmaz</strong>
-              <p>GateClaim ve BurnRouter fon tutmaz. İstisna olacak iki kasa — Batarya ve Bilet — henüz yazılmadı.</p>
+              <strong>Who does not custody</strong>
+              <p>GateClaim and BurnRouter hold no funds. The two vaults that will — Battery and Ticket — are not written yet.</p>
             </div>
             <div>
-              <strong>Ne yok</strong>
-              <p>Sahte token listesi, tek tıkla yakma, sınırsız approval, üçüncü taraf izleyici yok.</p>
+              <strong>What is absent</strong>
+              <p>No fake token list, one-click burn, unlimited approval, or third-party watcher.</p>
             </div>
           </div>
         </div>
@@ -283,15 +279,15 @@
     <footer>
       <div class="shell foot-row">
         <span><img class="wordmark-foot" src="wordmark.png" alt="Lumen Gate" /> · Stellar testnet · domain 27</span>
-        <span>gate2/web — 1.0 ile aynı kutucuk dili; <code>frontend/</code> dondurulmuş, dokunulmadı.</span>
-        <span>Adresler <code>deployments/testnet-2.0.json</code> makbuzundan okunur.</span>
+        <span>gate2/web — same pill language as 1.0; one screen, two gates.</span>
+        <span>Addresses are read from the <code>deployments/testnet-2.0.json</code> receipt.</span>
       </div>
     </footer>
 
-    <nav class="main foot-nav" aria-label="Bölümler">
-      <a href="#top" data-nav="top" aria-current="true">Genel bakış</a>
-      <a href="#console" data-nav="console">Konsol</a>
-      <a href="#info" data-nav="info">Bilgi</a>
+    <nav class="main foot-nav" aria-label="Sections">
+      <a href="#top" data-nav="top" aria-current="true">Overview</a>
+      <a href="#console" data-nav="console">Console</a>
+      <a href="#info" data-nav="info">Info</a>
     </nav>
 
     <script type="module" src="./src/main.js"></script>
