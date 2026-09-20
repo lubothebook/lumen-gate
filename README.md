@@ -112,7 +112,23 @@ REGISTRY_ID=CCXJDQMTJUGXKNFOQPC25IYVOAVWDMLJBNQYX75MAREHV7MZMU5OSEN4 \
 
 **It holds no mint authority.** It cannot approve anything, it cannot change the verifying key, and it is not a new trusted party in the settlement path — it only asks the contract questions and writes down the answers. If it stops running, nothing about settlement changes; you just stop getting fresh evidence.
 
-The latest recorded round is **14/14** (`deployments/self-audit.json`, round 21) — since round 21 the fourteenth check guards the five-slot showcase: four registries and the committed sibling vector as byte-exact sources, four acceptance transactions re-read from Horizon including the stranger's, and the freeze probed on the newest setter — and the checks that need no party's cooperation are the load-bearing ones: the gasless recipient's live balance (`1.5000000 XLM` held, `1.5000000 XLM` reserve, **`0.0000000 XLM` spendable**), the recorded gasless mint sitting on ledger `4,763,378` with a fee of 137,293 stroops, the post-renounce `set_vk` refusal attributed to the contract itself with the stored key read back unchanged, and the gate-vm lane's acceptance — transaction `6d67f5f4…` on ledger `4,765,859` for 177,143 stroops, its registry still serving the committed key byte for byte. The facade probe reported **26/26**. Both admin checks work by simulating the admin action and requiring the host to trap — a probe with no verdict is recorded as a failure, because a check that reports success on an empty output is worse than no check at all. The registry's admin capability was given up permanently with `renounce_admin`, which is the last setup step — after that nobody, including the deployer, can change the verifying key or add a domain.
+The latest recorded round is **14/14** (`deployments/self-audit.json`, round 21) — since round 21 the fourteenth check guards the five-slot showcase: four registries and the committed sibling vector as byte-exact sources, four acceptance transactions re-read from Horizon including the stranger's, and the freeze probed on the newest setter. A fifteenth check has been wired alongside the stranger full-flow run — it re-reads that run's trustline, finality and mint transactions from Horizon and the minted balance from the account itself, and fails if any of it drifted; its first recorded round (22) runs once the audit's CLI is rebuilt on this sandbox, and will land in `deployments/self-audit.json` before this sentence upgrades — and the checks that need no party's cooperation are the load-bearing ones: the gasless recipient's live balance (`1.5000000 XLM` held, `1.5000000 XLM` reserve, **`0.0000000 XLM` spendable**), the recorded gasless mint sitting on ledger `4,763,378` with a fee of 137,293 stroops, the post-renounce `set_vk` refusal attributed to the contract itself with the stored key read back unchanged, and the gate-vm lane's acceptance — transaction `6d67f5f4…` on ledger `4,765,859` for 177,143 stroops, its registry still serving the committed key byte for byte. The facade probe reported **26/26**. Both admin checks work by simulating the admin action and requiring the host to trap — a probe with no verdict is recorded as a failure, because a check that reports success on an empty output is worse than no check at all. The registry's admin capability was given up permanently with `renounce_admin`, which is the last setup step — after that nobody, including the deployer, can change the verifying key or add a domain.
+
+The permissionless claim has now been walked, not asserted: a single account
+generated at run time — friendbot-funded, named in no configuration of this
+repository — opened its own trustline, locked on the source chain, carried its
+block's BLS finality envelope to the renounced registry itself, and minted
+itself through `finalize_inbound_tooling`, paying all three fees
+([`deployments/mint-flow.json`](deployments/mint-flow.json): ledgers
+4,767,217–9, 79–180k stroops each self-paid). Five refusals frame the
+success: no-finality finalize (#5), evidence replay (#9), zeroed BLS
+signature (#7, at the pairing equation), message replay (#4), and one mutated
+byte in a Merkle witness — aimed at an unminted sibling event so the processed
+check could not answer for it (#9). The bounds that stay attached: the quorum
+behind the envelope is the deployment-pinned demo 2-of-3 over fixed keys, the
+registry is renounced so that number is history, and the single-attester cost
+target this deployment optimizes toward is a policy floor, not a trust floor,
+until some circuit verifies a signature (docs/BRIDGE_TRUST_MODEL.md).
 
 ### What this round of work broke, and what that found
 

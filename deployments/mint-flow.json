@@ -1,0 +1,117 @@
+{
+  "generated_at": "2026-09-19T23:14:44.717Z",
+  "passed": true,
+  "network": "testnet",
+  "contracts": {
+    "finality_registry": "CCXJDQMTJUGXKNFOQPC25IYVOAVWDMLJBNQYX75MAREHV7MZMU5OSEN4",
+    "settlement_gateway": "CBUKVNCPF5XRYJVAH2SRLTLUMZT6T677T5KAJADXZIQOQTCTSBITQVPA",
+    "wrapped_asset_sac": "CBPBDVLP7K436KEXOAJMPFFHEF5OXNN4KJIB2HDFDBRWOABQ6WBTURRV"
+  },
+  "run_note": "the stranger carried its own finality evidence and minted itself, paying both fees",
+  "checks": [
+    {
+      "check": "stranger_funded_by_friendbot",
+      "pass": true,
+      "detail": "GASM57XXULU2PDRAIKEIS6QOQFY22KACBYI22ZI6JQT6ZIPZYLT2XHOA funded"
+    },
+    {
+      "check": "registry_domain_readable",
+      "pass": true,
+      "detail": "domain 4c00370b422d… readable, last_height 141"
+    },
+    {
+      "check": "simulator_caught_up_with_finality_trail",
+      "pass": true,
+      "detail": "simulator height 161 > registry last 141"
+    },
+    {
+      "check": "stranger_opened_its_own_trustline",
+      "pass": true,
+      "detail": "b5769eaa1da7877e… ledger 4767217"
+    },
+    {
+      "check": "deposit_landed_on_source_chain",
+      "pass": true,
+      "detail": "height 163 index 1 of 3, message a13a7fa90d4611fc…"
+    },
+    {
+      "check": "simulator_signed_finality_envelope",
+      "pass": true,
+      "detail": "payload 368 bytes, sig over state 52661a85cdae…, 2-of-3 demo validators"
+    },
+    {
+      "check": "finalize_before_finality_is_refused",
+      "pass": true,
+      "detail": "gateway answered: HostError: Error(Contract, #5)\n\nEvent log (newest first):\n   0: [Diagnostic Event] contrac"
+    },
+    {
+      "check": "stranger_submitted_finality_evidence",
+      "pass": true,
+      "detail": "ledger 4767218, 179682 stroops paid by the stranger itself"
+    },
+    {
+      "check": "replaying_the_consumed_evidence_is_refused",
+      "pass": true,
+      "detail": "registry answered HostError: Error(Contract, #9)\n\nEvent log (newest first):\n   0: [Diagnostic Event] contrac"
+    },
+    {
+      "check": "tampered_bls_signature_is_refused_by_pairing",
+      "pass": true,
+      "detail": "registry answered HostError: Error(Contract, #7)\n\nEvent log (newest first):\n   0: [Diagnostic Event] contrac"
+    },
+    {
+      "check": "stranger_minted_to_itself",
+      "pass": true,
+      "detail": "ledger 4767219, 103017 stroops paid by the stranger, both transactions from the stranger's own key"
+    },
+    {
+      "check": "balance_visible_in_horizon",
+      "pass": true,
+      "detail": "Horizon sees 250.0000001 for the stranger"
+    },
+    {
+      "check": "sac_agrees_with_horizon",
+      "pass": true,
+      "detail": "SAC balance 2500000001"
+    },
+    {
+      "check": "the_same_message_cannot_mint_twice",
+      "pass": true,
+      "detail": "gateway answered HostError: Error(Contract, #4)\n\nEvent log (newest first):\n   0: [Diagnostic Event] contrac"
+    },
+    {
+      "check": "a_mutated_sibling_breaks_the_root_and_is_refused",
+      "pass": true,
+      "detail": "gateway answered HostError: Error(Contract, #9)\n\nEvent log (newest first):\n   0: [Diagnostic Event] contrac"
+    }
+  ],
+  "stranger": {
+    "address": "GASM57XXULU2PDRAIKEIS6QOQFY22KACBYI22ZI6JQT6ZIPZYLT2XHOA",
+    "key_source": "generated at run time; funded by friendbot; configured nowhere"
+  },
+  "trustline": {
+    "transaction": "b5769eaa1da7877e3daed49048d5c944941c8270643afc916e9433c971a53475",
+    "ledger": 4767217,
+    "fee_stroops": 100
+  },
+  "deposit": {
+    "height": 163,
+    "event_index": 1,
+    "message_id": "a13a7fa90d4611fc4e8b7463768e1acbc271da774e8cd678f462ebe4d37b6e52",
+    "amount_base_units": "2500000000",
+    "block_events": 3
+  },
+  "finality": {
+    "submitted_by": "GASM57XXULU2PDRAIKEIS6QOQFY22KACBYI22ZI6JQT6ZIPZYLT2XHOA",
+    "transaction": "80e43dc0f7ea3e8b60a08ac2dc1802a8fe8941bb6beb38895e920f40bf4b0c17",
+    "ledger": 4767218,
+    "fee_stroops": 179682
+  },
+  "mint": {
+    "transaction": "86e3e62a91da2754ae73bca5640af8356b086af2d06fff8fd11352f73cd5fc0f",
+    "amount_base_units": "2500000001",
+    "ledger": 4767219,
+    "fee_stroops": 103017
+  },
+  "quorum_behind_the_evidence": "demo 2-of-3 over fixed validator keys 1, 2, 3 — the registry is renounced, so the number is history; moving it to 1-of-1 is the next-generation item"
+}

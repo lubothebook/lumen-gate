@@ -840,6 +840,28 @@ measured satisfaction, the one-signer claim does not enter the README,
 permanently, and this directive entry is where that decision will have been
 made in advance rather than in the moment of temptation.
 
+### 4.0c The single-attester cost target (operator's goal, recorded 2026-09-20)
+
+The operator set the goal in one line: cheaper settlement with one signer
+("tek kisiyle daha ucuz maliyet hedefi olsun" — transcribed per the
+English-only rule). The goal is accepted as a COST target and explicitly
+bounded on the trust side: the phase ladder and the pre-authorized Phase-2
+stop sign in docs/BRIDGE_TRUST_MODEL.md govern how it may ever be claimed.
+Concrete consequences this directive now carries:
+
+- the live testnet registry is renounced, so its 2-of-3 demo policy is
+  history, not configuration — the single-attester number can only be
+  installed on the NEXT registry generation (v3 showcase, or a purpose-built
+  settlement domain), and any such deployment must be announced as
+  "1-of-1 because the circuit does not yet verify signatures: this is a
+  policy floor, not a trust floor" in the same breath;
+- the cost floor itself is on the record from the stranger full-flow run
+  (deployments/mint-flow.json): one trustline, one finality submission, one
+  finalize, all fees paid by the account that gains from them; that is the
+  number the single-attester target optimizes against;
+- no README claim about single-validator settlement exists until the
+  Phase-2 gate passes. This bullet is the enforcement point.
+
 ### 4.1 Admin and verifying-key trust gap (implemented, keep probing)
 
 `admin` was a bootstrap role only: it set the verifying key, the BLS policy and

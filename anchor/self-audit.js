@@ -7,7 +7,7 @@
  * what it saw, with timestamps, so a reader does not have to take anyone's
  * word for it.
  *
- * Every round it asks fourteen questions, and none of them is answered by
+ * Every round it asks fifteen questions, and none of them is answered by
  * trusting an earlier answer:
  *   1. Is the source chain reachable at all?
  *   2. Does a fresh, honest proof still get ACCEPTED?
@@ -685,6 +685,60 @@ async function runRound() {
     }
   } catch (e) {
     record("merged_registry_still_frozen", false, `merged readback failed: ${String(e.message || e)}`);
+  }
+
+  // 15. The whole inbound journey, run end to end by one account that lives
+  // in no config file: deployments/mint-flow.json must report a passing run;
+  // the trustline, finality, and mint transactions it names must still read
+  // back from Horizon with the ledger and fee it recorded; and the minted
+  // balance must still belong to that account on the chain. The receipt is a
+  // pointer; the answers come from the network.
+  try {
+    const flow = JSON.parse(fs.readFileSync(path.join(ROOT, "deployments", "mint-flow.json"), "utf8"));
+    if (!flow.passed) {
+      record("stranger_full_flow_still_recorded", false, "deployments/mint-flow.json exists but does not report a passing run");
+    } else {
+      const legs = [];
+      let legsOk = true;
+      for (const [name, leg] of [["trustline", flow.trustline], ["finality", flow.finality], ["mint", flow.mint]]) {
+        if (!leg?.transaction) {
+          legsOk = false;
+          legs.push(`${name}: no transaction in the receipt`);
+          continue;
+        }
+        try {
+          const tx = await getJson(`${horizonUrl()}/transactions/${leg.transaction}`);
+          const ledgerOk = Number(tx.ledger) === Number(leg.ledger);
+          const feeOk = Number(tx.fee_charged) === Number(leg.fee_stroops);
+          legsOk = legsOk && ledgerOk && feeOk && tx.successful === true;
+          legs.push(`${name} ledger ${tx.ledger}${ledgerOk ? "" : ` != ${leg.ledger}?`}${feeOk ? "" : " FEE-MISMATCH"} — ${tx.fee_charged} stroops`);
+        } catch (e) {
+          legsOk = false;
+          legs.push(`${name} tx unreadable`);
+        }
+      }
+      // the minted number, still the stranger's, from the chain itself
+      let balanceOk = false;
+      let balanceSeen = "account unreadable";
+      try {
+        const acct = await getJson(`${horizonUrl()}/accounts/${flow.stranger.address}`);
+        const code = manifestPath("contracts.wrapped_asset_sac.asset");
+        const issuer = manifestPath("contracts.wrapped_asset_sac.issuer");
+        const line = (acct.balances || []).find((b) => b.asset_code === code && b.asset_issuer === issuer);
+        const expected = (Number(flow.mint.amount_base_units) / 1e7).toFixed(7);
+        balanceOk = Boolean(line) && line.balance === expected;
+        balanceSeen = line ? `${line.balance} of the minted ${expected}` : "no trustline balance visible";
+      } catch (e) {
+        balanceSeen = `Horizon account read failed: ${String(e.message || e).slice(0, 80)}`;
+      }
+      record(
+        "stranger_full_flow_still_recorded",
+        legsOk && balanceOk,
+        `one runtime keypair carried its own trustline, finality, and mint: ${legs.join("; ")}; balance now ${balanceSeen}`
+      );
+    }
+  } catch (e) {
+    record("stranger_full_flow_still_recorded", false, `no deployments/mint-flow.json to re-read: ${String(e.message || e).slice(0, 120)}`);
   }
 
   // After the renounce there must be no path back. This simulates the actual

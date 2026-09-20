@@ -36,6 +36,29 @@ finalized — still has to be done by somebody's loop before the submit can
 happen. Permissionless submission is not permissionless *arrival*; anyone can
 carry the evidence, but someone has to first see that there is one.
 
+And as of the stranger full-flow run, the *whole* journey, not just its
+last step: one runtime-generated account (`GASM57XX…` in the latest pass,
+[`deployments/mint-flow.json`](../deployments/mint-flow.json)) opened its own
+trustline, locked on the source chain, **carried the block's BLS finality
+envelope to the renounced registry itself** (179,682 stroops, self-paid —
+the finality submit path joins the zk lanes in needing no authorization),
+minted itself through `finalize_inbound_tooling` (103,017 stroops, self-paid;
+the empty proof the CLI could not express is expressible by a program, so the
+sibling path is now a real 32-byte witness rather than the degenerate
+single-leaf case), and had its balance read back from two independent views
+(Horizon's classic line and the SAC's own answer). Four refusals frame the
+success: finalize before finality (#5), replay of a consumed evidence digest
+(#9, registry), a zeroed BLS signature refused at the pairing equation (#7),
+the minted message replayed (#4), and — aimed deliberately at an *unminted*
+sibling event so the refusal could not hide behind the processed-check
+shortcut — one mutated byte in a Merkle witness (#9, gateway). Cost floor for
+a self-sovereign inbound settlement: three transactions, two of them paid by
+the beneficiary. What it does not outgrow, in the same breath: the quorum
+behind the envelope is the deployment-time demo 2-of-3 over fixed keys, and
+that number is history now — the registry is renounced — so the single-attester
+target lives on the next registry generation, where installing a 1-of-1
+policy must be announced for what it is: a policy floor, not a trust floor.
+
 Outbound (Stellar → source chain) is the other direction and keeps the shape
 it has: the burn is the user's own signature and fee, but the release on the
 source side is an operator action. Turning that into "no operator" requires a
