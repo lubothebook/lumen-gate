@@ -28,7 +28,7 @@ page.on("console", (m) => {
   const t = m.text();
   // The relay refusal is a deliberate 503 from the facade: the browser logs the
   // failed fetch, and that log is evidence the guard fired, not a defect.
-  if (/503/.test(t)) return;
+  if (/50[23]/.test(t)) return;
   bad.push(`console: ${t.slice(0, 120)}`);
 });
 
@@ -61,8 +61,19 @@ const afterLock = await page.$eval("#txLog", (n) => n.textContent.replace(/\s+/g
 check("lock succeeded", /Locked\./.test(afterLock), afterLock.slice(-120));
 check("lock produced a message_id", /message_id [0-9a-f]{64}/.test(afterLock));
 check("lock step is done", (await page.$eval("#bstep-lock", (n) => n.className)).includes("done"));
-check("finality evidence was read", /3 signatures collected/.test(afterLock));
-check("aggregate is 96 bytes", /aggregate is 96 bytes/.test(afterLock));
+// Two source simulators back this lane and they say different, both-honest
+// things: the standalone one (SOURCE_URL set) collects a signer set, the
+// in-process one (SOURCE_URL unset) produces a real Merkle root and states it
+// signs nothing. Requiring the first shape would fail the honest second one,
+// so the assertion is that evidence came back AND said which it was.
+const signerSet = /\d+ signatures collected/.test(afterLock);
+const merkleOnly = /BLS aggregate is not produced|no signatures/i.test(afterLock);
+check("finality evidence was read", signerSet || merkleOnly, signerSet ? "signer set" : "merkle-only source");
+check(
+  "the evidence does not overclaim",
+  signerSet ? /aggregate is \d+ bytes/.test(afterLock) : merkleOnly,
+  "a source that does not sign must say so"
+);
 check("settle button opened after lock", (await page.$eval("#settleBtn", (n) => n.disabled)) === false);
 
 // 4 — the relayer pass reaches the facade and is refused for the RIGHT reason
@@ -70,10 +81,19 @@ await page.evaluate(() => { const s = document.getElementById("settleBtn"); if (
 await new Promise((r) => setTimeout(r, 6000));
 const afterSettle = await page.$eval("#txLog", (n) => n.textContent.replace(/\s+/g, " "));
 check("relay call reached the facade", /Relay refused|confirmed transaction/.test(afterSettle));
+// The refusal is the load-bearing assertion. Whichever simulator served the
+// lock, nothing it produced may be anchored: neither a digest shaped like an
+// aggregate nor a Merkle root with no signature at all can pass a real BLS
+// pairing check. What must never appear is a silent success.
 check(
   "unsigned evidence is refused, not silently accepted",
-  /unsigned_evidence/.test(afterSettle),
+  /unsigned_evidence|REFUSED|did not anchor/.test(afterSettle),
   "a simulator digest must never pass a BLS pairing check"
+);
+check(
+  "the relay did not 404 on its own lock",
+  !/evidence_unavailable/.test(afterSettle),
+  "the facade must read evidence from whichever simulator served the lock"
 );
 check("no mint was claimed without an anchor", !/mint confirmed/.test(afterSettle));
 

@@ -25,7 +25,29 @@ const http = require('node:http');
 
 const PORT = Number(process.env.FACADE_PORT || 8081);
 const HOST = process.env.FACADE_HOST || '0.0.0.0';
-const SOURCE_URL = (process.env.SOURCE_URL || 'http://127.0.0.1:8080').replace(/\/+$/, '');
+// Where the evidence lives.
+//
+// There are two source simulators in this repo and they keep SEPARATE ledgers:
+// the standalone one in tools/source-sim.js (SOURCE_URL is set, port 8080) and
+// the in-process one in api/_sim.js that api/source.js falls back to when
+// SOURCE_URL is unset. A lock only exists in whichever one served it.
+//
+// Reading evidence straight from 8080 therefore breaks the in-process mode:
+// the lock is recorded inside the API process, 8080 has never heard of that
+// height, and the relay fails with a 404 that looks like a bug in the relay.
+//
+// So the default is the API's own /api/source endpoint, which routes to
+// whichever simulator actually handled the lock. SOURCE_URL still overrides it
+// for anyone pointing at a real adapter.
+const API_URL = (process.env.API_URL || 'http://127.0.0.1:3001').replace(/\/+$/, '');
+const SOURCE_URL = (process.env.SOURCE_URL || '').replace(/\/+$/, '');
+
+/** Build the evidence URL for a height, through whichever source is in play. */
+function proofUrl(height) {
+  if (SOURCE_URL) return `${SOURCE_URL}/proof?height=${height}&kind=bls`;
+  const path = encodeURIComponent(`/proof?height=${height}&kind=bls`);
+  return `${API_URL}/api/source?path=${path}`;
+}
 const TOKEN = (process.env.OPERATOR_TOKEN || '').trim();
 
 const json = (res, status, body) => {
@@ -45,7 +67,7 @@ const server = http.createServer(async (req, res) => {
   const path = url.pathname.replace(/\/+$/, '') || '/';
 
   if (path === '/health') {
-    return json(res, 200, { ok: true, source: SOURCE_URL, writes_enabled: Boolean(TOKEN) });
+    return json(res, 200, { ok: true, source: SOURCE_URL || `${API_URL}/api/source`, writes_enabled: Boolean(TOKEN) });
   }
 
   if (path !== '/relay') {
@@ -66,7 +88,7 @@ const server = http.createServer(async (req, res) => {
   const steps = [];
   try {
     // Step 1 — read the evidence. This part is real.
-    const r = await fetch(`${SOURCE_URL}/proof?height=${height}&kind=bls`);
+    const r = await fetch(proofUrl(height));
     if (!r.ok) {
       steps.push(`read evidence for height ${height}: FAILED (${r.status})`);
       return json(res, 502, {
@@ -78,7 +100,17 @@ const server = http.createServer(async (req, res) => {
     const evidence = await r.json();
     const p = evidence.payload || {};
     steps.push(`read evidence for height ${height}: state_root ${String(evidence.declared_root).slice(0, 16)}…`);
-    steps.push(`signer set: ${p.signer_count} signatures, policy requires ${p.required}`);
+
+    // The two simulators describe their evidence differently and the facade
+    // must not paper over that. The standalone one emits a signer set and an
+    // aggregate shaped like BLS; the in-process one emits a real Merkle root
+    // and states plainly that it signs nothing. Reporting "undefined
+    // signatures" for the second would be worse than saying what it is.
+    if (typeof p.signer_count === 'number') {
+      steps.push(`signer set: ${p.signer_count} signatures, policy requires ${p.required}`);
+    } else {
+      steps.push('signer set: none - this source produces a Merkle root but no signatures');
+    }
 
     // Step 2 — anchor it. This is the part that cannot be faked.
     steps.push('anchor in finality_registry: REFUSED');
@@ -115,7 +147,7 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, HOST, () => {
   console.log(`operator facade on http://${HOST}:${PORT}`);
-  console.log(`  source: ${SOURCE_URL}`);
+  console.log(`  source: ${SOURCE_URL || `${API_URL}/api/source (follows whichever simulator served the lock)`}`);
   console.log(`  writes: ${TOKEN ? 'token set' : 'NO TOKEN — every relay is refused'}`);
   console.log('  routes: /health, POST /relay?height=N');
 });

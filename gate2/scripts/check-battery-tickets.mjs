@@ -56,8 +56,30 @@ check("battery balance_of live", bkv.includes("0.000000 USDC"), bkv.slice(0,90))
 check("battery read did not fail", !bkv.includes("failed"), bkv.slice(0,60));
 
 // 5 - write buttons stay shut without a wallet, and say why
-const dep = await page.$eval("#btn-battery-deposit",n=>({d:n.disabled,t:n.title}));
-check("top-up disabled without wallet", dep.d===true);
+// Unavailable is asserted the way the app now expresses it. A hard `disabled`
+// swallows the click before any handler runs, so the button can never say why
+// it is grey; the app marks it aria-disabled instead, which keeps it focusable
+// and lets the press answer. Either spelling counts as shut here - what must
+// not happen is the control looking live without a wallet.
+const dep = await page.$eval("#btn-battery-deposit",n=>({
+  d:n.disabled, aria:n.getAttribute("aria-disabled"), t:n.title,
+}));
+check("top-up unavailable without wallet", dep.d===true || dep.aria==="true",
+  `disabled=${dep.d} aria-disabled=${dep.aria}`);
+
+// The attribute alone proves nothing: it is also written statically in the
+// HTML, so it stays "true" even if the script that maintains it is broken.
+// What actually matters is the behaviour - press it with no wallet connected
+// and it must refuse in words, not move money and not sit silent.
+await page.$eval("#in-battery-amount", n => { n.value = "1"; });
+await page.evaluate(() => document.getElementById("btn-battery-deposit").click());
+await new Promise(r => setTimeout(r, 1200));
+const pressed = await page.evaluate(() => {
+  const parts = ["res-battery", "acct-log"].map((id) => document.getElementById(id)?.textContent || "");
+  return parts.join(" ").replace(/\s+/g, " ").trim();
+});
+check("pressing top-up without a wallet answers instead of signing",
+  /connect|wallet|freighter/i.test(pressed), pressed.slice(0,70) || "(said nothing)");
 check("top-up explains itself", (dep.t||"").length>20, (dep.t||"").slice(0,50));
 
 // 6 - minting is honestly closed
