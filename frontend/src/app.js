@@ -219,6 +219,7 @@ function initLatticeFrame() {
   let queued = false;
   let x = 0;
   let y = 0;
+  let seen = false;
   const clear = () => {
     if (!framed) return;
     framed.classList.remove('frame');
@@ -226,6 +227,7 @@ function initLatticeFrame() {
   };
   const paint = () => {
     queued = false;
+    if (!seen) return;
     const cube = cubeUnderPointer(document.elementsFromPoint(x, y));
     if (cube === framed) return;
     clear();
@@ -234,21 +236,28 @@ function initLatticeFrame() {
       framed = cube;
     }
   };
+  const schedule = () => {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(paint);
+  };
   window.addEventListener(
     'pointermove',
     (event) => {
       if (event.pointerType === 'touch') return;
       x = event.clientX;
       y = event.clientY;
-      if (queued) return;
-      queued = true;
-      requestAnimationFrame(paint);
+      seen = true;
+      schedule();
     },
     { passive: true }
   );
   window.addEventListener('pointerleave', clear);
   window.addEventListener('blur', clear);
-  window.addEventListener('scroll', clear, { passive: true });
+  // Scrolling moves the page under the fixed wall, so the cube under a still
+  // pointer changes: the frame is re-asked rather than left on a cube that is
+  // no longer there. Before the first move there is nothing to re-ask.
+  window.addEventListener('scroll', () => { if (seen) schedule(); }, { passive: true });
   window.addEventListener('resize', clear, { passive: true });
 }
 
