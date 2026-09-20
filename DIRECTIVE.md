@@ -1,5 +1,9 @@
 # DIRECTIVE 2.0 — Lumen Gate: Proof of Migration (CCTP)
 
+Not (eklenen 2026-09-20): Guven otoritesi eki belgenin kendisi olarak repoda:
+`HARDENING-2.0.md`. Bu direktifle catistigi yerde dur ve rapor kurali gecerli;
+simtilik bilinen catisma yok. Durus tablosu: `deployments/hardening-2.0.json`.
+
 > (The operator issued this directive in Turkish. This file is the same text,
 > byte-faithful except that Turkish diacritical marks are transliterated away
 > to keep the repository's ASCII gate intact.)
