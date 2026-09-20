@@ -192,7 +192,9 @@ function makeFetch() {
 const noWalletOfficial = {
   requestAccess: async () => ({ address: '', error: { code: -1, message: 'The Stellar Freighter extension is not installed. Install it, then reconnect.' } }),
   isConnected: async () => ({ isConnected: false }),
-  getAddress: async () => ({ address: '' }),
+  // The module reports the same "nothing answers it" error from every door;
+  // the note shows the last attempt, so that door must carry the words too.
+  getAddress: async () => ({ address: '', error: { code: -1, message: 'The Stellar Freighter extension is not installed. Install it, then reconnect.' } }),
   getNetwork: async () => ({ network: '', networkPassphrase: '' }),
   signTransaction: async () => ({ signedTxXdr: '', signerAddress: '', error: { code: -1, message: 'Freighter is not installed' } }),
   setAllowed: async () => true,
@@ -322,7 +324,10 @@ const allText = (el) => flatten(el).map((n) => (n instanceof El ? n.text : n.tex
   });
   refused.elsById.get('connectBtn').click();
   await refused.flush();
-  expect(refused.elsById.get('walletNote').textContent.includes('did not share an address'), `a declined popup must say so, got "${refused.elsById.get('walletNote').textContent}"`);
+  // A declined popup must surface the wallet's own words, not a generic
+  // failure or "undefined".
+  expect(refused.elsById.get('walletNote').textContent.includes('User declined access'), `a declined popup must say so, got "${refused.elsById.get('walletNote').textContent}"`);
+  expect(!refused.elsById.get('walletNote').textContent.includes('undefined'), 'a declined popup must not render "undefined"');
   expect(allText(refused.elsById.get('txLog')).includes('not approved'), 'the refusal must land in the log, not be swallowed');
   expect(!refused.elsById.get('walletChip').textContent.includes('undefined'), 'a refusal must never render "undefined" as the address');
 
@@ -415,7 +420,8 @@ const allText = (el) => flatten(el).map((n) => (n instanceof El ? n.text : n.tex
   const officialRefused = await boot(undefined, {
     requestAccess: async () => ({ address: '', error: { code: 4001, message: 'User rejected the request' } }),
     isConnected: async () => ({ isConnected: false }),
-    getAddress: async () => ({ address: '' }),
+    // A declined session answers the later doors with the same refusal.
+    getAddress: async () => ({ address: '', error: { code: 4001, message: 'User rejected the request' } }),
     getNetwork: async () => ({ network: '', networkPassphrase: '' }),
   });
   officialRefused.elsById.get('connectBtn').click();

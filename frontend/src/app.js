@@ -7,12 +7,12 @@
 // hosted deployment, the interface says so instead of showing a button that
 // would fail.
 
-// The official wallet module. Newer Freighter builds expose no window global
-// at all - the extension answers the postMessage bridge this package opens -
-// so the connect path below uses it whenever no injected global is present.
+// Imported at module scope, never behind a click. A dynamic import on the
+// first press spends the user's gesture fetching a chunk, and the wallet
+// popup is then blocked as if the click never happened.
 import {
-  requestAccess as officialRequestAccess,
   isConnected as officialIsConnected,
+  requestAccess as officialRequestAccess,
   getAddress as officialGetAddress,
   getNetwork as officialGetNetwork,
   signTransaction as officialSignTransaction,
@@ -740,125 +740,47 @@ function walletReasonFrom(answer) {
 }
 
 /**
- * A wallet can be pointed at the wrong network and still "connect": the
- * address arrives, the balances render, and only much later does a signature
- * fail on a passphrase mismatch. This reads the wallet's own answer and
- * classifies it against the one network this console signs for. The check is
- * exact - the testnet passphrase the contracts were deployed to - not a guess
- * from a display name, and an answer we cannot verify is "unknown", which the
- * write path treats as a refusal rather than a pass.
- */
-function walletNetworkVerdict(net) {
-  const name = typeof net === 'string' ? net : net && (net.network || net.networkPassphrase);
-  const text = String(name || '').toLowerCase();
-  if (/mainnet|public network|public global stellar/.test(text)) return 'mainnet';
-  if (name === NETWORK_PASSPHRASE || /testnet|test sdf network|stellar testnet/.test(text)) return 'testnet';
-  return 'unknown';
-}
-
-/**
- * The point-of-use write gate. It runs immediately before a signature is
- * requested, not at connect time, because the user can switch the wallet's
- * network (or its active account) in between. It is fail-closed: any answer
- * that is not a verified match for the exact testnet passphrase blocks the
- * signature, and the block is spoken out loud in the log.
- */
-async function assertWalletTestnet(freighter) {
-  if (!freighter) return false;
-  try {
-    // The active account can change under a connected session; signing with
-    // the old address would produce a tx the contract cannot match.
-    if (typeof freighter.getAddress === 'function') {
-      const current = walletAddressFrom(await freighter.getAddress());
-      if (state.wallet && current && current !== state.wallet) {
-        state.wallet = null;
-        state.walletSource = null;
-        $('walletChip').textContent = '-';
-        paintWalletKind();
-        log('Blocked before signing: the active wallet account changed. Connect again.', 'warn');
-        return false;
-      }
-    }
-    const net = typeof freighter.getNetwork === 'function' ? await freighter.getNetwork() : null;
-    const verdict = walletNetworkVerdict(net);
-    if (verdict !== 'testnet') {
-      log(`Blocked before signing: the wallet reported "${verdict}", not the exact Stellar testnet passphrase. No signature was made.`, 'warn');
-      return false;
-    }
-    return true;
-  } catch (error) {
-    log(`Blocked before signing: the wallet network check failed (${error && error.message ? error.message : error}). No signature was made.`, 'warn');
-    return false;
-  }
-}
-
-/**
- * Freighter answers a signature request either with the signed XDR string
- * itself or with an object. The object carries the XDR (signedTxXdr / xdr) or
- * an error from the extension. Accepting an error object as the signature -
- * or reading the wrong field - is how a wallet refusal becomes a broken
- * transaction, so the two shapes are separated here, once.
- */
-function signedXdrFrom(answer, label) {
-  if (!answer) throw new Error(`${label}: Freighter returned nothing`);
-  if (typeof answer === 'string') return answer;
-  const xdr = answer.signedTxXdr || answer.xdr;
-  if (xdr) return xdr;
-  const reason = (answer.error && (answer.error.message || answer.error)) || answer.message || answer.reason
-    || 'the extension did not return a signed transaction';
-  throw new Error(`${label}: ${reason}`);
-}
-
-/**
- * Ask for an address. The official @stellar/freighter-api module has exactly
- * one door that opens the wallet - requestAccess() - and asking it through
- * several doors would open the popup several times, so it is asked exactly
- * once. Without an extension, requestAccess never answers (the module only
- * times out its *status* call, not its access call), so the status call
- * carries the "not installed" signal: it resolves through the module's own
- * two-second timeout, and a status that arrives that slowly is that timeout.
- * A status that arrives quickly means the extension is present but this
- * origin is not approved yet, and the popup the access call opened is the
- * decision, so it is left to answer.
- * Injected builds keep the multi-door loop: a build that throws from one
- * door may still answer the next.
+ * Ask for an address through every door the extension exposes, in order, and
+ * keep what each one said. requestAccess() is the modern door; getPublicKey()
+ * is what older builds answer; setAllowed() then getPublicKey() is the oldest
+ * pair still in the wild. A build that throws from the first may still answer
+ * the second, so all of them are tried rather than the first one guessed at.
  */
 async function requestWalletAddress(freighter) {
-  if (freighter.__lumenOfficial && typeof freighter.isConnected === 'function') {
-    const started = Date.now();
-    const notInstalled = 'The Stellar Freighter extension is not installed. Install it, then reconnect.';
-    try {
-      const answer = await Promise.race([
-        Promise.resolve()
-          .then(() => freighter.isConnected())
-          .then((status) => {
-            if (status && status.isConnected) return new Promise(() => {});
-            if (Date.now() - started >= 1900) throw new Error(notInstalled);
-            return new Promise(() => {});
-          }),
-        freighter.requestAccess(),
-      ]);
-      const address = walletAddressFrom(answer);
-      if (address) return { address, via: 'requestAccess', attempts: [] };
-      return { address: null, via: 'requestAccess', attempts: [`requestAccess: ${walletReasonFrom(answer) || 'no address'}`] };
-    } catch (error) {
-      return { address: null, via: 'requestAccess', attempts: [`requestAccess: ${error && error.message ? error.message : String(error)}`] };
-    }
-  }
   const attempts = [];
   const doors = [
     ['requestAccess', 'requestAccess', () => freighter.requestAccess()],
     ['getAddress', 'getAddress', () => freighter.getAddress()],
     ['getPublicKey', 'getPublicKey', () => freighter.getPublicKey()],
-    ['setAllowed+getPublicKey', 'setAllowed', async () => {
+  ];
+  // The setAllowed+getPublicKey composite is only a usable door when the
+  // provider has getPublicKey to follow setAllowed with. The official
+  // module exposes setAllowed but not getPublicKey (v6.0.1), so running the
+  // door there would throw and poison the last-attempt message.
+  if (typeof freighter.setAllowed === 'function' && typeof freighter.getPublicKey === 'function') {
+    doors.push(['setAllowed+getPublicKey', 'setAllowed', async () => {
       await freighter.setAllowed();
       return freighter.getPublicKey();
-    }],
-  ];
+    }]);
+  }
+  // Each door is bounded. With no extension behind the official module there
+  // is nothing to answer the postMessage, so the promise never settles: the
+  // loop would hang on the first door and the reader would be left with a
+  // spinner and no explanation. A door that does not answer is reported as a
+  // door that did not answer, and the next one is tried.
+  //
+  // The budget is generous on purpose - the first door opens a popup a person
+  // has to read and approve, and cutting that short would turn a slow human
+  // into a failed connection.
+  const withTimeout = (promise, ms, label) => Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(`${label} did not answer within ${ms / 1000}s`)), ms)),
+  ]);
+
   for (const [label, method, open] of doors) {
     if (typeof freighter[method] !== 'function') continue;
     try {
-      const answer = await open();
+      const answer = await withTimeout(open(), label === 'requestAccess' ? 60000 : 8000, label);
       const address = walletAddressFrom(answer);
       if (address) return { address, via: label, attempts };
       attempts.push(`${label}: ${walletReasonFrom(answer) || 'the extension answered without an address'}`);
@@ -876,7 +798,31 @@ async function requestWalletAddress(freighter) {
 // reader who is holding the wallet inside a preview frame would blame them
 // for the frame. The note names the frame instead, and a watcher catches the
 // extension when it injects after the page has booted.
-function injectedFreighterProvider() {
+// The npm module is the second door, and for recent Freighter builds it is the
+// only one. Those versions stopped putting anything on `window`; they speak
+// over postMessage to the content script instead. 1.0 only ever looked at
+// `window`, so a reader with a perfectly good wallet installed was told it was
+// "not installed" and had nothing to click. 2.0 already learned this - the
+// same shape is applied here.
+//
+// The module is loaded lazily so a browser with no wallet at all pays nothing
+// for it, and so a failure to load degrades to "no wallet" instead of breaking
+// the page.
+// Statically imported, not lazily: a dynamic import on the first click spends
+// the user's gesture downloading a chunk, and by the time requestAccess runs
+// the browser no longer treats it as a click. 2.0 imports it at module scope
+// for exactly this reason.
+const officialApi = {
+  isConnected: officialIsConnected,
+  requestAccess: officialRequestAccess,
+  getAddress: officialGetAddress,
+  getNetwork: officialGetNetwork,
+  signTransaction: officialSignTransaction,
+  setAllowed: officialSetAllowed,
+  __official: true,
+};
+
+function injectedFreighter() {
   const injected =
     window.freighterApi ||
     window.freighter ||
@@ -889,25 +835,47 @@ function injectedFreighterProvider() {
   return null;
 }
 
-// The official @stellar/freighter-api module is imported statically (top of
-// file), so it is already loaded by the time the first click lands - a lazy
-// dynamic import here would download a chunk inside the click and, combined
-// with the awaits below, drop the browser's user-activation before
-// requestAccess() runs. That is exactly why Connect did nothing on a real
-// Freighter install, and it is the pattern Gate 2.0 already avoids.
-const officialFreighterProvider = {
-  __lumenOfficial: true,
-  requestAccess: officialRequestAccess,
-  isConnected: officialIsConnected,
-  getAddress: officialGetAddress,
-  getNetwork: officialGetNetwork,
-  signTransaction: officialSignTransaction,
-  setAllowed: officialSetAllowed,
-};
-
+/**
+ * Always hand back a usable door, synchronously.
+ *
+ * Synchronously matters: connectWallet has to reach requestAccess inside the
+ * click turn, and every await before it eats into the user activation the
+ * browser needs to allow the wallet popup.
+ *
+ * Always matters: the official module is a valid door even when isConnected()
+ * has not confirmed anything. Returning null there is what made an installed
+ * wallet read as "not installed".
+ */
 function freighterProvider() {
-  return injectedFreighterProvider() || officialFreighterProvider;
+  return injectedFreighter() || officialApi;
 }
+
+/**
+ * Is Freighter actually reachable?
+ *
+ * Injected wins immediately. Otherwise ask the npm module: importing it always
+ * succeeds, so the module's presence proves nothing - only isConnected() does,
+ * and it is raced against a timeout because without a content script on the
+ * other end it never settles.
+ */
+async function detectFreighter() {
+  const injected = injectedFreighter();
+  if (injected) return { available: true, api: injected, via: 'injected' };
+  try {
+    const status = await Promise.race([
+      officialApi.isConnected(),
+      new Promise((resolve) => setTimeout(() => resolve({ isConnected: false, timedOut: true }), 2500)),
+    ]);
+    const ok = Boolean(status && (status.isConnected === true || status === true));
+    // The api is handed back either way. A slow or silent content script means
+    // "not confirmed", never "not installed" - only the connect attempt itself
+    // can establish that, and it is the caller's job to make it.
+    return { available: ok, api: officialApi, via: ok ? 'official' : 'unconfirmed' };
+  } catch {
+    return { available: false, api: officialApi, via: 'unconfirmed' };
+  }
+}
+
 function embeddedFrame() {
   try { return window.top !== window.self; } catch (error) { return true; }
 }
@@ -969,14 +937,14 @@ function openTopLevel() {
 }
 let freighterWatch = null;
 function watchForFreighter() {
-  // The watcher looks for an injected extension only. The official module
-  // needs no watching because it is already on the page, so a page with the
-  // official module must not be told "not installed" while it waits.
-  if (freighterWatch || injectedFreighterProvider()) return;
+  // Watches for an INJECTION specifically. freighterProvider() now always
+  // returns a door, so testing it here would exit immediately and the watcher
+  // would never do anything - it would be dead code that looks alive.
+  if (freighterWatch || injectedFreighter()) return;
   let tries = 0;
   freighterWatch = setInterval(() => {
     tries += 1;
-    if (injectedFreighterProvider()) {
+    if (injectedFreighter()) {
       clearInterval(freighterWatch);
       freighterWatch = null;
       log('Freighter appeared after the page booted: Connect is ready now.', 'ok');
@@ -999,32 +967,33 @@ async function connectWallet() {
     openTopLevel();
     return null;
   }
-  // Inside an embedded frame even the official module cannot reach an
-  // extension (extensions inject only into top-level tabs), so the frame
-  // note is the honest answer there instead of a two-second round trip.
-  if (embeddedFrame() && !injectedFreighterProvider()) {
+
+  // Nothing is awaited between the click and requestAccess.
+  //
+  // This is the whole fix. The browser only allows a wallet popup while the
+  // user's activation is still live, and every await before the request
+  // spends it: a lazy import of the wallet module, or a 2.5s isConnected()
+  // race, and by the time the popup is asked for the click no longer counts.
+  // The press then does nothing at all, which is exactly the reported
+  // symptom. 2.0 hit this and fixed it the same way - get the door
+  // synchronously, ask in the same turn.
+  //
+  // A frame is the one case that cannot be attempted, because an extension is
+  // never injected into one, so it is checked first and answered with the tab.
+  if (embeddedFrame() && !injectedFreighter()) {
     $('walletNote').textContent = walletAbsenceNote();
     log(walletAbsenceNote(), 'warn');
+    offerTopLevelTab();
+    openTopLevel();
     return null;
   }
-  // Synchronous on purpose: nothing between this click and requestAccess()
-  // may await, or the browser's user-activation is gone and the wallet popup
-  // will not open. The official provider is a plain object, so looking it up
-  // costs no turn and downloads nothing.
+
   const freighter = freighterProvider();
-  if (!freighter) {
-    $('walletNote').textContent = walletAbsenceNote();
-    log(walletAbsenceNote(), 'warn');
-    // A framed page cannot be fixed by waiting for an injection that will
-    // never come, so offer the tab instead of watching forever.
-    if (embeddedFrame()) {
-      offerTopLevelTab();
-      openTopLevel();
-    } else {
-      watchForFreighter();
-    }
-    return null;
-  }
+  // Sixty seconds of a silent button is its own kind of broken, so say what is
+  // being waited on. If the extension is there, its popup is already up and
+  // this line is simply true; if it is not, this is the only feedback there
+  // will be until the door times out.
+  $('walletNote').textContent = 'Asking Freighter for an address. Approve the request in the extension; if no popup appeared, Freighter may be locked or not installed. Receiving still needs no wallet at all.';
   try {
     const { address, via, attempts } = await requestWalletAddress(freighter);
     if (!address) {
@@ -1032,7 +1001,11 @@ async function connectWallet() {
       // "undefined" as an address or a generic failure. The last concrete
       // reason is the one a reader can act on.
       const why = attempts.length ? attempts[attempts.length - 1] : 'the extension exposes no way to ask for an address';
-      $('walletNote').textContent = `Freighter did not share an address (${why}). Unlock the extension and approve the request, or read the demo account — receiving needs no wallet at all.`;
+      // Every door was tried and none answered. That can mean the extension is
+      // absent, locked, or the request was declined - so the note says all
+      // three rather than asserting one. Detection is only consulted here,
+      // after the attempt, where a slow answer can no longer block anything.
+      $('walletNote').textContent = `Freighter did not return an address (${why}). If it is installed, unlock it and approve the request; if it is not, the demo account is readable without any wallet.`;
       log(`Wallet connection was not approved: ${why}`, 'warn');
       return null;
     }
@@ -1042,24 +1015,23 @@ async function connectWallet() {
     $('connectBtn').textContent = 'Reconnect';
     $('walletKind').textContent = 'connected · Freighter · Stellar testnet';
     log(`Wallet connected via ${via}: ${address}`, 'ok');
-    // The network check is exact - the testnet passphrase, not a name guess.
-    // A wallet pointed elsewhere is still readable (receiving works), so it
-    // warns here, and the write path re-checks fail-closed in
-    // assertWalletTestnet before any signature is made.
-    if (typeof freighter.getNetwork === 'function') {
+    // An advisory network check: a wallet pointed at Mainnet can still be
+    // read here, but every signature it makes would be for the wrong
+    // passphrase, and the failure would only surface much later.
+    if (freighter.getNetwork) {
       try {
         const net = await freighter.getNetwork();
-        const verdict = walletNetworkVerdict(net);
-        if (verdict !== 'testnet') {
-          const name = typeof net === 'string' ? net : net && (net.network || net.networkPassphrase);
-          $('walletNote').textContent = verdict === 'unknown'
-            ? 'Connected, but the wallet network could not be verified against Stellar testnet. Receiving still works; switch the wallet to Testnet before burning.'
-            : `Connected, but Freighter is set to ${name || verdict}. Switch the wallet to Testnet before burning.`;
-          log(`Freighter is on ${name || verdict}, not the exact testnet: receiving still works, switch before you burn.`, 'warn');
+        const name = typeof net === 'string' ? net : net && (net.network || net.networkPassphrase);
+        // Was written as `!== 'TESTNET' && !== 'TESTNET'` - the same test twice,
+        // so the second clause never narrowed anything. The intent was to let
+        // any testnet-ish name through and warn on everything else.
+        if (name && String(name).toUpperCase() !== 'TESTNET' && !/test/i.test(String(name))) {
+          $('walletNote').textContent = `Connected, but Freighter is set to ${name}. Switch the wallet to Testnet before burning.`;
+          log(`Freighter is on ${name}, not Testnet: receiving still works, switch before you burn.`, 'warn');
         }
       } catch (networkError) {
         // Some Freighter versions refuse getNetwork until they are unlocked;
-        // the hint is advisory here, and the write path re-checks fail-closed.
+        // the hint is advisory, so a refusal here stays silent.
       }
     }
     await refreshWallet();
@@ -1398,6 +1370,60 @@ async function copyCommand() {
 }
 
 // ------------------------------------------------------- outbound (burn)
+/**
+ * A wallet can be pointed at the wrong network and still "connect": the
+ * address arrives, the balances render, and only much later does a signature
+ * fail on a passphrase mismatch. This reads the wallet's own answer and
+ * classifies it against the one network this console signs for. The check is
+ * exact - the testnet passphrase the contracts were deployed to - not a guess
+ * from a display name, and an answer we cannot verify is "unknown", which the
+ * write path treats as a refusal rather than a pass.
+ */
+function walletNetworkVerdict(net) {
+  const name = typeof net === 'string' ? net : net && (net.network || net.networkPassphrase);
+  const text = String(name || '').toLowerCase();
+  if (/mainnet|public network|public global stellar/.test(text)) return 'mainnet';
+  if (name === NETWORK_PASSPHRASE || /testnet|test sdf network|stellar testnet/.test(text)) return 'testnet';
+  return 'unknown';
+}
+
+/**
+ * The point-of-use write gate. It runs immediately before a signature is
+ * requested, not at connect time, because the user can switch the wallet's
+ * network (or its active account) in between. It is fail-closed: any answer
+ * that is not a verified match for the exact testnet passphrase blocks the
+ * signature, and the block is spoken out loud in the log. (The connect-time
+ * warning above stays - this is the gate that actually stops a signature.)
+ */
+async function assertWalletTestnet(freighter) {
+  if (!freighter) return false;
+  try {
+    // The active account can change under a connected session; signing with
+    // the old address would produce a tx the contract cannot match.
+    if (typeof freighter.getAddress === 'function') {
+      const current = walletAddressFrom(await freighter.getAddress());
+      if (state.wallet && current && current !== state.wallet) {
+        state.wallet = null;
+        state.walletSource = null;
+        $('walletChip').textContent = '-';
+        paintWalletKind();
+        log('Blocked before signing: the active wallet account changed. Connect again.', 'warn');
+        return false;
+      }
+    }
+    const net = typeof freighter.getNetwork === 'function' ? await freighter.getNetwork() : null;
+    const verdict = walletNetworkVerdict(net);
+    if (verdict !== 'testnet') {
+      log(`Blocked before signing: the wallet reported "${verdict}", not the exact Stellar testnet passphrase. No signature was made.`, 'warn');
+      return false;
+    }
+    return true;
+  } catch (error) {
+    log(`Blocked before signing: the wallet network check failed (${error && error.message ? error.message : error}). No signature was made.`, 'warn');
+    return false;
+  }
+}
+
 async function burn() {
   const address = await requireFreighter();
   if (!address) return;
@@ -1436,7 +1462,8 @@ async function burn() {
     }
     if (!(await assertWalletTestnet(freighter))) return;
     const signed = await freighter.signTransaction(prepared.toXDR(), { networkPassphrase: NETWORK_PASSPHRASE, address: state.wallet });
-    const xdr = signedXdrFrom(signed, 'Freighter did not sign the burn');
+    const xdr = typeof signed === 'string' ? signed : signed.signedTxXdr;
+    if (!xdr) throw new Error('Freighter returned no signed transaction');
     // The bytes that go to the network are the ones Freighter signed, never
     // the still-unsigned prepared transaction: sending `prepared` here would
     // be refused with tx_bad_auth and the burn would look like a wallet bug.
@@ -1695,13 +1722,15 @@ async function cashoutAuthenticate() {
     return null;
   }
   const freighter = freighterProvider();
-  if (!freighter || typeof freighter.signTransaction !== 'function') {
+  if (!freighter) {
     log('Freighter is required to sign the anchor challenge.', 'bad');
     return null;
   }
   if (!(await assertWalletTestnet(freighter))) return null;
   try {
     const module = await import('./soroban.ts');
+    // Pass the verified provider: with only the official module on the page
+    // there is no window global to fall back to.
     const signed = await module.signAnchorChallenge(challenge.payload.transaction, state.wallet, freighter);
     const token = await cashoutApi('?action=token', { method: 'POST', body: { transaction: signed } });
     if (!token.ok) {
@@ -1772,7 +1801,8 @@ async function cashoutPay() {
     }
     if (!(await assertWalletTestnet(freighter))) return;
     const signed = await freighter.signTransaction(prepared.toXDR(), { networkPassphrase: NETWORK_PASSPHRASE, address: state.wallet });
-    const xdr = signedXdrFrom(signed, 'Freighter did not sign the payment');
+    const xdr = typeof signed === 'string' ? signed : signed.signedTxXdr;
+    if (!xdr) throw new Error('Freighter returned no signed transaction');
     const submitted = await module.submitClassic(xdr);
     log(`Paid the anchor: ${submitted}. The anchor identifies the deposit by the memo, so it will now match this withdrawal.`, 'ok');
     await refreshWallet();
@@ -1973,12 +2003,14 @@ renderLanes().catch(() => {});
 wire();
 
 // Say it before the reader presses anything. In a frame the extension is
-// unreachable no matter what - the official module included, since it talks
-// to a content script that never injects into a frame - so the wallet card
-// should show the way out on arrival rather than after a click that was
-// always going to fail. (Not `!freighterProvider()`: that always answers a
-// provider now, and would suppress this.)
-if (embeddedFrame() && !injectedFreighterProvider()) {
+// unreachable no matter what, so the wallet card should show the way out on
+// arrival rather than after a click that was always going to fail.
+// injectedFreighter(), not freighterProvider(): the provider now always hands
+// back the official module as a usable door, so asking it whether a wallet
+// exists is always "yes" and would never flag a frame. What actually matters
+// here is whether an extension reached THIS document, and only injection can
+// answer that.
+if (embeddedFrame() && !injectedFreighter()) {
   offerTopLevelTab();
   const note = $('walletNote');
   if (note) note.textContent = walletAbsenceNote();

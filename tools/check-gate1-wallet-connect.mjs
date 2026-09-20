@@ -113,9 +113,62 @@ check("no page error on a refused balance read", bad.errors.length === 0, bad.er
 // 4 - hic cuzdan yok: durust ve suclayici olmayan mesaj
 const none = await session(null);
 check("no wallet leaves the chip untouched", /not connected/i.test(none.chip), none.chip);
-check("the absence is explained", /not installed|frame/i.test(none.note), none.note.slice(0, 70));
+// With no extension at all the official module's postMessage is never
+// answered, so the honest state while the door times out is "asking" - the
+// console must not sit silent, and must not claim a verdict it does not have.
+check("a press with no wallet says what it is waiting on",
+  /asking|approve|locked|not installed|did not return/i.test(none.note),
+  none.note.slice(0, 80));
 check("receiving is still described as keyless", /receiv/i.test(none.note));
 check("no page error without a wallet", none.errors.length === 0, none.errors[0] || "");
+
+// 4b - GESTURE VE YAVAS CUZDAN. Bildirilen hatanin asil sebebi buydu:
+// tiklama ile requestAccess arasinda await varsa tarayici kullanici hareketini
+// harcanmis sayar ve cuzdan popup'ini ENGELLER - tusa basilir, hicbir sey
+// olmaz. Ayrica isConnected() yavas ya da sessizse kurulu cuzdan "kurulu
+// degil" sayiliyordu.
+//
+// Iki senaryo da gercek bir fare tiklamasiyla surulur ve olculen sey niyet
+// degil davranistir: requestAccess GERCEKTEN gonderildi mi, ve gonderildigi
+// anda navigator.userActivation hala aktif miydi.
+for (const [label, delay, payload] of [
+  ["a silent content script", 0, null],
+  ["a content script that answers in 4s", 4000, { isConnected: true }],
+]) {
+  const page = await browser.newPage();
+  await page.setViewport({ width: 1400, height: 1000 });
+  await page.evaluateOnNewDocument((addr, d, pl) => {
+    window.__probe = { order: [], activation: null };
+    window.addEventListener("message", (e) => {
+      const msg = e.data || {};
+      if (msg.source !== "FREIGHTER_EXTERNAL_MSG_REQUEST") return;
+      window.__probe.order.push(msg.type);
+      const reply = (body, ms) => setTimeout(() => window.postMessage(
+        { source: "FREIGHTER_EXTERNAL_MSG_RESPONSE", messagedId: msg.messageId, ...body }, "*"), ms);
+      if (msg.type === "REQUEST_CONNECTION_STATUS") { if (pl !== null) reply(pl, d); }
+      else if (msg.type === "REQUEST_ACCESS") {
+        window.__probe.activation = navigator.userActivation ? navigator.userActivation.isActive : "unsupported";
+        reply({ publicKey: addr, address: addr }, 50);
+      } else if (msg.type === "REQUEST_NETWORK") reply({ network: "TESTNET" }, 20);
+    });
+  }, FUNDED, delay, payload);
+
+  await page.goto(BASE, { waitUntil: "networkidle2", timeout: 40000 });
+  await new Promise((r) => setTimeout(r, 2500));
+  await page.click("#connectBtn"); // gercek tiklama, sentetik degil
+  await new Promise((r) => setTimeout(r, 9000));
+
+  const probe = await page.evaluate(() => window.__probe);
+  const chip = await page.$eval("#walletChip", (n) => n.textContent.trim());
+  check(`requestAccess is attempted despite ${label}`,
+    probe.order.includes("REQUEST_ACCESS"),
+    `sent: ${probe.order.join(" -> ") || "nothing"}`);
+  check(`the user gesture survives to the popup with ${label}`,
+    probe.activation === true || probe.activation === "unsupported",
+    String(probe.activation));
+  check(`the wallet connects despite ${label}`, chip.startsWith(FUNDED.slice(0, 6)), chip);
+  await page.close();
+}
 
 // 5 - CERCEVE. Bu, konsolun onizlemede gercekten calistigi durum ve
 // "cuzdan baglanmiyor" sikayetinin asil sebebi: eklenti content script'leri
