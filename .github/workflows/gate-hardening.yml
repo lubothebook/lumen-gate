@@ -74,24 +74,8 @@ jobs:
           cargo build --workspace
           cargo test --workspace
           cargo clippy -q --workspace
-      - name: residue gate - the neutral-naming rule re-proved every CI run (zero bud-family, budget-tolerant, python-asserted)
-        run: |
-          python3 - <<'PYEOF2'
-import os, re, sys
-bad=[]
-for dp,dirs,fs in os.walk('gate2/zkvm'):
-    dirs[:]=[d for d in dirs if d not in ('target','out')]
-    for f in fs:
-        p=os.path.join(dp,f)
-        if os.path.splitext(f)[1] in ('.rs','.toml','.md','.json','.zkl','.lock','.yml','.yaml'):
-            for i,line in enumerate(open(p,errors='replace'),1):
-                for m in re.finditer(r'(?i)bud', line):
-                    if not re.match(r'(?i)budget', line[m.start():]):
-                        bad.append((p,i,line.strip()[:80]))
-if bad:
-    print('RESIDUE FOUND:', len(bad)); [print(' ',b) for b in bad[:10]]; sys.exit(1)
-print('residue gate: clean')
-PYEOF2
+      - name: residue gate - neutral-naming rule re-proved every run (the gate script itself carries the lesson: heredoc terminator at column zero closed the YAML block and killed the whole workflow - CI went red on the LINTER, exactly as designed)
+        run: python3 gate2/scripts/residue-check.py
 
   rust-advisories:
     runs-on: ubuntu-latest
