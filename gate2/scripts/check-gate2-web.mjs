@@ -81,10 +81,22 @@ await page.waitForFunction(() => (document.getElementById("res-trustline")?.text
 const tl = await page.$eval("#res-trustline", (n) => n.textContent);
 check("trustline check live from Horizon (deployer has no USDC)", tl.includes("YOK") || tl.includes("VAR"), tl.replace(/\s+/g, " ").slice(0, 90));
 
-// 5 — BURN word can never enable the button while the router is missing
+// 5 — BURN word can never make the action available while the router is
+// missing, and pressing the control answers with that reason instead of
+// swallowing the click. A hard `disabled` would be silent; aria-disabled
+// speaks: the click is answered, no transaction is attempted.
 await page.type("#in-burnword", "BURN");
-const burnDisabled = await page.$eval("#btn-burn", (n) => n.disabled);
-check("BURN button stays disabled without router", burnDisabled === true);
+const burnState = await page.$eval("#btn-burn", (n) => ({
+  unavailable: n.disabled === true || n.getAttribute("aria-disabled") === "true",
+}));
+check("BURN stays unavailable without router", burnState.unavailable === true);
+await jsClick(page, "#btn-burn");
+const burnAnswer = await page.$eval("#res-burn", (n) => n.textContent);
+check(
+  "BURN press answers with the no-router reason",
+  /kurulu degil|kurulu değil/.test(burnAnswer) && /Yakma yapilmadı|Yakma yapılmadı/.test(burnAnswer),
+  burnAnswer.replace(/\s+/g, " ").slice(0, 110)
+);
 
 check("no failed requests / console errors", badRequests.length === 0, badRequests.slice(0, 3).join(" | "));
 

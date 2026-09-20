@@ -95,10 +95,10 @@
                   </tbody>
                 </table>
                 <div class="btn-row" style="margin-top:16px">
-                  <button class="btn mini" id="btn-fund" type="button" disabled>Friendbot ile XLM al</button>
-                  <button class="btn mini" id="btn-trust-open" type="button" disabled>USDC trustline aç</button>
-                  <button class="btn mini" id="btn-bump" type="button" disabled>TTL uzat (bump)</button>
-                  <button class="btn primary small" id="btn-stamp" type="button" disabled>TESTNET damgası bas</button>
+                  <button class="btn mini" id="btn-fund" type="button" aria-disabled="true" aria-describedby="walletNote">Friendbot ile XLM al</button>
+                  <button class="btn mini" id="btn-trust-open" type="button" aria-disabled="true" aria-describedby="walletNote">USDC trustline aç</button>
+                  <button class="btn mini" id="btn-bump" type="button" aria-disabled="true" aria-describedby="walletNote">TTL uzat (bump)</button>
+                  <button class="btn primary small" id="btn-stamp" type="button" aria-disabled="true" aria-describedby="walletNote">TESTNET damgası bas</button>
                 </div>
                 <p class="note" id="walletNote" style="margin-top:16px; font-size:0.8125rem">
                   Taşıma Kanıtım herhangi bir G… adresi için zinciri okur; cüzdan şart değil.
@@ -155,7 +155,7 @@
                       </p>
                       <div class="row">
                         <button class="btn small" id="btn-tier-sim" type="button">Kademeyi simüle et</button>
-                        <button class="btn mini" id="btn-tier-send" type="button" disabled>Freighter ile claim_tier gönder</button>
+                        <button class="btn mini" id="btn-tier-send" type="button" aria-disabled="true" aria-describedby="walletNote">Freighter ile claim_tier gönder</button>
                       </div>
                       <div id="res-tier"></div>
                     </div>
@@ -194,8 +194,8 @@
                       Horizon verisiyle yapılır.
                     </p>
                     <div class="row">
-                      <button class="btn small" id="btn-trustline" type="button" disabled>Trustline’ı kontrol et</button>
-                      <button class="btn primary small" id="btn-trust-open-burn" type="button" disabled>Trustline’ı Freighter ile aç</button>
+                      <button class="btn small" id="btn-trustline" type="button" aria-disabled="true" aria-describedby="res-trustline">Trustline’ı kontrol et</button>
+                      <button class="btn primary small" id="btn-trust-open-burn" type="button" aria-disabled="true" aria-describedby="walletNote">Trustline’ı Freighter ile aç</button>
                     </div>
                     <div id="res-trustline"></div>
                   </div>
@@ -208,7 +208,7 @@
                     </p>
                     <div class="row">
                       <input id="in-burnword" type="text" placeholder="BURN" spellcheck="false" autocomplete="off" />
-                      <button class="btn primary small" id="btn-burn" type="button" disabled>BURN</button>
+                      <button class="btn primary small" id="btn-burn" type="button" aria-disabled="true" aria-describedby="res-burn">BURN</button>
                     </div>
                     <div id="res-burn" class="muted">Router kurulmadan bu buton hiçbir koşulda açılmaz.</div>
                   </div>

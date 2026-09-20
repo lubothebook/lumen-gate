@@ -31,6 +31,17 @@ const div6 = (v) => (Number(typeof v === "bigint" ? v : v ?? 0) / 1e6).toFixed(6
 let connectedAddress = null;
 let currentQueryAddress = null;
 
+// An unavailable action is not a dead button. A hard `disabled` swallows the
+// click before any handler runs, so the control can never say why it is grey;
+// aria-disabled keeps it focusable and clickable, and the handler is where
+// the honest reason lands. The handlers below all answer when they cannot act.
+function markAction(id, available) {
+  const b = $(id);
+  if (!b) return;
+  if (available) b.removeAttribute("aria-disabled");
+  else b.setAttribute("aria-disabled", "true");
+}
+
 // ---------- tabs (1.0 Move-value pattern: one card, the pane below switches) ----------
 const TAB_NAMES = ["proof", "burn", "battery", "tickets"];
 function showTab(name) {
@@ -106,8 +117,8 @@ async function connectWallet() {
     setWalletState(`${addr.slice(0, 8)}…${addr.slice(-6)} bağlı`, "ok");
     $("in-address").value = addr;
     $("in-strkey").value = addr;
-    $("btn-tier-send").disabled = false;
-    $("btn-trustline").disabled = false;
+    markAction("btn-tier-send", true);
+    markAction("btn-trustline", true);
     setWalletActions(true);
     await refreshBalances(addr);
     acctLog(`Bağlandı. Expert: ${addr.slice(0, 8)}…`);
@@ -117,8 +128,8 @@ async function connectWallet() {
         const name = typeof net === "string" ? net : net && (net.network || net.networkPassphrase);
         if (name && !/test/i.test(String(name))) {
           setWalletState(`Bağlı ama Freighter ${name} üzerinde. Mainnet’te işlem düğmeleri kapalı.`, "error");
-          $("btn-tier-send").disabled = true;
-          $("btn-burn").disabled = true;
+          markAction("btn-tier-send", false);
+          markAction("btn-burn", false);
           setWalletActions(false);
         }
       } catch {
@@ -160,7 +171,7 @@ function acctLog(text, hash) {
 
 function setWalletActions(on) {
   for (const id of ["btn-fund", "btn-trust-open", "btn-bump", "btn-trust-open-burn", "btn-stamp"]) {
-    if ($(id)) $(id).disabled = !on;
+    markAction(id, on);
   }
 }
 
@@ -345,7 +356,9 @@ $("btn-tier-sim").addEventListener("click", async () => {
 $("btn-tier-send").addEventListener("click", async () => {
   const f = getFreighter();
   if (!f || !connectedAddress) {
-    renderTier($("res-tier"), "Freighter bağlı değil.", { ok: true, value: null });
+    const box = $("res-tier");
+    box.innerHTML = "";
+    box.appendChild(el("div", "muted", "Once Freighter ile baglan: claim_tier, gercek bir imzali islemdir ve imza cüzdandan gelir."));
     return;
   }
   $("res-tier").textContent = "Freighter imzası bekleniyor…";
@@ -372,8 +385,8 @@ $("btn-strkey").addEventListener("click", () => {
   const ok = StrKey.isValidEd25519PublicKey(g);
   box.appendChild(pill(ok ? "StrKey geçerli" : "StrKey geçersiz", ok ? "pill ok" : "pill bad"));
   if (ok) {
-    $("btn-trustline").disabled = false;
-    if (connectedAddress) $("btn-trust-open-burn").disabled = false;
+    markAction("btn-trustline", true);
+    if (connectedAddress) markAction("btn-trust-open-burn", true);
   }
 });
 
@@ -398,7 +411,10 @@ async function runTrustOpen() {
 }
 
 $("btn-fund")?.addEventListener("click", async () => {
-  if (!connectedAddress) return;
+  if (!connectedAddress) {
+    acctLog("Once Freighter ile baglan: Friendbot, bagli hesabin adresini fonlar.");
+    return;
+  }
   acctLog("Friendbot çağrılıyor…");
   const r = await friendbot(connectedAddress);
   if (r.ok) {
@@ -414,12 +430,18 @@ $("btn-trust-open-burn")?.addEventListener("click", () => runTrustOpen());
 $("btn-stamp")?.addEventListener("click", async () => {
   const f = getFreighter();
   if (!f || !connectedAddress) {
-    acctLog("Önce Freighter ile bağlan.");
+    acctLog("Once Freighter ile baglan: damga, bagli adrese basilan imzali bir islemdir.");
     return;
   }
   acctLog("TESTNET damgası — Freighter imzası bekleniyor (CCTP Pasaportu değil).");
   try {
-    const r = await sendWithFreighter(f, CONFIG.stamp, "stamp", []);
+    // stamp(owner: Address) — the receipt says "caller mints to self via
+    // stamp(owner)". Called without the owner argument the VM refuses with
+    // MismatchingParameterLen before anything happens on chain, so the owner
+    // IS the call: the connected address, require_auth'd by the contract.
+    const r = await sendWithFreighter(f, CONFIG.stamp, "stamp", [
+      { scVal: addrScVal(connectedAddress) },
+    ]);
     if (r.ok) acctLog(`Damga ${r.status}`, r.hash);
     else acctLog(`Damga: ${String(r.error || r.status).slice(0, 220)}`, r.hash);
   } catch (e) {
@@ -428,7 +450,10 @@ $("btn-stamp")?.addEventListener("click", async () => {
 });
 $("btn-bump")?.addEventListener("click", async () => {
   const f = getFreighter();
-  if (!f || !connectedAddress) return;
+  if (!f || !connectedAddress) {
+    acctLog("Once Freighter ile baglan: bump, TTL'i uzatan imzali bir islemdir.");
+    return;
+  }
   acctLog("bump imzası bekleniyor…");
   try {
     const r = await sendWithFreighter(f, CONFIG.gateClaimCanonical, "bump", [
@@ -447,6 +472,10 @@ $("btn-bump")?.addEventListener("click", async () => {
 $("btn-trustline").addEventListener("click", async () => {
   const g = $("in-strkey").value.trim();
   const box = $("res-trustline");
+  if (!StrKey.isValidEd25519PublicKey(g)) {
+    box.textContent = "Üstteki alana geçerli bir G… adresi gir: kontrol, Horizon'a tek bir gerçek istek yapar.";
+    return;
+  }
   box.textContent = "Horizon’a soruluyor…";
   try {
     const r = await hasUsdcTrustline(g);
@@ -470,16 +499,22 @@ $("btn-trustline").addEventListener("click", async () => {
   }
 });
 
-// BURN word gate: button stays disabled until the word is typed AND a
-// router exists. There is no router yet, so it can never enable — by design.
+// BURN word gate: the word must be typed AND a router must exist before the
+// action becomes available. There is no router yet, so it never opens — by
+// design. The control still answers when pressed: the reason is the answer.
 $("in-burnword").addEventListener("input", (ev) => {
   const typed = ev.target.value.trim().toUpperCase() === "BURN";
-  $("btn-burn").disabled = !(typed && CONFIG.burnRouter);
+  markAction("btn-burn", typed && Boolean(CONFIG.burnRouter));
 });
 $("btn-burn").addEventListener("click", () => {
   if (!CONFIG.burnRouter) {
-    $("res-burn").textContent = "Router yok — bu butonun açılması imkânsızdı; bu bir hatadır, lütfen bildir.";
+    $("res-burn").textContent =
+      "Yakma yapılmadı: BurnRouter Sepolia'de kurulu degil (F2, Sepolia testnet fonu bekleniyor). " +
+      "Bu dugme sahte bir yakma islemi yapmaz; router kurulup makbuza yazildiginda kelime kapisi ve gercek burn akisi burada acilir.";
+    return;
   }
+  $("res-burn").textContent =
+    "Router makbuzda kayitli ama burn akisi (F2) henuz baglanmadi; bu tik bir islem gondermedi.";
 });
 
 // ---------- lattice (same wall as Gate 1.0; pointer frame only on visible cubes)

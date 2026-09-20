@@ -42,11 +42,46 @@ npm run dev        # http://localhost:5174/gate2/
 
 ## Kanıt
 
-`gate2/scripts/check-gate2-web.mjs` — gerçek headless tarayıcıda 10 kontrol:
+`gate2/scripts/check-gate2-web.mjs` — gerçek headless tarayıcıda 17 kontrol:
 canlı testnet RPC okumaları (kayıt yok ×2, 0 NFT ×2, claim_tier → Error #3
 NoMigration), Horizon trustline (deployer’da USDC yok), StrKey geçerli/geçersiz,
-BURN butonunun kapalı kalması, 0 başarısız istek. Koşum:
+BURN eyleminin router yokken kullanılamaz kalması **ve basıldığında gerekçesini
+yazması**, 0 başarısız istek. Koşum:
 
 ```
 NODE_PATH=<repo>/node_modules node gate2/scripts/check-gate2-web.mjs
 ```
+
+## Gerçek cüzdan kanıtı
+
+`gate2/scripts/verify-real-wallet.mjs` — butonların yalnız cevap vermediğini,
+testnet üzerinde **gerçek değer hareket ettirdiğini** kanıtlar. Aynı koşumda
+yeni bir anahtar üretir, Friendbot ile fonlar, sayfa açılmadan önce gerçek
+Freighter API yüzeyiyle aynı biçimde bir cüzdan enjekte eder (imzalar gerçek
+ed25519 imzasıdır) ve iki kapiyi de tıklar: USDC trustline (ChangeTrust),
+TESTNET damgası `stamp(owner)` ve bump gerçek işlem olarak gönderilir,
+claim_tier zincirin kendi reddiyle (NoMigration #3) döner, 1.0 burn akışı
+zincire kadar gidip wSRC trustline’ı olmayan hesap için sözleşmenin kendi
+cevabını raporlar. Çalıştırma:
+
+```
+cd gate2/scripts && npm install
+cd ../web && npm run dev &                # :5174/gate2/
+node ../../tools/api-dev-server.js &      # :3001 (1.0 /api katmanı)
+cd ../../frontend && npm run dev &        # :5173
+node gate2/scripts/verify-real-wallet.mjs
+```
+
+## Kontrol sözleşmesi
+
+Erişilemez bir eylem ölü buton değildir. `disabled` özniteliği tıklamayı
+tarayıcıda yutar; burada yerine `aria-disabled` kullanılır: buton görünürde
+gri kalır, odaklanabilir kalır ve basıldığında işleyicisi tam gerekçesini
+yazar. Eyleme hazır olmayan her kontrol cevap verir, hiçbir tıklama sessiz
+kalmaz (1.0 konsolunda `tools/check-live-actions.js` aynı sözleşmeyi 32
+kontrolde doğrular).
+
+Düzeltmeler bu sözleşmenin ürünüdür: `stamp(owner)` argümansız çağrıldığında
+VM `MismatchingParameterLen` ile reddediyordu (damga butonu hiç çalışmadı);
+1.0 burn akışı tanımsız `recipient` değişkeni ve tarayıcıda var olmayan
+`Buffer` yüzünden ilk ağ çağrısından önce çöküyordu.

@@ -208,7 +208,10 @@ async function signXdr(f, xdr, addr) {
   return signed;
 }
 
-export async function waitSoroban(hash, timeoutMs = 45000) {
+// 90s, not 45: on slow testnet days the ledger takes longer than 45s to
+// confirm a submitted tx, and a button that reports TIMEOUT while the tx
+// lands a ledger later is lying by impatience. The wait stays bounded.
+export async function waitSoroban(hash, timeoutMs = 90000) {
   const t0 = Date.now();
   while (Date.now() - t0 < timeoutMs) {
     try {
