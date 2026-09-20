@@ -1,0 +1,78 @@
+:root {
+  --bg: #0b0e14;
+  --card: #131826;
+  --line: #232b3f;
+  --text: #e8ecf5;
+  --muted: #8b94ab;
+  --accent: #5eead4;
+  --warn: #fbbf24;
+  --error: #f87171;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.55 ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
+}
+code { color: var(--accent); font-size: 0.92em; }
+.band {
+  display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+  padding: 14px 20px; border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, #101523, #0b0e14);
+  position: sticky; top: 0; z-index: 5;
+}
+.brand { display: flex; align-items: baseline; gap: 10px; }
+.brand h1 { font-size: 18px; margin: 0; letter-spacing: 0.02em; }
+.dot { width: 10px; height: 10px; border-radius: 2px; background: var(--accent); display: inline-block; }
+.sub { color: var(--muted); font-size: 12px; }
+.tabs { display: flex; gap: 8px; margin-left: auto; }
+.tab {
+  background: transparent; color: var(--muted); border: 1px solid var(--line);
+  padding: 8px 14px; border-radius: 8px; cursor: pointer; font-size: 14px;
+}
+.tab.active { color: var(--text); border-color: var(--accent); }
+.wallet { display: flex; gap: 8px; align-items: center; }
+.wallet button {
+  background: var(--accent); color: #06281f; border: 0; padding: 8px 14px;
+  border-radius: 8px; font-weight: 600; cursor: pointer;
+}
+main { max-width: 960px; margin: 0 auto; padding: 20px; display: grid; gap: 16px; }
+.card {
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+  padding: 18px 20px;
+}
+.card.blocked { border-color: #4a3b12; }
+.card h2 { margin: 0 0 8px; font-size: 16px; }
+.muted { color: var(--muted); }
+.warn { color: var(--warn); }
+.error { color: var(--error); }
+.hidden { display: none !important; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; margin: 10px 0; }
+.row input[type="text"] {
+  flex: 1; min-width: 260px; background: #0d1220; color: var(--text);
+  border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px;
+  font-family: ui-monospace, monospace; font-size: 13px;
+}
+.row button, .card button {
+  background: #1c2740; color: var(--text); border: 1px solid var(--line);
+  padding: 9px 14px; border-radius: 8px; cursor: pointer; font-size: 14px;
+}
+.row button:disabled { opacity: 0.4; cursor: not-allowed; }
+.contracts { font-size: 12px; font-family: ui-monospace, monospace; margin-top: 8px; word-break: break-all; }
+table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13.5px; }
+td, th { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+th { color: var(--muted); font-weight: 500; }
+.pill {
+  display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px;
+  border: 1px solid var(--line); color: var(--muted);
+}
+.pill.ok { color: var(--accent); border-color: var(--accent); }
+.pill.bad { color: var(--error); border-color: var(--error); }
+.pill.warn { color: var(--warn); border-color: var(--warn); }
+footer { text-align: center; padding: 18px; font-size: 12px; border-top: 1px solid var(--line); }
+.nft {
+  border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin-top: 10px;
+  background: #0e1322;
+}
+.nft h3 { margin: 0 0 6px; font-size: 14px; }

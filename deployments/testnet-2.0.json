@@ -231,7 +231,9 @@
     },
     "F3-deploy: npm's @stellar/stellar-cli installs but npx finds no runnable 'stellar' executable, and plain cargo wasm builds fail the soroban-sdk check demanding stellar-cli v25.2.0+; fix = GitHub release binary stellar-cli-25.2.0-x86_64-unknown-linux-gnu.tar.gz + 'stellar contract build'.",
     "F3-deploy: stellar contract invoke parses Vec args only as JSON arrays ('--allowed 0' rejected, '--allowed \"[0]\"' works); a failed CLI parse sends no tx, so the rejected first initialize attempt had zero on-chain effect.",
-    "F3-deploy merge: two live gate_claim deployments coexist on testnet (sibling hardened CDQ3PA5L... = canonical; pre-hardening CBKSNJ... = kept receipt, the campaign is wired to it); nothing deleted, both recorded."
+    "F3-deploy merge: two live gate_claim deployments coexist on testnet (sibling hardened CDQ3PA5L... = canonical; pre-hardening CBKSNJ... = kept receipt, the campaign is wired to it); nothing deleted, both recorded.",
+    "F6: @stellar/stellar-sdk v12 exports no addressToScVal; nativeToScVal(addr.toScAddress(), {type:'address'}) double-wraps and RPC rejects it ('cannot interpret value as ScVal'). Correct: new Address(g).toScVal().",
+    "F6 harness: puppeteer real-mouse clicks get swallowed when auto-scroll puts a button under the position:sticky header (hit-test lies because it runs pre-scroll); drive handlers with element.click() via page.$eval instead."
   ],
   "superseded": [
     {
@@ -315,6 +317,34 @@
         "sibling on-chain negatives recorded in contracts.gate_claim_testnet.onchain_negatives"
       ],
       "not_claimed": "no end-to-end claim receipt yet: that needs a real Sepolia burn + Iris attestation (F2, still gated on Sepolia funds per the stop-report)"
+    },
+    {
+      "id": "F6-code",
+      "status": "complete - gate2/web Vite app built and verified in a real headless browser against live testnet; the real burn flow stays blocked on the router (F2 funds)",
+      "done": [
+        "gate2/web: separate Vite app (port 5174), Turkish UI, two screens: Tasma Kanitim + Burn Ekrani; frontend/ and vercel.json untouched",
+        "all contract ids read from this manifest at runtime (src/config.js imports deployments/testnet-2.0.json) - no hand-copied addresses",
+        "Tasma Kanitim: live read-only get_migration/proofs_of/get_proof/get_meta/owner_of against BOTH live gate_claim deployments (canonical hardened CDQ3PA5L... and F3-lane CBKSNJ...), claim_tier simulated read-only, real signed send path implemented behind Freighter",
+        "Burn Ekrani: honest blocked state (no router, no fake token list/prices), working preconditions: StrKey validation + real Horizon USDC trustline check, irreversible BURN word-gate that can never enable without a router",
+        "Freighter: three provider shapes + late-injection watcher, same lesson as the 1.0 console"
+      ],
+      "evidence": [
+        "gate2/scripts/check-gate2-web.mjs: ALL GREEN (10 checks) - live reads return 'kayit yok' x2 and '0 NFT' x2 for the deployer, claim_tier sim shows Error(Contract, #3) NoMigration, trustline YOK with the real XLM balance, StrKey valid/invalid, BURN stays disabled, 0 failed requests/console errors"
+      ],
+      "not_claimed": "no end-to-end burn->attestation->claim screen recording yet: BurnRouter is not deployed (Sepolia funds, section 10 stop-report); F6 acceptance ('one real testnet flow') waits on F2/F4"
+    },
+    {
+      "id": "F5-negative-probe",
+      "status": "partial - negative half proven on the live deployed campaign; positive half (badge holder gets tier) needs a real claim = F2 funds",
+      "done": [
+        "claim_tier on live CDDQLX...OARCF for a badgeless owner -> simulation fails with Error(Contract, #3) = NoMigration (error code, not a panic; no tx sent)",
+        "same refusal reproduced inside the web app and captured by the browser harness"
+      ],
+      "evidence": [
+        "stellar contract invoke --id CDDQ... --send default (simulation): 'transaction simulation failed: HostError: Error(Contract, #3)'; lib.rs CampError::NoMigration = 3",
+        "check-gate2-web.mjs check 'claim_tier sim -> NoMigration refusal visible'"
+      ],
+      "not_claimed": "positive tier claim (Bronze/Silver) requires a minted badge, which requires a real Sepolia burn - still gated on funds"
     }
   ]
 }
