@@ -12,6 +12,34 @@ Stellar already has the payment rails, the anchor model and a smart-contract pla
 
 This is the proposal for the [Rise In x Stellar Pro Hackathon](https://www.risein.com/programs/stellar-pro-hackathon), Genesis track. It is deliberately ambitious and deliberately honest: the source chain may remain a deterministic simulator for the hackathon, but Stellar-side contracts, Soroban RPC calls, event ingestion and transaction receipts are designed for real Testnet execution. No green button is allowed to turn an unverified fixture into a production claim.
 
+## Gate 1.0 and Gate 2.0
+
+This repository now develops in two registers, and the line between them is a
+directory, not a shade of gray.
+
+**Gate 1.0** is everything described in the rest of this README: the finality
+registry, the settlement gateway, the bounded-VM proving lanes, the anchor
+facade and the console. It is **frozen** — its code, its receipts, and every
+evidence table below refer to it, and nothing on those tables will be edited
+to make room for the next product. Its standing directive moved, with its
+full history of decisions, to `DIRECTIVE-1.0.md`.
+
+**Gate 2.0** is in development on the `gate-2.0` branch: *Proof of Migration*
+— a user swaps assets to USDC on an EVM testnet, burns it through Circle
+CCTP, and claims native USDC on Stellar with no relayer and no custody in our
+contracts, minted alongside a **soulbound migration-proof NFT** any Soroban
+contract can query. The differentiator is that proof object, not the
+swap-and-bridge leg; the known limits are written where they belong: the
+proof is per-wallet (sybil across wallets is possible), the trust root is
+Circle's Iris attestation (Circle can freeze USDC), and CCTP messages cannot
+be undone — a wrong hook target is a permanent loss. Its authority is
+`DIRECTIVE.md`; its claims live or die by `deployments/testnet-2.0.json`, and
+until a transaction hash is in that file, no sentence about Gate 2.0 in this
+repository is allowed to say "live", "1:1", or "proven". As of this writing,
+2.0 has shipped evidence for nothing — phase F0 is a skeleton and a gate; the
+first receipts arrive with the spike phase, and this section will point at
+them or shrink, not soften.
+
 ## The 30-second pitch
 
 **Lumen Gate turns source-chain finality into an on-chain Stellar settlement decision.** An anchor can keep its issuer, reserve, compliance and customer relationship while delegating neither trust nor mint authority to a private bridge database. The flow is:

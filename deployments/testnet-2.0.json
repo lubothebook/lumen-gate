@@ -1,0 +1,15 @@
+{
+  "product": "Gate 2.0 - Proof of Migration (CCTP)",
+  "generated_at": "2026-09-20",
+  "network": "testnet",
+  "contracts": {},
+  "spikes": [],
+  "receipts": [],
+  "negative_probes": [],
+  "findings": [
+    "F0: repo-gate's 'exactly one directive file' rule matches DIRECTIVE-1.0.md too, so that single gate check now fails as a direct consequence of the mandated rename (scripts/repo-gate.sh is frozen Gate 1.0 territory and is not edited); the 2.0 regression gate is 'cargo test --workspace --lib' per DIRECTIVE 2.0 section 4.",
+    "F0: the directive cites 1.0 test counts as '12 / 11 / 3'; the crate suites in this repository measure differently (finality_registry carries 61 tests, gate_vm 17, and more after the 32-line sibling lane). Regression is pinned to the actual counts recorded in this phase's run output, not to the cited numbers; the discrepancy is written down instead of quietly reconciled.",
+    "F0: the sandbox that hosts this work has twice rebuilt from a snapshot between turns, dropping .git and the toolchain directories; everything durable lives in the pushed gate-2.0 branch, and local toolchains are treated as disposable."
+  ],
+  "superseded": []
+}

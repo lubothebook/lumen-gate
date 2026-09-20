@@ -7,6 +7,8 @@ members = [
   "crates/relayer",
   "crates/domain_adapter",
   "crates/execution_vm",
+  "gate2/soroban/gate_claim",
+  "gate2/soroban/gate_campaign_example",
 ]
 resolver = "2"
 
