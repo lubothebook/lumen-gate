@@ -134,7 +134,7 @@ async function main() {
             surfaced:
               !/rgba?\(0, 0, 0, 0\)/.test(style.backgroundColor) ||
               style.backgroundImage !== 'none' ||
-              Boolean(el.querySelector('.card, .win, .stat, .step, .lane, .trust-grid, .iface-block')),
+              Boolean(el.querySelector('.card, .win, .stat, .step, .lane, .trust-grid')),
           };
           if (entry.gapAbove !== null) gaps.push(entry.gapAbove);
           if (el.classList.contains('row-strip')) rows.push(entry);
@@ -241,18 +241,13 @@ async function main() {
     await new Promise((r) => setTimeout(r, 200));
     expect((await page.evaluate(() => document.querySelectorAll('.cube.frame').length)) === 0, 'leaving the window must close the frame');
 
-    // ------------------------------------------------- the interface panel
+    // ------------------------------------- the deleted panel stays deleted
     const panel = await page.evaluate(() => ({
       present: Boolean(document.getElementById('interfacePanel')),
-      strips: document.getElementById('ifaceStripCount')?.textContent.trim(),
-      gap: document.getElementById('ifaceStripGap')?.textContent.trim(),
-      cubes: document.querySelectorAll('#ifaceCubes .iface-cube').length,
-      demoStrips: document.querySelectorAll('.iface-strip-row').length,
+      ifaceLeft: document.querySelectorAll('[id^="iface"], [class*="iface-"]').length,
     }));
-    expect(panel.present, 'the interface panel is missing from the page');
-    expect(Number(panel.strips) === layout.rows.length, `the panel reports ${panel.strips} strips while the page has ${layout.rows.length}`);
-    expect(/\(\d+px\)|px at/.test(panel.gap || ''), `the panel's gap readout is not a measurement: ${panel.gap}`);
-    expect(panel.cubes === 6 && panel.demoStrips === 2, 'the interface panel demos are not rendered');
+    expect(!panel.present && panel.ifaceLeft === 0,
+      'the interface panel ("The interface, checked rather than described") was deleted by operator order and must not come back');
 
     // -------------------------------------------------------------- the banner
     const banner = await page.evaluate(() => {

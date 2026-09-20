@@ -403,28 +403,38 @@ async function main() {
 
     expect(errors.length === 0, `the page raised ${errors.length} uncaught error(s): ${errors.slice(0, 2).join(' | ')}`);
 
-    // ------------------------------------------------- the interface panel
-    // The panel claims to be read out of this page. That is checkable: the
-    // controls it lists must be exactly the controls the page is disabling.
-    const panel = await page.evaluate(() => {
-      const rows = [...document.querySelectorAll('#ifaceDisabledRows tr')];
-      const listed = rows.map((r) => r.children[0]?.textContent.trim()).filter(Boolean);
-      const onPage = [...document.querySelectorAll('button:disabled')].map((b) => b.id);
+    // --------------------------------------- the page's facts, read directly
+    // The interface panel is gone by operator order ("kokten sil"): a card that
+    // described the interface had no business on the site. The facts it used to
+    // show are still true and still checked, straight out of the live DOM, and
+    // the harness also guards the deletion so the card cannot come back.
+    const facts = await page.evaluate(() => {
+      const cube = document.querySelector('.cube');
+      let ring = '';
+      if (cube) {
+        // the ring fades in over 0.18s, so a same-tick read would measure the
+        // transition's starting value: silence the transition for the probe
+        cube.style.transition = 'none';
+        cube.classList.add('frame');
+        ring = getComputedStyle(cube).boxShadow;
+        cube.classList.remove('frame');
+        cube.style.transition = '';
+      }
       return {
-        listed,
-        onPage,
-        strips: document.getElementById('ifaceStripCount')?.textContent.trim(),
-        gap: document.getElementById('ifaceStripGap')?.textContent.trim(),
-        overflow: document.getElementById('ifaceOverflow')?.textContent.trim(),
-        ring: document.getElementById('ifaceRing')?.textContent.trim(),
+        panel: Boolean(document.getElementById('interfacePanel')),
+        ifaceLeft: document.querySelectorAll('[id^="iface"], [class*="iface-"]').length,
+        strips: document.querySelectorAll('main > section.strip > .shell > .row-strip').length,
+        overflow: document.scrollingElement.scrollWidth - document.documentElement.clientWidth,
+        ring,
       };
     });
-    expect(panel.listed.length === panel.onPage.length && panel.onPage.every((id) => panel.listed.includes(id)),
-      `the interface panel lists [${panel.listed}] while the page disables [${panel.onPage}]: the panel is not reading the DOM it claims to read`);
-    expect(Number(panel.strips) > 0, `the interface panel reports ${panel.strips} strips`);
-    expect(/none/.test(panel.overflow || ''), `the interface panel reports horizontal overflow: ${panel.overflow}`);
-    expect(/4px|2px/.test(panel.ring || ''), `the panel must state the ring it measured from the live frame element, got ${panel.ring}`);
-    report.push({ id: 'interface panel', result: `${panel.strips} strips, gap ${panel.gap}, overflow ${panel.overflow}, ${panel.listed.length} disabled controls listed, ${panel.cubes} demo cubes` });
+    expect(!facts.panel && facts.ifaceLeft === 0,
+      'the interface panel was deleted by operator order and must not come back');
+    expect(facts.strips > 0, `the page carries ${facts.strips} text strips`);
+    expect(facts.overflow <= 0, `the page overflows horizontally by ${facts.overflow}px`);
+    expect(/inset/.test(facts.ring) && /4px/.test(facts.ring) && /255, 255, 255/.test(facts.ring),
+      `the frame ring must be a 4px white inset shadow on a real cube, got "${facts.ring}"`);
+    report.push({ id: 'page facts (no panel)', result: `${facts.strips} strips, overflow ${facts.overflow}px, ring ${facts.ring}, panel deleted` });
 
     if (LEARN) {
       console.log('what each click changed:');

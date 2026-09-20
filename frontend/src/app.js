@@ -201,6 +201,9 @@ const LATTICE_BLOCKERS = [
   '.lane',
   '.log-wrap',
   '.row-strip',
+  // the hero banner is opaque artwork: a cube behind it is not a visible cube,
+  // so the pointer over the banner must not frame anything
+  '.hero-banner',
 ];
 
 function cubeUnderPointer(stack) {
@@ -1093,119 +1096,6 @@ function paintDisabledReasons() {
     if (button.disabled && reason) button.title = reason;
     else button.removeAttribute('title');
   }
-  renderInterfaceFacts();
-}
-
-// ------------------------------------------------- the interface panel
-// The page makes three claims about its own design. Rather than write them in
-// prose - or, worse, commit a picture of them, which is a claim that goes stale
-// the moment the layout moves - the panel renders each one from the page as it
-// is loaded: the strips are counted and measured in the DOM, the demo cubes are
-// the submitted tile painted at its own size through the same rules, and the
-// disabled-control table is built from the buttons themselves. A picture can
-// lie by being old. This cannot.
-function renderInterfaceFacts() {
-  // This is page furniture, so it is written defensively on purpose: it must
-  // not be able to take the console down with it. Two of this repository's
-  // harnesses boot this module against a stub DOM that models markup and events
-  // but not layout, and the first version of this function crashed them by
-  // assuming a real element and a real getComputedStyle. A panel that can
-  // break the app is worse than no panel.
-  const has = (node) => node && typeof node === 'object';
-
-  if (typeof document.querySelectorAll === 'function') {
-    // Strips belong to text rows only, so the count is the count of ribbons,
-    // not of every child a strip section happens to carry.
-    const rows = [...document.querySelectorAll('main > section.strip > .shell > .row-strip')];
-    const count = $('ifaceStripCount');
-    if (count) count.textContent = String(rows.length);
-  }
-
-  const gap = $('ifaceStripGap');
-  const section = $('how');
-  if (gap) {
-    const kids = section && typeof section.querySelectorAll === 'function' ? [...section.querySelectorAll(':scope > .shell > *')] : [];
-    if (kids.length > 1 && typeof kids[0].getBoundingClientRect === 'function') {
-      const a = kids[0].getBoundingClientRect();
-      const b = kids[1].getBoundingClientRect();
-      gap.textContent = `${Math.round(b.top - a.bottom)}px at ${window.innerWidth}px wide`;
-    } else {
-      gap.textContent = 'measured in a browser, not in this environment';
-    }
-  }
-
-  const overflow = $('ifaceOverflow');
-  if (overflow && document.scrollingElement && document.documentElement) {
-    const page = Math.round(document.scrollingElement.scrollWidth);
-    const view = document.documentElement.clientWidth;
-    if (Number.isFinite(page) && Number.isFinite(view) && view > 0) {
-      overflow.textContent = page <= view ? `none (${page} of ${view})` : `${page - view}px`;
-      overflow.className = page <= view ? 'ok' : 'bad';
-    }
-  }
-
-  // The disabled-controls table, read out of the DOM: the control, the reason
-  // it carries, and the note that reason was copied from.
-  const body = $('ifaceDisabledRows');
-  if (body && typeof document.querySelectorAll === 'function') {
-    body.textContent = '';
-    const disabled = [...document.querySelectorAll('button:disabled')];
-    if (disabled.length === 0) {
-      const row = document.createElement('tr');
-      const cell = document.createElement('td');
-      cell.colSpan = 3;
-      cell.className = 'faint xs';
-      cell.textContent = 'Nothing on this page is disabled right now, so there is nothing to explain.';
-      row.append(cell);
-      body.append(row);
-    }
-    for (const button of disabled) {
-      const noteId = button.getAttribute('aria-describedby') || '';
-      const note = noteId && typeof document.getElementById === 'function' ? document.getElementById(noteId) : null;
-      const row = document.createElement('tr');
-      const name = document.createElement('td');
-      name.className = 'mono xs';
-      name.textContent = button.id || button.textContent.trim();
-      const reason = document.createElement('td');
-      reason.className = 'reason';
-      reason.textContent = button.title || '(no title: this one would be silent)';
-      const where = document.createElement('td');
-      where.className = 'faint xs mono';
-      where.textContent = note ? `#${noteId}` : '(nowhere)';
-      row.append(name, reason, where);
-      body.append(row);
-    }
-  }
-
-  // The demo wall: the submitted tile at the tile's own 60px, one element per
-  // cube, wearing the same ring rule as the wall behind the page.
-  const wall = $('ifaceCubes');
-  // `children` is an HTMLCollection in a real page and a plain array in the
-  // harness stubs; both answer to length, and only the stubs lack append.
-  if (has(wall) && wall.children && typeof wall.children.length === 'number' && wall.children.length === 0 && typeof wall.append === 'function') {
-    const fragment = document.createDocumentFragment();
-    for (let i = 0; i < 6; i += 1) {
-      const cube = document.createElement('div');
-      cube.className = 'iface-cube';
-      if (typeof cube.addEventListener === 'function') {
-        cube.addEventListener('pointerenter', () => {
-          const out = $('ifaceFramedCount');
-          if (out) out.textContent = `1 (cube ${i + 1})`;
-        });
-        cube.addEventListener('pointerleave', () => {
-          const out = $('ifaceFramedCount');
-          if (out) out.textContent = 'none';
-        });
-      }
-      fragment.append(cube);
-    }
-    wall.append(fragment);
-    const ring = $('ifaceRing');
-    if (ring && typeof getComputedStyle === 'function') {
-      const value = getComputedStyle(document.documentElement).getPropertyValue('--ring').trim();
-      ring.textContent = `${value || '4px'} inset`;
-    }
-  }
 }
 
 function paintWriteState() {
@@ -1461,17 +1351,6 @@ function wire() {
   });
   $('operatorHintBtn').addEventListener('click', operatorDialog);
   window.addEventListener('resize', queueLattice);
-  // The interface panel measures the page (the gap between two strips, the
-  // horizontal overflow), so a resize invalidates its numbers rather than its
-  // layout: it is re-read instead of left showing the width it started at.
-  window.addEventListener('resize', () => {
-    if (wire.ifaceQueued) return;
-    wire.ifaceQueued = true;
-    requestAnimationFrame(() => {
-      wire.ifaceQueued = false;
-      renderInterfaceFacts();
-    });
-  });
   wireAmounts();
   $('demoRecipientBtn').addEventListener('click', () => {
     const demo = state.status?.accounts?.gasless_recipient || state.status?.accounts?.end_user;
