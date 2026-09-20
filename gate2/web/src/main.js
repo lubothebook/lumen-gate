@@ -74,42 +74,58 @@ function setWalletState(text, cls = "muted") {
   s.textContent = text;
   s.className = cls;
 }
+function embeddedFrame() {
+  try { return window.top !== window.self; } catch { return true; }
+}
+async function connectWallet() {
+  const f = getFreighter();
+  if (!f) {
+    const note = embeddedFrame()
+      ? "Freighter bu çerçeveye enjekte olmaz. Sayfayı kendi sekmesinde aç."
+      : "Bu tarayıcıda Freighter yok. Uzantıyı kur, sayfayı yenile, sonra bağlan.";
+    setWalletState(note, "error");
+    acctLog(note);
+    return null;
+  }
+  try {
+    const addr = await freighterConnect(f);
+    connectedAddress = addr;
+    setWalletState(`${addr.slice(0, 8)}…${addr.slice(-6)} bağlı`, "ok");
+    $("in-address").value = addr;
+    $("in-strkey").value = addr;
+    $("btn-tier-send").disabled = false;
+    $("btn-trustline").disabled = false;
+    setWalletActions(true);
+    await refreshBalances(addr);
+    acctLog(`Bağlandı. Expert: ${addr.slice(0, 8)}…`);
+    if (typeof f.getNetwork === "function") {
+      try {
+        const net = await f.getNetwork();
+        const name = typeof net === "string" ? net : net && (net.network || net.networkPassphrase);
+        if (name && !/test/i.test(String(name))) {
+          setWalletState(`Bağlı ama Freighter ${name} üzerinde. Mainnet’te işlem düğmeleri kapalı.`, "error");
+          $("btn-tier-send").disabled = true;
+          $("btn-burn").disabled = true;
+          setWalletActions(false);
+        }
+      } catch {
+        /* getNetwork is advisory; some builds refuse it until unlocked */
+      }
+    }
+    return addr;
+  } catch (e) {
+    setWalletState(`Bağlantı hatası: ${e.message || e}`, "error");
+    return null;
+  }
+}
 function onFreighter(f) {
   if (!f) {
-    setWalletState("Freighter bulunamadı (geç yüklenirse tekrar denenecek)", "muted");
+    setWalletState(embeddedFrame()
+      ? "Freighter bu çerçeveye ulaşamaz — kendi sekmesinde aç"
+      : "Freighter bulunamadı (geç yüklenirse bağlan yine dener)", "muted");
     return;
   }
   setWalletState("Freighter hazır — bağlanmak için tıkla", "ok");
-  $("btn-connect").addEventListener("click", async () => {
-    try {
-      const addr = await freighterConnect(f);
-      connectedAddress = addr;
-      setWalletState(`${addr.slice(0, 8)}…${addr.slice(-6)} bağlı`, "ok");
-      $("in-address").value = addr;
-      $("in-strkey").value = addr;
-      $("btn-tier-send").disabled = false;
-      $("btn-trustline").disabled = false;
-      setWalletActions(true);
-      await refreshBalances(addr);
-      acctLog(`Bağlandı. Expert: ${addr.slice(0, 8)}…`);
-      if (typeof f.getNetwork === "function") {
-        try {
-          const net = await f.getNetwork();
-          const name = typeof net === "string" ? net : net && (net.network || net.networkPassphrase);
-          if (name && !/test/i.test(String(name))) {
-            setWalletState(`Bağlı ama Freighter ${name} üzerinde. Mainnet’te işlem düğmeleri kapalı.`, "error");
-            $("btn-tier-send").disabled = true;
-            $("btn-burn").disabled = true;
-            setWalletActions(false);
-          }
-        } catch {
-          /* getNetwork is advisory; some builds refuse it until unlocked */
-        }
-      }
-    } catch (e) {
-      setWalletState(`Bağlantı hatası: ${e.message || e}`, "error");
-    }
-  }, { once: false });
 }
 function acctLog(text, hash) {
   const box = $("acct-log");
@@ -169,13 +185,7 @@ async function refreshBalances(g) {
 }
 
 watchFreighter(onFreighter);
-// The watcher only enables the button when a provider shows up; keep a
-// manual fallback so the click always tries the current window state.
-$("btn-connect").addEventListener("click", async () => {
-  const f = getFreighter();
-  if (f) return; // the watcher-bound handler takes care of it
-  setWalletState("Bu tarayıcıda Freighter sağlayıcısı yok", "error");
-});
+$("btn-connect").addEventListener("click", () => connectWallet());
 
 // ---------- Taşıma Kanıtım ----------
 async function queryAddress(g) {
@@ -385,6 +395,21 @@ $("btn-fund")?.addEventListener("click", async () => {
 });
 $("btn-trust-open")?.addEventListener("click", () => runTrustOpen());
 $("btn-trust-open-burn")?.addEventListener("click", () => runTrustOpen());
+$("btn-stamp")?.addEventListener("click", async () => {
+  const f = getFreighter();
+  if (!f || !connectedAddress) {
+    acctLog("Önce Freighter ile bağlan.");
+    return;
+  }
+  acctLog("TESTNET damgası — Freighter imzası bekleniyor (CCTP Pasaportu değil).");
+  try {
+    const r = await sendWithFreighter(f, CONFIG.stamp, "stamp", []);
+    if (r.ok) acctLog(`Damga ${r.status}`, r.hash);
+    else acctLog(`Damga: ${String(r.error || r.status).slice(0, 220)}`, r.hash);
+  } catch (e) {
+    acctLog(`Damga hatası: ${e.message || e}`);
+  }
+});
 $("btn-bump")?.addEventListener("click", async () => {
   const f = getFreighter();
   if (!f || !connectedAddress) return;

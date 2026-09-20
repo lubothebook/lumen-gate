@@ -10,6 +10,13 @@ import {
   Operation,
   Horizon,
 } from "@stellar/stellar-sdk";
+import {
+  requestAccess as officialRequestAccess,
+  getAddress as officialGetAddress,
+  getNetwork as officialGetNetwork,
+  signTransaction as officialSignTransaction,
+  setAllowed as officialSetAllowed,
+} from "@stellar/freighter-api";
 import { CONFIG } from "./config.js";
 
 const server = new SorobanRpc.Server(CONFIG.rpcUrl);
@@ -73,11 +80,37 @@ export async function friendbot(g) {
   };
 }
 
+function walletAddressFrom(answer) {
+  if (!answer) return null;
+  if (typeof answer === "string") return answer.trim() || null;
+  if (answer.error) return null;
+  const candidate = answer.address || answer.publicKey || answer.public_key;
+  return typeof candidate === "string" && candidate.trim() ? candidate.trim() : null;
+}
+
+function walletReasonFrom(answer) {
+  if (!answer || typeof answer === "string") return null;
+  if (answer.error) return String(answer.error.message || answer.error);
+  if (answer.message && !walletAddressFrom(answer)) return String(answer.message);
+  return null;
+}
+
+/**
+ * Freighter injects as window.freighter, window.freighterApi, or
+ * window.stellar.freighter depending on the build. The official module
+ * talks to the extension over postMessage even when the window stub is
+ * incomplete. requestAccess() is the door that actually opens the popup;
+ * isConnected() is not — treating a false isConnected as fatal is why
+ * "Bağlan" used to do nothing.
+ */
 export function getFreighter() {
-  if (window.freighter?.signTransaction) return window.freighter;
-  if (window.freighterApi?.signTransaction) return window.freighterApi;
+  if (window.freighterApi) return window.freighterApi;
+  if (window.freighter) return window.freighter;
+  if (window.stellar && (window.stellar.freighter || window.stellar.Freighter)) {
+    return window.stellar.freighter || window.stellar.Freighter;
+  }
   const sep43 = window.stellar?._wallets?.find?.((w) => /freighter/i.test(w.name || w.id || ""));
-  if (sep43?.signTransaction) return sep43;
+  if (sep43) return sep43;
   return null;
 }
 
@@ -108,15 +141,29 @@ export function watchFreighter(cb) {
 }
 
 export async function freighterConnect(f) {
-  if (f.isConnected) {
-    const ok = await f.isConnected();
-    const connected = typeof ok === "object" && ok !== null ? ok.isConnected : ok;
-    if (!connected) throw new Error("Freighter bagli degil");
+  const attempts = [];
+  const doors = [
+    ["requestAccess", "requestAccess", () => f.requestAccess()],
+    ["getAddress", "getAddress", () => f.getAddress()],
+    ["getPublicKey", "getPublicKey", () => f.getPublicKey()],
+    ["setAllowed+getPublicKey", "setAllowed", async () => {
+      await f.setAllowed();
+      return f.getPublicKey ? f.getPublicKey() : f.getAddress();
+    }],
+  ];
+  for (const [label, method, open] of doors) {
+    if (typeof f[method] !== "function") continue;
+    try {
+      const answer = await open();
+      const address = walletAddressFrom(answer);
+      if (address) return address;
+      attempts.push(`${label}: ${walletReasonFrom(answer) || "adres yok"}`);
+    } catch (error) {
+      attempts.push(`${label}: ${error && error.message ? error.message : String(error)}`);
+    }
   }
-  const raw = f.getAddress ? await f.getAddress() : await f.getPublicKey();
-  const addr = typeof raw === "string" ? raw : raw?.address || raw?.publicKey;
-  if (!addr) throw new Error("Freighter adres vermedi");
-  return addr;
+  const why = attempts.length ? attempts[attempts.length - 1] : "uzantı adres vermedi";
+  throw new Error(why);
 }
 
 async function signXdr(f, xdr, addr) {
