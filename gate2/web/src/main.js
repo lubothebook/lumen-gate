@@ -24,7 +24,6 @@ const el = (tag, cls, text) => {
   return n;
 };
 const pill = (text, cls = "pill") => el("span", cls, text);
-const fmtUsdc6 = (v) => (typeof v === "bigint" ? Number(v) : v ?? 0).toLocaleString("tr-TR", { maximumFractionDigits: 6 }) ;
 const div6 = (v) => (Number(typeof v === "bigint" ? v : v ?? 0) / 1e6).toFixed(6);
 
 let connectedAddress = null;
@@ -45,9 +44,10 @@ function showTab(name) {
     if (page) page.classList.toggle("hidden", !on);
   }
   if (name === "burn" || name === "proof") {
-    const consoleEl = $("console");
-    if (consoleEl && window.matchMedia("(max-width: 720px)").matches) {
-      /* keep the working pane in view on a phone after a tab change */
+    const pageEl = $(`page-${name}`);
+    if (pageEl && window.matchMedia("(max-width: 720px)").matches) {
+      // keep the working pane in view on a phone after a tab change
+      pageEl.scrollIntoView({ block: "start" });
     }
   }
 }
@@ -148,8 +148,7 @@ function onFreighter(f) {
 function acctLog(text, hash) {
   const box = $("acct-log");
   if (!box) return;
-  box.textContent = "";
-  box.appendChild(el("div", "muted", text));
+  const row = el("div", "muted", text);
   if (hash) {
     const a = document.createElement("a");
     a.href = EXPLORER_TX + hash;
@@ -157,8 +156,11 @@ function acctLog(text, hash) {
     a.rel = "noreferrer";
     a.textContent = hash;
     a.className = "contracts";
-    box.appendChild(a);
+    row.appendChild(document.createTextNode(" "));
+    row.appendChild(a);
   }
+  box.appendChild(row);
+  while (box.children.length > 8) box.removeChild(box.firstChild); // a log, not a billboard: last 8 stay
 }
 
 function setWalletActions(on, reason) {
@@ -209,6 +211,31 @@ async function withButton(id, pendingText, work) {
   }
 }
 
+// Point-of-use network guard: the connect-time check can go stale if the user
+// switches the wallet's network afterwards, so every signing action re-checks
+// right before it asks Freighter to sign.
+async function assertTestnet() {
+  const f = getFreighter();
+  if (!f || typeof f.getNetwork !== "function") return true; // advisory
+  try {
+    const net = await f.getNetwork();
+    const name = typeof net === "string" ? net : net && (net.network || net.networkPassphrase);
+    if (name && !/test/i.test(String(name))) {
+      walletWritesAllowed = false;
+      setWalletState(`Freighter is on ${name}. Action buttons stay closed on mainnet.`, "error");
+      setWalletActions(
+        false,
+        `Freighter is on ${name} — this console only signs on testnet. Switch the wallet to Stellar testnet.`
+      );
+      acctLog(`Blocked: wallet is on ${name}; this console only signs on testnet.`);
+      return false;
+    }
+    return true;
+  } catch {
+    return true; // some builds refuse getNetwork until unlocked — stay advisory
+  }
+}
+
 async function refreshBalances(g) {
   const kv = $("walletKv");
   if (!kv || !g) return;
@@ -216,7 +243,6 @@ async function refreshBalances(g) {
     const r = await hasUsdcTrustline(g);
     kv.innerHTML = "";
     if (!r.exists) {
-      kv.appendChild(el("tr", null, null));
       const tr = document.createElement("tr");
       tr.innerHTML = "<td>Account</td><td>not on chain — fund with Friendbot</td>";
       kv.appendChild(tr);
@@ -232,13 +258,18 @@ async function refreshBalances(g) {
     };
     row("XLM", xlm ? Number(xlm.balance).toFixed(7) : "—");
     row("USDC", usdc ? `${Number(usdc.balance).toFixed(7)} (trustline open)` : "no trustline");
+    const trLink = document.createElement("tr");
+    trLink.appendChild(el("td", null, "Explorer"));
+    const tdLink = el("td", null, null);
     const link = document.createElement("a");
     link.href = EXPLORER_ACCOUNT + g;
     link.target = "_blank";
     link.rel = "noreferrer";
     link.textContent = "Open in Stellar Expert";
     link.className = "link-btn";
-    $("walletNote")?.append?.("");
+    tdLink.appendChild(link);
+    trLink.appendChild(tdLink);
+    kv.appendChild(trLink);
   } catch (e) {
     acctLog(`Could not read balances: ${e.message || e}`);
   }
@@ -255,8 +286,7 @@ async function queryAddress(g) {
   $("results").classList.remove("hidden");
   const migBox = $("res-migration");
   const nftBox = $("res-nfts");
-  migBox.textContent = "Reading the chain…";
-  nftBox.textContent = "";
+  nftBox.textContent = "Reading the chain…";
 
   // Both live gate_claim deployments are queried — the canonical hardened
   // one and the F3-lane one the campaign is wired to. Nothing is hidden.
@@ -362,6 +392,19 @@ $("btn-query").addEventListener("click", () => {
 });
 
 // ---------- claim_tier ----------
+function tierName(v) {
+  if (v == null) return null;
+  if (typeof v === "number") return { 1: "Bronze", 2: "Silver", 3: "Gold" }[v] || null;
+  if (typeof v === "object") {
+    if (v.value !== undefined) return tierName(v.value);
+    // Soroban enums decode to a single-key object, e.g. { Bronze: null }
+    const keys = Object.keys(v);
+    if (keys.length === 1 && (v[keys[0]] === null || v[keys[0]] === undefined)) {
+      return ["Bronze", "Silver", "Gold"].includes(keys[0]) ? keys[0] : null;
+    }
+  }
+  return null;
+}
 function renderTier(box, label, r) {
   box.innerHTML = "";
   box.appendChild(el("div", "muted", label));
@@ -370,10 +413,13 @@ function renderTier(box, label, r) {
     box.appendChild(pill("no badge → contract refused", "pill bad"));
     return;
   }
-  const names = { 1: "Bronze", 2: "Silver", 3: "Gold" };
-  const v = r.value;
-  const name = names[v] || (v && names[v.value]) || JSON.stringify(v, (k, x) => typeof x === "bigint" ? String(x) : x);
-  box.appendChild(pill(`Kademe: ${name}`, "pill ok"));
+  const name = tierName(r.value);
+  if (name) {
+    box.appendChild(pill(`Tier: ${name}`, "pill ok"));
+  } else {
+    // null / unrecognized: say so in neutral — never a green "Tier: null"
+    box.appendChild(pill("no tier returned", "pill warn"));
+  }
 }
 
 $("btn-tier-sim").addEventListener("click", async () => {
@@ -387,27 +433,34 @@ $("btn-tier-sim").addEventListener("click", async () => {
   renderTier($("res-tier"), `claim_tier simulation — ${g.slice(0, 8)}…`, r);
 });
 
-$("btn-tier-send").addEventListener("click", async () => {
-  const f = getFreighter();
-  if (!f || !connectedAddress) {
-    renderTier($("res-tier"), "Freighter is not connected.", { ok: true, value: null });
-    return;
-  }
-  $("res-tier").textContent = "Waiting for Freighter signature…";
-  try {
-    const r = await sendWithFreighter(f, CONFIG.campaign, "claim_tier", [
-      { scVal: addrScVal(connectedAddress) },
-    ]);
-    $("res-tier").innerHTML = "";
-    if (r.ok) {
-      $("res-tier").appendChild(pill(`tx: ${r.hash}`, "pill ok"));
-    } else {
-      $("res-tier").appendChild(el("div", "error", `Rejected: ${String(r.error).slice(0, 300)}`));
+$("btn-tier-send").addEventListener("click", () =>
+  withButton("btn-tier-send", "Waiting for signature…", async () => {
+    const f = getFreighter();
+    if (!f || !connectedAddress) {
+      renderTier($("res-tier"), "Freighter is not connected.", { ok: true, value: null });
+      return null;
     }
-  } catch (e) {
-    renderTier($("res-tier"), "Submit error", { ok: false, error: e.message || String(e) });
-  }
-});
+    if (!(await assertTestnet())) return null;
+    $("res-tier").textContent = "Waiting for Freighter signature…";
+    try {
+      const r = await sendWithFreighter(f, CONFIG.campaign, "claim_tier", [
+        { scVal: addrScVal(connectedAddress) },
+      ]);
+      $("res-tier").innerHTML = "";
+      if (r.ok) {
+        $("res-tier").appendChild(pill(`tier claim accepted (status ${r.status}) — tx: ${r.hash}`, "pill ok"));
+      } else if (r.status === "PENDING" || r.status === "TIMEOUT") {
+        $("res-tier").appendChild(pill(`submitted — still processing (not a refusal) — tx: ${r.hash}`, "pill warn"));
+      } else {
+        $("res-tier").appendChild(el("div", "error", `Rejected: ${String(r.error).slice(0, 300)}`));
+        $("res-tier").appendChild(pill("no badge → contract refused", "pill bad"));
+      }
+    } catch (e) {
+      renderTier($("res-tier"), "Submit error", { ok: false, error: e.message || String(e) });
+    }
+    return null;
+  })
+);
 
   // ---------- Burn-screen preconditions ----------
 $("btn-strkey").addEventListener("click", () => {
@@ -417,8 +470,10 @@ $("btn-strkey").addEventListener("click", () => {
   const ok = StrKey.isValidEd25519PublicKey(g);
   box.appendChild(pill(ok ? "StrKey valid" : "StrKey invalid", ok ? "pill ok" : "pill bad"));
   if (ok) {
-    $("btn-trustline").disabled = false;
-    if (connectedAddress) $("btn-trust-open-burn").disabled = false;
+    $("btn-trustline").disabled = false; // read-only Horizon check — no signature needed
+    // The write button opens only when the wallet is connected AND on testnet;
+    // a valid typed address alone must never unlock signing on a mainnet wallet.
+    if (connectedAddress && walletWritesAllowed) $("btn-trust-open-burn").disabled = false;
   }
 });
 
@@ -428,6 +483,7 @@ async function runTrustOpen() {
     acctLog("Connect Freighter first.");
     return;
   }
+  if (!(await assertTestnet())) return;
   acctLog("Waiting for Freighter (USDC trustline)…");
   try {
     const r = await openUsdcTrustline(f);
@@ -435,7 +491,7 @@ async function runTrustOpen() {
       acctLog("Trustline opened — visible in Freighter and Expert.", r.hash);
       await refreshBalances(connectedAddress);
     } else {
-      acctLog(`Trustline refused: ${JSON.stringify(r).slice(0, 180)}`);
+      acctLog(`Trustline not opened: ${r.error || "no result"} — the account needs XLM for the fee.`, r.hash);
     }
   } catch (e) {
     acctLog(`Trustline error: ${e.message || e}`);
@@ -468,38 +524,58 @@ $("btn-trust-open")?.addEventListener("click", () =>
 $("btn-trust-open-burn")?.addEventListener("click", () =>
   withButton("btn-trust-open-burn", "Waiting for signature…", runTrustOpen)
 );
-$("btn-stamp")?.addEventListener("click", async () => {
-  const f = getFreighter();
-  if (!f || !connectedAddress) {
-    acctLog("Connect Freighter first.");
-    return;
-  }
-  acctLog("TESTNET stamp — waiting for Freighter (not a CCTP Passport).");
-  try {
-    const r = await sendWithFreighter(f, CONFIG.stamp, "stamp", []);
-    if (r.ok) acctLog(`Stamp ${r.status}`, r.hash);
-    else acctLog(`Stamp: ${String(r.error || r.status).slice(0, 220)}`, r.hash);
-  } catch (e) {
-    acctLog(`Stamp error: ${e.message || e}`);
-  }
-});
-$("btn-bump")?.addEventListener("click", async () => {
-  const f = getFreighter();
-  if (!f || !connectedAddress) return;
-  acctLog("Waiting for bump signature…");
-  try {
-    const r = await sendWithFreighter(f, CONFIG.gateClaimCanonical, "bump", [
-      { scVal: addrScVal(connectedAddress) },
-    ]);
-    if (r.ok) {
-      acctLog(`bump ${r.status}`, r.hash);
-    } else {
-      acctLog(`bump: ${String(r.error || r.status).slice(0, 220)}`, r.hash);
+$("btn-stamp")?.addEventListener("click", () =>
+  withButton("btn-stamp", "Waiting for signature…", async () => {
+    const f = getFreighter();
+    if (!f || !connectedAddress) {
+      acctLog("Connect Freighter first.");
+      return null;
     }
-  } catch (e) {
-    acctLog(`bump error: ${e.message || e}`);
-  }
-});
+    if (!(await assertTestnet())) return null;
+    acctLog("TESTNET stamp — waiting for Freighter (not a CCTP Passport).");
+    try {
+      // The contract is stamp(owner: Address) — the caller stamps themselves.
+      const r = await sendWithFreighter(f, CONFIG.stamp, "stamp", [
+        { scVal: addrScVal(connectedAddress) },
+      ]);
+      if (r.ok) {
+        acctLog(`Stamp accepted (status ${r.status}).`, r.hash);
+      } else if (r.status === "PENDING" || r.status === "TIMEOUT") {
+        acctLog("Stamp submitted — still processing (not a refusal). Open the hash to watch it.", r.hash);
+      } else if (String(r.error || r.status).includes("AlreadyStamped")) {
+        acctLog("Already stamped — this account holds its TESTNET stamp (soulbound).", r.hash);
+      } else {
+        acctLog(`Stamp: ${String(r.error || r.status).slice(0, 220)}`, r.hash);
+      }
+    } catch (e) {
+      acctLog(`Stamp error: ${e.message || e}`);
+    }
+    return null;
+  })
+);
+$("btn-bump")?.addEventListener("click", () =>
+  withButton("btn-bump", "Waiting for signature…", async () => {
+    const f = getFreighter();
+    if (!f || !connectedAddress) return null;
+    if (!(await assertTestnet())) return null;
+    acctLog("Waiting for bump signature…");
+    try {
+      const r = await sendWithFreighter(f, CONFIG.gateClaimCanonical, "bump", [
+        { scVal: addrScVal(connectedAddress) },
+      ]);
+      if (r.ok) {
+        acctLog(`bump accepted (status ${r.status}) — storage TTL extended.`, r.hash);
+      } else if (r.status === "PENDING" || r.status === "TIMEOUT") {
+        acctLog("bump submitted — still processing (not a refusal). Open the hash to watch it.", r.hash);
+      } else {
+        acctLog(`bump: ${String(r.error || r.status).slice(0, 220)}`, r.hash);
+      }
+    } catch (e) {
+      acctLog(`bump error: ${e.message || e}`);
+    }
+    return null;
+  })
+);
 
 $("btn-trustline").addEventListener("click", async () => {
   const g = $("in-strkey").value.trim();
