@@ -43,7 +43,15 @@ Bilinen sinir (README'ye yazilir): kanit **cuzdan bazlidir**, birden cok cuzdanl
 3. **Admin yok.** Deploy sonrasi `renounce_admin` veya bastan adminsiz. Upgrade yok.
 4. **Sinirsiz approval yasak.** Token basina tam miktar approve veya Permit2.
 5. **Kullanici secmeden hicbir tokena dokunulmaz.** "Hepsini sec" butonu var ama varsayilan kapalidir.
-6. **NFT devredilemez.** Transfer, approve ve benzeri fonksiyonlar kontratta yoktur veya trap eder.
+
+
+### 3.1 Durum (2026-09-20, gate-2.0 @ eec2a76, CI 7/7 yesil)
+
+- Kural 1 (relayer yok): gate_claim testnet'te `CDQ3PA5LBI...` olarak duruyor; `claim` anyone-call, alici mesaj-içi sabit - on-chain negatifle kanitli (junk -> Error #3, deployer penceresi kapandi).
+- Kural 2 (custody yok): BurnRouter 23/23 test (sifir-bakiye iddiasi testte) + gate_claim hardening sonrasi 7/7; campaign 3/3 (tier sinir matrisi dahil) - hepsi ayni commit'te CI'da.
+- Kural 3 (admin yok): gate_claim constructor penceresi initialize ile kapandi, rebuild reddedildi (#1) - kanit zinciri findings s19/s21.
+- Kural 4-5: EVM tarafinda unlimited-approval deseni (venue-allowance) tasarımdan cikarildi, slither rebuttal'ari audit_ignores'ta.
+- 1.0 tabani: 61/17/11/20/28 - test tasma/taşıma sonrasi yeniden sayildi, dustu yok.6. **NFT devredilemez.** Transfer, approve ve benzeri fonksiyonlar kontratta yoktur veya trap eder.
 7. **Guven modeli durust yazilir.** Guven koku Circle'in Iris attestation'idir. "Trustless" kelimesi kullanilsin. Circle USDC'yi dondurabilir.
 8. **Testnet.** Mainnet icin ayri ve acik bir insan karari gerekir.
 
