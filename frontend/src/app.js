@@ -186,56 +186,63 @@ function sizeLattice() {
 // no strip, so the lattice shows through and the frame can land under the
 // hero's own text. A surface belongs here only if it really does cover the
 // wall.
-// The operator's rule, taken literally after watching the pointer die at
-// every picture on the page: the pointer is over the wall wherever it is, so
-// visuals in front must not stop detection. The cell is arithmetic - pointer
-// divided by cell size - the cube under it wears the ring, and a fixed
-// overlay cell paints the same ring above whatever the page floats over the
-// wall, because a ring behind a card is a ring nobody sees. Nothing is asked
-// what covers the cube any more; the old blockers list is retired with the
-// hit test that used to read it.
+// The frame is a state painted on the cube under the pointer, and it lands
+// only where the cube is actually visible. Two operator corrections define
+// this: detection must not die just because the pointer travels (the cell is
+// repainted on scroll and resize, and the hero shows the wall), and the ring
+// must never climb on top of the content - a frame above the cards reads as a
+// glitch. So the page asks what covers the wall at the pointer, and the cube
+// wears the ring only when nothing opaque stands between them.
+const LATTICE_BLOCKERS = [
+  'header.top',
+  'footer',
+  'nav.foot-nav',
+  'dialog',
+  '.boundary',
+  '.band',
+  '.card',
+  '.win',
+  '.steps',
+  '.stats',
+  '.trust-grid',
+  '.lane',
+  '.log-wrap',
+  '.row-strip',
+  // the hero banner is opaque artwork: a cube behind it is not a visible cube
+  '.hero-banner',
+  '.track-box',
+];
+
+function cubeUnderPointer(stack) {
+  const at = stack.findIndex((node) => node.classList && node.classList.contains('cube'));
+  if (at === -1) return null;
+  const hidden = stack
+    .slice(0, at)
+    .some((node) => node.matches && LATTICE_BLOCKERS.some((selector) => node.matches(selector)));
+  return hidden ? null : stack[at];
+}
+
 function initLatticeFrame() {
   const wall = $('cubeLattice');
-  // Page furniture must never take the app down with it: two harnesses boot
-  // this module against a stub DOM that models markup and events but has no
-  // body to append the overlay to, and a frame that crashes the wallet is
-  // worse than no frame.
-  if (!wall) return;
-  if (typeof document.createElement !== 'function' || !document.body || typeof document.body.append !== 'function') return;
-  const overlay = document.createElement('div');
-  overlay.className = 'cube-frame';
-  overlay.setAttribute('aria-hidden', 'true');
-  document.body.append(overlay);
+  if (!wall || typeof document.elementsFromPoint !== 'function') return;
   let framed = null;
   let queued = false;
   let x = 0;
   let y = 0;
   let seen = false;
   const clear = () => {
-    seen = false;
-    overlay.classList.remove('on');
-    if (framed) {
-      framed.classList.remove('frame');
-      framed = null;
-    }
+    if (!framed) return;
+    framed.classList.remove('frame');
+    framed = null;
   };
   const paint = () => {
     queued = false;
     if (!seen) return;
-    const cubes = wall.children;
-    if (!cubes.length) return;
-    const first = cubes[0];
-    const cell = first && typeof first.getBoundingClientRect === 'function' ? first.getBoundingClientRect().width : 0;
-    if (!cell) return;
-    const cols = Math.max(1, Math.floor(window.innerWidth / cell));
-    const col = Math.min(cols - 1, Math.max(0, Math.floor(x / cell)));
-    const row = Math.max(0, Math.floor(y / cell));
-    const cube = cubes[row * cols + col] || null;
-    overlay.style.transform = `translate(${col * cell}px, ${row * cell}px)`;
-    overlay.classList.add('on');
-    if (cube !== framed) {
-      if (framed) framed.classList.remove('frame');
-      if (cube) cube.classList.add('frame');
+    const cube = cubeUnderPointer(document.elementsFromPoint(x, y));
+    if (cube === framed) return;
+    clear();
+    if (cube) {
+      cube.classList.add('frame');
       framed = cube;
     }
   };
@@ -257,8 +264,9 @@ function initLatticeFrame() {
   );
   window.addEventListener('pointerleave', clear);
   window.addEventListener('blur', clear);
-  // Scrolling moves the page under the fixed wall, so the cell under a still
-  // pointer is repainted rather than left where the pointer no longer is.
+  // Scrolling moves the page under the fixed wall, so the cube under a still
+  // pointer changes: the frame is re-asked rather than left on a cube that is
+  // no longer there. Before the first move there is nothing to re-ask.
   window.addEventListener('scroll', () => { if (seen) schedule(); }, { passive: true });
   window.addEventListener('resize', () => { if (seen) schedule(); }, { passive: true });
 }
